@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <defs>
+    <linearGradient id="cinevaBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#171b24"/>
+      <stop offset="100%" stop-color="#0b0d12"/>
+    </linearGradient>
+    <linearGradient id="cinevaRing" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff4b45"/>
+      <stop offset="100%" stop-color="#ff9933"/>
+    </linearGradient>
+  </defs>
+  <rect width="192" height="192" rx="42" fill="url(#cinevaBg)"/>
+  <g transform="translate(36 36)">
+    <path d="M 90 36 A 38 38 0 1 0 90 84" fill="none" stroke="url(#cinevaRing)" stroke-width="17" stroke-linecap="round"/>
+    <path d="M 52 44 L 82 60 L 52 76 Z" fill="#ffffff" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
+  </g>
+</svg>

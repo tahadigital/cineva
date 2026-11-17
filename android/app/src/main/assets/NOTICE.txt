@@ -1,0 +1,19 @@
+Cineva Media Player
+
+Copyright (c) 2026 Cineva Contributors.
+Cineva is a personal media player and stream organizer. It does not include or distribute any third-party media streams.
+
+Open-Source Components:
+
+1. LibVLC for Android (org.videolan.android:libvlc-all:3.7.7)
+   Distributed by VideoLAN under GNU Lesser General Public License v2.1 or later (LGPL-2.1+).
+   Copyright VideoLAN and contributors.
+   Corresponding source: https://code.videolan.org/videolan/libvlcjni
+   License: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
+   Cineva includes no modifications to the LibVLC library.
+
+2. Jetpack Compose, AndroidX, Kotlin, kotlinx.coroutines
+   Licensed under Apache License 2.0.
+
+3. OkHttp & Coil
+   Licensed under Apache License 2.0.

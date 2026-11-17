@@ -1,0 +1,5 @@
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/cineva_launcher_bg"/>
+    <foreground android:drawable="@drawable/cineva_mark"/>
+    <monochrome android:drawable="@drawable/cineva_mark"/>
+</adaptive-icon>

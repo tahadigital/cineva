@@ -1,0 +1,2 @@
+# Optional: supplies the local FFmpeg binary for remux and compatibility playback.
+imageio-ffmpeg==0.6.0

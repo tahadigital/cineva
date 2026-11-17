@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0e1015">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="Cineva · Kişisel medya, canlı yayınlar, filmler ve diziler için evrensel oynatıcı.">
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="apple-touch-icon" href="/icon.svg">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/cinema.css">
+  <link rel="stylesheet" href="/sports.css">
+  <link rel="stylesheet" href="/player.css">
+  <title>Cineva · Kişisel Medya Merkezi</title>
+</head>
+<body>
+  <div id="cinevaLaunch" class="cineva-launch" aria-hidden="true" hidden>
+    <div class="launch-emblem">
+      <svg class="launch-mark" viewBox="0 0 120 120" aria-hidden="true">
+        <defs>
+          <linearGradient id="launchCinevaGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#ff4b45"/>
+            <stop offset="100%" stop-color="#ff9933"/>
+          </linearGradient>
+        </defs>
+        <path class="launch-ring" d="M 90 36 A 38 38 0 1 0 90 84" fill="none" stroke="url(#launchCinevaGrad)" stroke-width="17" stroke-linecap="round"/>
+        <path class="launch-play" d="M 52 44 L 82 60 L 52 76 Z" fill="#ffffff" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
+      </svg>
+    </div>
+  </div>
+  <a class="skip-link" href="#main">İçeriğe geç</a>
+  <div class="app-shell">
+    <div class="workspace">
+      <header class="topbar">
+        <a class="brand topbar-brand" href="#home" aria-label="Cineva ana sayfa"><img src="/cineva-mark.svg" alt="Cineva logosu" width="32" height="32"></a>
+        <nav class="main-nav topbar-nav" aria-label="Ana menü">
+          <a href="#home" data-route="home">Ana Sayfa</a>
+          <a href="#series" data-route="series">Diziler</a>
+          <a href="#vod" data-route="vod">Filmler</a>
+          <a href="#live" data-route="live">Canlı TV</a>
+          <a href="#sports" data-route="sports">Yayın Rehberi</a>
+          <a href="#favorites" data-route="favorites">Favoriler</a>
+          <a href="#playlists" data-route="playlists">Listem</a>
+        </nav>
+        <div class="topbar-actions">
+          <form id="searchForm" class="search-form" role="search" aria-label="Kütüphanede ara"><label for="searchInput" class="search-label" data-icon="search"><span class="visually-hidden">Arama</span></label><input id="searchInput" type="search" placeholder="Dizi, film veya kanal" aria-label="Dizi, film veya kanal ara" autocomplete="off"></form>
+          <button id="syncButton" class="icon-button" title="Kütüphaneyi eşitle" aria-label="Kütüphaneyi eşitle"><span data-icon="refresh"></span></button>
+          <a href="#settings" class="avatar" data-route="settings" title="Ayarlar" aria-label="Ayarlar"><span aria-hidden="true">A</span><svg class="profile-caret" viewBox="0 0 12 8" aria-hidden="true"><path d="m1 1 5 5 5-5"/></svg></a>
+        </div>
+        <span id="breadcrumb" hidden></span>
+      </header>
+      <main id="main" tabindex="-1"><div class="initial-loading"><span class="spinner"></span><p>Cineva hazırlanıyor…</p></div></main>
+      <footer class="workspace-footer">
+        <div><span id="connectionLight" class="connection-light"></span><span id="connectionName">Kütüphanen hazırlanıyor</span><span id="connectionCaption" hidden></span></div>
+        <nav aria-label="Kütüphane işlemleri"><a href="#favorites">Favoriler</a><a href="#playlists">Listelerim</a><a href="#settings">Ayarlar</a></nav>
+        <span id="footerStatus">Bu bilgisayarda çalışıyor</span>
+      </footer>
+    </div>
+  </div>
+  <nav class="mobile-nav" aria-label="Mobil menü">
+    <a href="#home" data-route="home"><span data-icon="home"></span><span>Ana Sayfa</span></a>
+    <a href="#live" data-route="live"><span data-icon="live"></span><span>Canlı</span></a>
+    <a href="#sports" data-route="sports"><span data-icon="sports"></span><span>Rehber</span></a>
+    <button type="button" data-focus-search><span data-icon="search"></span><span>Ara</span></button>
+    <a href="#playlists" data-route="playlists"><span data-icon="list"></span><span>Listem</span></a>
+  </nav>
+  <dialog id="detailDialog" class="detail-dialog"><button class="dialog-close icon-button" data-close="detailDialog" aria-label="Kapat"><span data-icon="close"></span></button><div id="detailContent"></div></dialog>
+  <dialog id="listDialog" class="small-dialog"><button class="dialog-close icon-button" data-close="listDialog" aria-label="Kapat"><span data-icon="close"></span></button><div id="listContent"></div></dialog>
+  <dialog id="playerDialog" class="player-dialog" aria-labelledby="playerTitle">
+    <div id="playerSurface" class="player-surface">
+    <div class="video-stage">
+      <video id="video" playsinline preload="metadata" disablepictureinpicture></video>
+      <div id="playerOverlay" class="player-overlay"><span class="spinner"></span><span id="playerMessage">Yayın açılıyor…</span></div>
+    </div>
+    <header class="player-heading player-chrome">
+      <button type="button" id="closePlayer" class="player-icon" aria-label="Geri dön" title="Geri dön"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 5-7 7 7 7M5 12h15"/></svg></button>
+      <div><span id="playerEyebrow" class="eyebrow">ŞİMDİ OYNATILIYOR</span><h2 id="playerTitle"></h2></div>
+    </header>
+    <section id="episodeEnding" class="episode-ending" aria-labelledby="endingTitle" hidden>
+      <div id="endingArt" class="ending-art"></div>
+      <div class="ending-body">
+        <div id="endingCaption" class="ending-caption">SIRADAKİ BÖLÜM</div>
+        <h3 id="endingTitle"></h3>
+        <div class="ending-actions">
+          <button type="button" id="cancelNextEpisode" class="ending-button" aria-label="Otomatik geçişi iptal et">İptal</button>
+          <button type="button" id="playNextEpisode" class="ending-button primary"><span data-icon="play"></span> Sonraki bölüm <span id="nextCountdown" aria-hidden="true"></span></button>
+        </div>
+      </div>
+    </section>
+    <div class="player-controls player-chrome">
+      <section id="trackPanel" class="track-panel player-popover" aria-label="Ses ve altyazı" hidden>
+        <div class="track-panel-heading"><strong>Ses ve altyazı</strong><button type="button" id="refreshTracks" class="text-button" title="Kaynağın parça listesini yeniden oku">Yeniden tara</button></div>
+        <div class="track-selects">
+          <label for="audioTrackSelect"><span>Seslendirme / Ses dili</span><select id="audioTrackSelect" disabled><option value="auto">Varsayılan ses</option></select></label>
+          <label for="subtitleTrackSelect"><span>Altyazı</span><select id="subtitleTrackSelect" disabled><option value="off">Kapalı</option></select></label>
+        </div>
+        <p id="trackStatus" class="track-status" role="status">Ses ve altyazı seçenekleri okunuyor…</p>
+      </section>
+      <section id="modePanel" class="player-popover mode-panel" aria-label="Oynatma seçenekleri" hidden>
+        <strong>Oynatma seçenekleri</strong>
+        <div class="player-modes">
+          <button type="button" class="button small secondary" data-mode="direct">Doğrudan</button>
+          <button type="button" class="button small secondary" data-mode="remux">Uyumlu oynat</button>
+          <button type="button" class="button small secondary" data-mode="transcode">Dönüştürerek oynat</button>
+        </div>
+        <p class="player-hint" id="playerHint">Bağlantı kuruluyor</p>
+      </section>
+      <div id="absoluteSeek" class="absolute-seek" hidden>
+        <input type="range" id="seekRange" min="0" max="0" step="any" value="0" aria-label="İzleme konumu">
+        <output id="seekTime" for="seekRange">0:00 / 0:00</output>
+      </div>
+      <div class="player-transport">
+        <button type="button" id="togglePlay" class="player-icon" aria-label="Oynat" title="Oynat"><span data-icon="play"></span></button>
+        <button type="button" id="skipBack" class="player-icon player-skip" aria-label="10 saniye geri sar" title="10 saniye geri sar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3 4 8l5 5M4 8h10a6 6 0 0 1 0 12h-3"/></svg><small aria-hidden="true">10</small></button>
+        <button type="button" id="skipForward" class="player-icon player-skip" aria-label="10 saniye ileri sar" title="10 saniye ileri sar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 3 5 5-5 5m5-5H10a6 6 0 0 0 0 12h3"/></svg><small aria-hidden="true">10</small></button>
+        <div class="player-volume">
+          <button type="button" id="mutePlayer" class="player-icon" aria-label="Sesi kapat" title="Sesi kapat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6h4l5 4V5L7 9H3m13 0a4 4 0 0 1 0 6m3-9a8 8 0 0 1 0 12"/></svg></button>
+          <input type="range" id="playerVolume" min="0" max="1" step=".05" value="1" aria-label="Ses seviyesi" orient="vertical">
+        </div>
+        <span id="seekBufferStatus" class="seek-buffer-status"></span>
+        <button type="button" id="nextEpisodeShortcut" class="player-icon" aria-label="Sonraki bölüm" title="Sonraki bölüm" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 5 11 7-11 7Zm14 0v14"/></svg></button>
+        <button type="button" id="toggleTracks" class="player-icon" aria-label="Ses ve altyazı" aria-controls="trackPanel" aria-expanded="false" title="Ses ve altyazı"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-7l-5 3v-3H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Zm3 6h10M7 14h6"/></svg></button>
+        <button type="button" id="toggleModes" class="player-icon" aria-label="Oynatma seçenekleri" aria-controls="modePanel" aria-expanded="false" title="Oynatma seçenekleri"><span data-icon="settings"></span></button>
+        <button type="button" id="fullscreenButton" class="player-icon" title="Tam ekran" aria-label="Tam ekran"><span data-icon="expand"></span></button>
+      </div>
+    </div>
+    </div>
+  </dialog>
+  <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+  <script src="/vendor/hls.min.js" defer></script>
+  <script src="/tracks.js" defer></script>
+  <script src="/experience.js" defer></script>
+  <script src="/app.js" defer></script>
+  <script src="/sports.js" defer></script>
+</body>
+</html>

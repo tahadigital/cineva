@@ -1,0 +1,6 @@
+<resources>
+<style name="Theme.Cineva" parent="android:style/Theme.Material.NoActionBar">
+    <item name="android:fontFamily">sans</item><item name="android:windowLightStatusBar">false</item>
+    <item name="android:statusBarColor">#0E1015</item><item name="android:navigationBarColor">#0E1015</item><item name="android:windowBackground">#0E1015</item><item name="android:colorAccent">#FF4B45</item>
+</style>
+</resources>

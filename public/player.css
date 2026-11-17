@@ -1,0 +1,191 @@
+dialog.player-dialog,
+dialog.player-dialog:fullscreen {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: #000;
+  color: #fff;
+}
+.player-dialog::backdrop { background: #000; }
+.player-surface {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+}
+.player-surface:fullscreen {
+  width: 100vw;
+  height: 100dvh;
+}
+.player-surface:-webkit-full-screen {
+  width: 100vw;
+  height: 100dvh;
+}
+.player-dialog .video-stage,
+.player-dialog:fullscreen .video-stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  min-width: 0;
+  min-height: 0;
+  background: #000;
+}
+.player-dialog .video-stage video,
+.player-dialog:fullscreen .video-stage video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: contain;
+}
+.player-dialog [hidden] { display: none !important; }
+.player-dialog .player-overlay { pointer-events: none; }
+.player-dialog .player-overlay.buffering { inset: 0; }
+.player-dialog .player-overlay.error { z-index: 1; }
+.player-dialog .player-heading {
+  position: absolute;
+  inset: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 16px;
+  padding: max(18px, env(safe-area-inset-top)) max(3.6vw, env(safe-area-inset-left)) 50px;
+  background: linear-gradient(#000b, transparent);
+  pointer-events: none;
+}
+.player-heading h2 { margin: 0; font-size: clamp(16px, 2vw, 24px); }
+.player-heading .eyebrow { color: #ddd; }
+.player-heading button { pointer-events: auto; }
+.player-controls {
+  position: absolute;
+  inset: auto 0 0;
+  z-index: 4;
+  padding: 50px max(3.6vw, env(safe-area-inset-right)) max(15px, env(safe-area-inset-bottom)) max(3.6vw, env(safe-area-inset-left));
+  background: linear-gradient(transparent, #000d 45%, #000e);
+}
+.player-controls:has(.player-popover:not([hidden])) { z-index: 7; }
+.player-chrome { transition: opacity 180ms ease; }
+.player-dialog.controls-hidden .player-chrome { opacity: 0; pointer-events: none; }
+.player-dialog.controls-hidden .player-heading button { pointer-events: none; }
+.player-dialog.controls-hidden .video-stage { cursor: none; }
+.player-dialog .absolute-seek {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0 0 10px;
+  padding: 0;
+}
+.player-dialog #seekRange {
+  flex: 1;
+  width: auto;
+  height: 5px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: #ffffff59;
+}
+.player-dialog #seekRange::-webkit-slider-thumb {
+  width: 15px;
+  height: 15px;
+  background: #e50914;
+  box-shadow: none;
+}
+.player-dialog #seekRange::-moz-range-thumb { width: 15px; height: 15px; background: #e50914; }
+.player-dialog #seekTime { white-space: nowrap; font-variant-numeric: tabular-nums; font-size: clamp(10px, 1.3vw, 14px); }
+.player-transport { display: flex; align-items: center; gap: clamp(1px, 1.35vw, 18px); }
+.player-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: clamp(35px, 4.1vw, 48px);
+  height: clamp(35px, 4.1vw, 48px);
+  padding: 6px;
+  background: transparent;
+  border-radius: 4px;
+  color: #fff;
+}
+.player-icon:hover, .player-icon[aria-expanded="true"] { background: #ffffff21; }
+.player-icon svg { width: clamp(21px, 2.8vw, 33px); height: clamp(21px, 2.8vw, 33px); stroke-width: 1.8; }
+#togglePlay svg, #nextEpisodeShortcut svg, #playNextEpisode svg { fill: currentColor; }
+.player-skip { position: relative; }
+.player-skip small { position: absolute; top: 48%; left: 50%; transform: translate(-50%, -15%); font-size: 9px; font-weight: 800; }
+.player-dialog .seek-buffer-status { flex: 1; text-align: left; color: #aaa; }
+.player-volume { position: relative; }
+.player-volume input {
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 1;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  appearance: auto;
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 20px;
+  height: 72px;
+  margin: 0;
+  accent-color: #fff;
+}
+.player-volume:hover input, .player-volume:focus-within input { opacity: 1; pointer-events: auto; }
+.player-popover {
+  position: absolute;
+  bottom: calc(100% - 24px);
+  right: max(3.6vw, env(safe-area-inset-right));
+  width: min(470px, calc(100vw - 24px));
+  max-height: 60dvh;
+  overflow: auto;
+  background: #171717f5;
+  border: 1px solid #ffffff30;
+  border-radius: 5px;
+  color: #fff;
+}
+.player-dialog .track-panel, .player-dialog .mode-panel { padding: 16px; }
+.player-dialog .track-selects select { background: #262626; border-color: #ffffff36; }
+.player-dialog .player-modes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.player-dialog .player-hint { margin: 10px 0 0; color: #ddd; font-size: 12px; }
+.episode-ending {
+  position: absolute;
+  z-index: 6;
+  right: max(3.6vw, env(safe-area-inset-right));
+  bottom: clamp(96px, 16dvh, 155px);
+  width: min(390px, calc(100vw - 24px));
+  overflow: hidden;
+  border: 1px solid #ffffff35;
+  border-radius: 6px;
+  background: #181818;
+  box-shadow: 0 12px 40px #000b;
+  animation: ending-in 220ms ease-out both;
+}
+@keyframes ending-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+.ending-art:empty { display: none; }
+.ending-art img { display: block; width: 100%; height: clamp(50px, 17dvh, 155px); object-fit: cover; object-position: 50% 36%; }
+.ending-body { padding: 13px 15px 16px; }
+.ending-caption { color: #bcbcbc; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+.ending-body h3 { margin: 2px 0 13px; font-size: clamp(16px, 3vw, 21px); line-height: 1.3; }
+.ending-actions { display: flex; justify-content: space-between; gap: 8px; }
+.ending-button { display: flex; gap: 7px; align-items: center; padding: 8px 10px; border-radius: 4px; background: #404040; color: #fff; font-weight: 700; font-size: 13px; }
+.ending-button.primary { background: #fff; color: #111; }
+.ending-button:hover { filter: brightness(.87); }
+@media (max-width: 540px) {
+  .player-dialog .seek-buffer-status { font-size: 0; }
+  .player-dialog .player-heading { gap: 6px; }
+  .player-volume input { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .player-chrome { transition: none; }
+  .episode-ending { animation: none; }
+}

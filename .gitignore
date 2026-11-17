@@ -1,0 +1,12 @@
+.venv/
+/data/
+__pycache__/
+*.py[cod]
+.DS_Store
+android/local.properties
+android/signing/
+android/.gradle/
+android/app/build/
+android/build/
+*.jks
+*.keystore
