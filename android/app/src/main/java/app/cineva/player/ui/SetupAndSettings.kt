@@ -36,6 +36,7 @@ fun AkisSetupScreen(
     onSubmit: (String, String, String, String) -> Unit,
     onM3uSubmit: (String, String, String) -> Unit = { _, _, _ -> },
     onDemo: () -> Unit = {},
+    onOpenLocalFile: () -> Unit = {},
 ) {
     var mode by rememberSaveable { mutableStateOf("m3u") }
     var name by rememberSaveable { mutableStateOf("Kişisel Liste") }
@@ -115,7 +116,17 @@ fun AkisSetupScreen(
                 Spacer(Modifier.width(8.dp))
                 Text("Açık Sinema ile Hemen Dene (Demo)")
             }
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(10.dp))
+            TextButton(
+                onClick = { if (!loading) onOpenLocalFile() },
+                enabled = !loading,
+                modifier = Modifier.fillMaxWidth().widthIn(max = 520.dp),
+            ) {
+                Icon(Icons.Outlined.FolderOpen, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Cihazdan Yerel Video Aç (.mp4, .mkv, .avi)")
+            }
+            Spacer(Modifier.height(14.dp))
             Surface(shape = RoundedCornerShape(8.dp), color = CinevaPanel, modifier = Modifier.widthIn(max = 520.dp)) {
                 Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     Text("Medya kaynağı bağla", style = MaterialTheme.typography.titleMedium)

@@ -104,6 +104,7 @@ data class HomeSections(
 )
 data class TrackPreference(val audioId: Int? = null, val subtitleId: Int? = null, val subtitleOff: Boolean = true)
 data class Playlist(val id: String, val name: String, val count: Int, val items: List<MediaItem> = emptyList())
+data class UserProfile(val id: String, val name: String, val avatarColor: String, val isKids: Boolean = false, val hasPin: Boolean = false, val active: Boolean = false)
 data class SyncState(val running: Boolean = false, val message: String = "", val completedSteps: Int = 0, val totalSteps: Int = 6, val error: String? = null)
 
 /** Only user-safe text is carried outward; never append HTTP URLs or bodies. */

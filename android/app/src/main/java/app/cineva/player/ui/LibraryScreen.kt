@@ -54,6 +54,11 @@ fun AkisLibraryScreen(
     onAddToCollection: (UiMedia) -> Unit,
     onDeleteCollection: (UiCollection) -> Unit = {},
     onCloseCollection: () -> Unit = {},
+    activeProfileName: String = "Ana Profil",
+    activeProfileColor: String = "#FF4B45",
+    onOpenProfiles: () -> Unit = {},
+    onSurprise: () -> Unit = {},
+    onOpenLocalFile: () -> Unit = {},
     sportsContent: @Composable () -> Unit,
 ) {
     val reducedMotion = rememberReducedMotion()
@@ -114,8 +119,17 @@ fun AkisLibraryScreen(
                         Modifier.weight(1f), fontSize = 25.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
                 }
                 if (state.refreshing) CircularProgressIndicator(Modifier.padding(14.dp).size(19.dp), color = AkisRed, strokeWidth = 2.dp)
+                IconButton(onClick = onSurprise) { Icon(Icons.Outlined.Shuffle, "Bana Bir Şey Seç", tint = Color.White) }
+                IconButton(onClick = onOpenLocalFile) { Icon(Icons.Outlined.FolderOpen, "Cihazdan Video Aç", tint = Color.White) }
                 if (state.tab != LibraryTab.SEARCH) IconButton(onClick = { onTab(LibraryTab.SEARCH) }) {
                     Icon(Icons.Outlined.Search, "Ara", tint = Color.White)
+                }
+                val profileTint = runCatching { Color(android.graphics.Color.parseColor(activeProfileColor)) }.getOrDefault(AkisRed)
+                Box(
+                    Modifier.padding(horizontal = 4.dp).size(30.dp).clip(CircleShape).background(profileTint).clickable(onClick = onOpenProfiles),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(activeProfileName.take(1).uppercase(), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
                 IconButton(onClick = onSettings) { Icon(Icons.Outlined.Settings, "Ayarlar", tint = Color.White) }
             }
@@ -319,6 +333,7 @@ private fun SearchLanding(state: LibraryUiState, onMedia: (UiMedia) -> Unit) {
 private fun CatalogContent(state: LibraryUiState, onMedia: (UiMedia) -> Unit, onFavorite: (UiMedia) -> Unit,
                            onRefresh: () -> Unit, onLoadMore: () -> Unit, onCloseCollection: () -> Unit = {}) {
     val gridState = rememberLazyGridState()
+    val isTablet = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 600
     val latestLoadMore by rememberUpdatedState(onLoadMore)
     var requestedMore by remember(state.items.size, state.query, state.selectedCategoryId, state.tab) { mutableStateOf(false) }
     LaunchedEffect(state.items.size, state.loading, state.hasMore, state.query, state.selectedCategoryId) {
@@ -332,7 +347,7 @@ private fun CatalogContent(state: LibraryUiState, onMedia: (UiMedia) -> Unit, on
                 }
         }
     }
-    LazyVerticalGrid(state = gridState, columns = GridCells.Adaptive(106.dp), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 9.dp, bottom = 28.dp),
+    LazyVerticalGrid(state = gridState, columns = GridCells.Adaptive(if (isTablet) 144.dp else 108.dp), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 9.dp, bottom = 28.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(21.dp)) {
         item("heading", span = { GridItemSpan(maxLineSpan) }) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {

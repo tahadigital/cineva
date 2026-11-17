@@ -8,6 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from playback import PlaybackManager, BITMAP_SUBTITLES
 import discovery
+import local_media
 import m3u
 import sports
 
@@ -97,6 +98,9 @@ def initialize():
         CREATE TABLE IF NOT EXISTS media_tracks(item_id TEXT PRIMARY KEY,data TEXT NOT NULL,updated REAL NOT NULL);
         CREATE TABLE IF NOT EXISTS track_preferences(item_id TEXT PRIMARY KEY,data TEXT NOT NULL,updated_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS devices(token_hash TEXT PRIMARY KEY,created_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS profiles(id TEXT PRIMARY KEY,name TEXT NOT NULL,avatar_color TEXT NOT NULL,is_kids INTEGER DEFAULT 0,pin_hash TEXT DEFAULT '',created_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS profile_snapshots(profile_id TEXT PRIMARY KEY,data TEXT NOT NULL);
+        INSERT OR IGNORE INTO profiles VALUES('default','Ana Profil','#FF4B45',0,'',datetime('now'));
         ''')
     os.chmod(DB, 0o600)
 
@@ -165,6 +169,7 @@ class Provider:
     @property
     def mode(self):
         if self.config.get('type') == 'demo': return 'demo'
+        if self.config.get('type') == 'local' and self.config.get('localDir'): return 'local'
         if self.config.get('type') == 'm3u' and self.config.get('m3uUrl'): return 'm3u'
         if all(self.config.get(k) for k in ('host', 'username', 'password')): return 'xtream'
         return 'none'
@@ -187,7 +192,7 @@ class Provider:
     def account(self):
         if self.mode == 'demo':
             return {'status': 'Demo', 'expires': None, 'maxConnections': 1, 'activeConnections': 0}
-        if self.mode == 'm3u':
+        if self.mode in ('m3u', 'local'):
             return {'status': 'Active', 'expires': None, 'maxConnections': 1, 'activeConnections': 0}
         d = self.api()
         u = d.get('user_info', {}) if isinstance(d, dict) else {}
@@ -198,6 +203,9 @@ class Provider:
     def source(self, row, hls=False):
         try: extra = json.loads(row['extra'])
         except (ValueError, TypeError): extra = {}
+        local_path = extra.get('localPath')
+        if isinstance(local_path, str) and local_path:
+            return 'local://' + local_path
         direct_url = extra.get('sourceUrl')
         if isinstance(direct_url, str) and direct_url.startswith(('http://', 'https://')):
             return direct_url
@@ -271,6 +279,15 @@ def sync_catalog():
                                 item['poster'], cid, cname, item['year'], item['rating'], item['extension'],
                                 time.time(), json.dumps(extra, ensure_ascii=False)))
             catrows = [(cid, kind, cname) for (cid, kind), cname in seen_cats.items()]
+        elif provider.mode == 'local':
+            account = provider.account()
+            scanned = local_media.scan_local_folder(provider.config['localDir'])
+            catrows = [(cid, 'vod', cname) for cid, cname in scanned['categories'].items()]
+            for item in scanned['items']:
+                extra = {'localPath': item['localPath'], 'subtitles': item['subtitles']}
+                allrows.append((item['id'], 'vod', item['provider_id'], item['name'], fold(item['name']),
+                                '', item['category_id'], item['category_name'], item['year'], 0.0,
+                                item['extension'], item['added'], json.dumps(extra, ensure_ascii=False)))
         elif provider.mode == 'm3u':
             account = provider.account()
             with remote(provider.config['m3uUrl'], timeout=45) as r:
@@ -351,6 +368,112 @@ def counts():
     return result
 
 
+_ADULT_RE = re.compile(r'(?:^|\W)(?:\+18|18\+)(?=$|\W)|\b(?:adult|yetişkin|yetiskin|erotic|erotik|xxx|porn|korku|horror)\b', re.I)
+
+
+def _hash_pin(pin):
+    pin_str = str(pin or '').strip()
+    if not pin_str:
+        return ''
+    if not re.fullmatch(r'\d{4,8}', pin_str):
+        raise ValueError('Profil PIN kodu 4-8 rakamdan oluşmalıdır.')
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac('sha256', pin_str.encode('utf-8'), salt, 100000)
+    return salt.hex() + ':' + digest.hex()
+
+
+def _verify_pin(pin, stored):
+    if not stored:
+        return True
+    try:
+        salt_hex, digest_hex = stored.split(':', 1)
+        check = hashlib.pbkdf2_hmac('sha256', str(pin or '').strip().encode('utf-8'), bytes.fromhex(salt_hex), 100000)
+        return secrets.compare_digest(check.hex(), digest_hex)
+    except (ValueError, TypeError):
+        return False
+
+
+def active_profile_id():
+    return meta_get('active_profile', 'default') or 'default'
+
+
+def active_profile():
+    pid = active_profile_id()
+    with connect() as c:
+        row = c.execute('SELECT id,name,avatar_color,is_kids,pin_hash FROM profiles WHERE id=?', (pid,)).fetchone()
+    if not row:
+        return {'id': 'default', 'name': 'Ana Profil', 'avatarColor': '#FF4B45', 'isKids': False, 'hasPin': False}
+    return {'id': row['id'], 'name': row['name'], 'avatarColor': row['avatar_color'], 'isKids': bool(row['is_kids']), 'hasPin': bool(row['pin_hash'])}
+
+
+def list_profiles():
+    with connect() as c:
+        rows = c.execute('SELECT id,name,avatar_color,is_kids,pin_hash,created_at FROM profiles ORDER BY CASE WHEN id="default" THEN 0 ELSE 1 END, created_at').fetchall()
+    return [{'id': r['id'], 'name': r['name'], 'avatarColor': r['avatar_color'], 'isKids': bool(r['is_kids']), 'hasPin': bool(r['pin_hash']), 'active': r['id'] == active_profile_id()} for r in rows]
+
+
+def _dump_profile_tables(c):
+    return {
+        'favorites': [dict(r) for r in c.execute('SELECT * FROM favorites')],
+        'progress': [dict(r) for r in c.execute('SELECT * FROM progress')],
+        'playlists': [dict(r) for r in c.execute('SELECT * FROM playlists')],
+        'playlistItems': [dict(r) for r in c.execute('SELECT * FROM playlist_items')],
+        'trackPreferences': [dict(r) for r in c.execute('SELECT * FROM track_preferences')],
+    }
+
+
+def _restore_profile_tables(c, snap):
+    for table in ('playlist_items', 'playlists', 'favorites', 'progress', 'track_preferences'):
+        c.execute('DELETE FROM ' + table)
+    for r in snap.get('favorites', []):
+        c.execute('INSERT OR IGNORE INTO favorites VALUES(?,?)', (r['item_id'], r['created_at']))
+    for r in snap.get('progress', []):
+        c.execute('INSERT OR REPLACE INTO progress VALUES(?,?,?,?,?)', (r['item_id'], r['position'], r['duration'], r['completed'], r['updated_at']))
+    for r in snap.get('playlists', []):
+        c.execute('INSERT OR IGNORE INTO playlists VALUES(?,?,?)', (r['id'], r['name'], r['created_at']))
+    for r in snap.get('playlistItems', []):
+        c.execute('INSERT OR IGNORE INTO playlist_items VALUES(?,?,?)', (r['playlist_id'], r['item_id'], r['position']))
+    for r in snap.get('trackPreferences', []):
+        c.execute('INSERT OR REPLACE INTO track_preferences VALUES(?,?,?)', (r['item_id'], r['data'], r['updated_at']))
+
+
+def switch_profile(target_id, pin=''):
+    with sync_lock:
+        current_id = active_profile_id()
+        with connect() as c:
+            row = c.execute('SELECT id,pin_hash FROM profiles WHERE id=?', (target_id,)).fetchone()
+            if not row:
+                raise ValueError('Profil bulunamadı.')
+            if row['pin_hash'] and not _verify_pin(pin, row['pin_hash']):
+                raise ValueError('Profil PIN kodu hatalı.')
+            if target_id == current_id:
+                return active_profile()
+            c.execute('INSERT OR REPLACE INTO profile_snapshots VALUES(?,?)', (current_id, json.dumps(_dump_profile_tables(c), ensure_ascii=False)))
+            snap_row = c.execute('SELECT data FROM profile_snapshots WHERE profile_id=?', (target_id,)).fetchone()
+            snap = json.loads(snap_row['data']) if snap_row else {}
+            _restore_profile_tables(c, snap)
+            c.execute('INSERT OR REPLACE INTO meta VALUES(?,?)', ('active_profile', json.dumps(target_id)))
+    return active_profile()
+
+
+def surprise_pick():
+    data = home()
+    watched_ids = {i['id'] for i in data.get('continueWatching', [])}
+    candidates = []
+    for shelf in data.get('discovery', {}).get('shelves', []):
+        if shelf['id'].startswith(('for-you-', 'trending-', 'new-')):
+            for item in shelf.get('items', []):
+                if item['id'] not in watched_ids and item['kind'] in ('vod', 'series'):
+                    candidates.append(item)
+    if not candidates:
+        candidates = [i for i in data.get('recent', []) if i['kind'] in ('vod', 'series')]
+    if not candidates:
+        raise ValueError('Önerilecek içerik bulunamadı. Kütüphaneyi yenileyin.')
+    # Weight higher-rated top picks and pick deterministically or randomly among top 12.
+    pool = sorted({c['id']: c for c in candidates}.values(), key=lambda i: (bool(i.get('poster')), i.get('rating', 0)), reverse=True)[:12]
+    return {'item': pool[secrets.randbelow(len(pool))]}
+
+
 def catalog(q):
     kind = q.get('kind', ['vod'])[0]
     if kind not in KINDS: raise ValueError('İçerik türü geçersiz.')
@@ -370,7 +493,12 @@ def catalog(q):
         page = min(page, pages)
         rows = c.execute(ITEM_SELECT + ' WHERE ' + ' AND '.join(where) + ' ORDER BY ' + sort + ' LIMIT ? OFFSET ?', args + [limit, (page - 1) * limit]).fetchall()
         cats = c.execute('SELECT category_id AS id,category_name AS name,count(*) AS count FROM items WHERE kind=? GROUP BY category_id ORDER BY category_name', (kind,)).fetchall()
-    return {'items': [item_json(r) for r in rows], 'total': total, 'page': page, 'pages': pages, 'categories': [dict(r) for r in cats]}
+    items_out = [item_json(r) for r in rows]
+    cats_out = [dict(r) for r in cats]
+    if active_profile()['isKids']:
+        items_out = [i for i in items_out if not (_ADULT_RE.search(i.get('categoryName', '')) or _ADULT_RE.search(i.get('name', '')))]
+        cats_out = [cat for cat in cats_out if not _ADULT_RE.search(cat.get('name', ''))]
+    return {'items': items_out, 'total': total, 'page': page, 'pages': pages, 'categories': cats_out}
 
 
 _home_cache = {'lib_key': None, 'library': [], 'rec_key': None, 'recommendations': None}
@@ -413,8 +541,9 @@ def home():
             kind: c.execute(ITEM_SELECT + ' WHERE i.kind=? ORDER BY i.added DESC,i.id LIMIT 120', (kind,)).fetchall()
             for kind in ('vod', 'series')
         }
-    # Providers can repeat titles in multiple categories. Deduplicate per row and
-    # keep slots for both films and series even when one catalog updates earlier.
+    is_kids = active_profile()['isKids']
+    def kid_safe(item):
+        return not is_kids or not (_ADULT_RE.search(item.get('categoryName', '')) or _ADULT_RE.search(item.get('name', '')))
     recent = []
     for rows in rows_by_kind.values():
         seen = set()
@@ -422,8 +551,10 @@ def home():
             poster = urllib.parse.urlsplit(row['poster']).path.rsplit('/', 1)[-1]
             key = poster if len(poster) > 10 else fold(row['name'])
             if key in seen: continue
+            item = home_item(row)
+            if not kid_safe(item): continue
             seen.add(key)
-            recent.append(home_item(row))
+            recent.append(item)
             if len(seen) == 12: break
     feed = discovery.snapshot(DATA, enabled=bool(provider.config.get('host')))
     with connect() as c:
@@ -432,7 +563,7 @@ def home():
             tuple(c.execute("SELECT count(*), coalesce(max(updated_at),''), coalesce(sum(position),0), coalesce(sum(completed),0) FROM progress").fetchone()),
             tuple(c.execute("SELECT count(*), coalesce(max(created_at),'') FROM favorites").fetchone()),
         )
-        rec_key = (lib_key, hist_key, feed.get('updatedAt'), len(feed.get('metas', ())), len(feed.get('charts', ())))
+        rec_key = (lib_key, hist_key, is_kids, feed.get('updatedAt'), len(feed.get('metas', ())), len(feed.get('charts', ())))
         with _home_lock:
             cached_rec = _home_cache['recommendations'] if _home_cache['rec_key'] == rec_key else None
             cached_lib = _home_cache['library'] if _home_cache['lib_key'] == lib_key else None
@@ -440,8 +571,9 @@ def home():
             recommendations = cached_rec
         else:
             library = cached_lib if cached_lib is not None else [home_item(r) for r in c.execute(ITEM_SELECT + " WHERE i.kind IN ('vod','series')")]
+            filtered_lib = [i for i in library if kid_safe(i)] if is_kids else library
             history = [home_item(r) for r in c.execute(ITEM_SELECT + " WHERE p.item_id IS NOT NULL OR f.item_id IS NOT NULL")]
-            recommendations = discovery.build(library, history, feed)
+            recommendations = discovery.build(filtered_lib, history, feed)
             with _home_lock:
                 _home_cache.update(lib_key=lib_key, library=library, rec_key=rec_key, recommendations=recommendations)
     return {'continueWatching': continuing, 'favorites': [home_item(r) for r in fav], 'recent': recent, 'counts': counts(), 'discovery': recommendations}
@@ -930,8 +1062,10 @@ class Handler(BaseHTTPRequestHandler):
                         'type': provider.mode,
                         'host': provider.config.get('host', ''),
                         'm3uUrl': provider.config.get('m3uUrl', ''),
+                        'localDir': provider.config.get('localDir', '') if self.is_local else '',
                         'epgUrl': provider.config.get('epgUrl') or provider.config.get('discoveredEpgUrl', ''),
                     },
+                    'profile': active_profile(),
                     'account': meta_get('account', {}),
                     'catalog': {**counts(), 'updatedAt': meta_get('catalog_updated'), **sync_state},
                     'network': {'localUrl': f'http://localhost:{HTTP_PORT}', 'lanUrls': [f'http://{ip}:{HTTP_PORT}' for ip in lan_ips()]},
@@ -942,6 +1076,8 @@ class Handler(BaseHTTPRequestHandler):
             if p.startswith('/api/') or p.startswith('/media/'):
                 if not self.require_auth(): return
                 if p == '/api/home': return self.send_json(home())
+                if p == '/api/surprise': return self.send_json(surprise_pick())
+                if p == '/api/profiles': return self.send_json({'activeProfileId': active_profile_id(), 'profiles': list_profiles()})
                 if p == '/api/sports':
                     day = sports.selected_date(q.get('date', [''])[0])
                     epg_url = q.get('epgUrl', [''])[0].strip() or provider.config.get('epgUrl') or provider.config.get('discoveredEpgUrl', '')
@@ -1004,11 +1140,52 @@ class Handler(BaseHTTPRequestHandler):
                 config = {'type': 'demo', 'name': 'Açık Sinema (Demo)'}
                 save_config(config); provider = Provider(config); sync_catalog()
                 return self.send_json({'ok': True})
+            if p == '/api/profiles' and method == 'POST':
+                name = string(d.get('name'), 60).strip()
+                if not name: raise ValueError('Profil adı boş olamaz.')
+                is_kids = bool(d.get('isKids', False))
+                color = str(d.get('avatarColor') or '#FF4B45')
+                if not re.fullmatch(r'#[0-9A-Fa-f]{6}', color): color = '#FF4B45'
+                pin_hash = _hash_pin(d.get('pin', ''))
+                pid = 'p_' + secrets.token_urlsafe(8)
+                with connect() as c:
+                    c.execute('INSERT INTO profiles VALUES(?,?,?,?,?,?)', (pid, name, color, int(is_kids), pin_hash, stamp()))
+                return self.send_json({'ok': True, 'profile': {'id': pid, 'name': name, 'avatarColor': color, 'isKids': is_kids, 'hasPin': bool(pin_hash)}}, 201)
+            if p == '/api/profiles/switch' and method == 'POST':
+                pid = str(d.get('id', '')).strip()
+                ip = self.client_address[0]
+                now = time.monotonic()
+                with resource_lock:
+                    pair_attempts['pin:' + ip] = [x for x in pair_attempts['pin:' + ip] if x > now - 300]
+                    if len(pair_attempts['pin:' + ip]) >= 10:
+                        return self.send_json({'error': 'Çok fazla PIN denemesi. 5 dakika bekleyin.'}, 429)
+                    try:
+                        profile = switch_profile(pid, d.get('pin', ''))
+                        pair_attempts['pin:' + ip].clear()
+                    except ValueError as err:
+                        if 'PIN' in str(err):
+                            pair_attempts['pin:' + ip].append(now)
+                            return self.send_json({'error': str(err)}, 403)
+                        raise
+                return self.send_json({'ok': True, 'profile': profile})
+            if p.startswith('/api/profiles/') and method == 'DELETE':
+                pid = p[len('/api/profiles/'):]
+                if pid == 'default': raise ValueError('Ana profil silinemez.')
+                if pid == active_profile_id(): switch_profile('default')
+                with connect() as c:
+                    c.execute('DELETE FROM profiles WHERE id=?', (pid,))
+                    c.execute('DELETE FROM profile_snapshots WHERE profile_id=?', (pid,))
+                return self.send_json({'ok': True})
             if p == '/api/settings' and method == 'POST':
                 if not self.is_local: return self.send_json({'error': 'Medya kaynağını yalnızca ana cihaz üzerinden değiştirebilirsiniz.'}, 403)
-                source_type = str(d.get('type') or ('m3u' if d.get('m3uUrl') else 'xtream')).strip().lower()
+                source_type = str(d.get('type') or ('local' if d.get('localDir') else ('m3u' if d.get('m3uUrl') else 'xtream'))).strip().lower()
                 epg_url = validate_host(d['epgUrl']) if str(d.get('epgUrl', '')).strip() else ''
-                if source_type == 'm3u':
+                if source_type == 'local':
+                    local_dir = str(local_media.validate_local_dir(d.get('localDir', '')))
+                    config = {'type': 'local', 'name': string(d.get('name') or 'Yerel Klasör', 80), 'localDir': local_dir, 'epgUrl': epg_url}
+                    test_provider = Provider(config); account = test_provider.account()
+                    changed = config.get('localDir') != provider.config.get('localDir') or provider.mode != 'local'
+                elif source_type == 'm3u':
                     m3u_url = validate_host(d.get('m3uUrl', ''))
                     config = {'type': 'm3u', 'name': string(d.get('name') or 'M3U Listesi', 80), 'm3uUrl': m3u_url, 'epgUrl': epg_url}
                     test_provider = Provider(config); account = test_provider.account()
@@ -1155,7 +1332,49 @@ class Handler(BaseHTTPRequestHandler):
             owner = media_sessions.get(sid) if sid else internal_sources.get(source_token)
             if owner is not None: owner['source_error'] = {'error': message, 'code': code}
         return PlaybackError(message, code=code)
+    def proxy_local(self, raw_path, sid=None):
+        if provider.mode != 'local':
+            return self.send_json({'error': 'Yerel dosya modu etkin değil.'}, 403)
+        try:
+            root = local_media.validate_local_dir(provider.config.get('localDir', ''))
+            target = Path(raw_path).resolve()
+            if not target.is_relative_to(root) or not target.is_file():
+                return self.send_json({'error': 'Medya dosyası bulunamadı.'}, 404)
+            size = target.stat().st_size
+            typ = mimetypes.guess_type(str(target))[0] or 'video/mp4'
+            range_hdr = self.headers.get('Range', '')
+            start, end, status = 0, size - 1, 200
+            extra = {'Accept-Ranges': 'bytes'}
+            m = re.fullmatch(r'bytes=(\d+)-(\d*)', range_hdr.strip())
+            if m and size > 0:
+                start = int(m.group(1))
+                end = int(m.group(2)) if m.group(2) else size - 1
+                if start >= size or start > end:
+                    return self.send_json({'error': 'Geçersiz zaman aralığı.'}, 416)
+                end = min(end, size - 1)
+                status = 206
+                extra['Content-Range'] = f'bytes {start}-{end}/{size}'
+            remaining = max(0, end - start + 1) if size > 0 else 0
+            self.headers_out(status, typ, remaining, extra)
+            if self.command == 'HEAD' or remaining == 0:
+                return
+            with target.open('rb') as f:
+                f.seek(start)
+                while remaining > 0:
+                    if sid:
+                        with resource_lock:
+                            session = media_sessions.get(sid)
+                            if not session: break
+                            session['touched'] = time.monotonic()
+                    chunk = f.read(min(128 * 1024, remaining))
+                    if not chunk: break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
+        except ValueError:
+            return self.send_json({'error': 'Medya dosyasına erişilemiyor.'}, 403)
     def proxy(self, url, sid=None, source_token=None):
+        if isinstance(url, str) and url.startswith('local://'):
+            return self.proxy_local(url[len('local://'):], sid)
         hdr = {}
         for k in ('Range', 'If-Range'):
             if self.headers.get(k): hdr[k] = self.headers[k]

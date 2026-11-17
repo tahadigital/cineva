@@ -183,7 +183,9 @@ class AkisRepository(context: Context) {
     }
 
     suspend fun categories(kind: MediaKind): List<Category> = withContext(Dispatchers.IO) {
-        val account=saved();ensureCatalog(account,kind);database.categories(account.info.id,kind)
+        val account=saved();ensureCatalog(account,kind)
+        val cats=database.categories(account.info.id,kind)
+        if (database.activeProfile().isKids) cats.filterNot { AdultContentFilter.isAdult(it.name, it.name) } else cats
     }
 
     suspend fun catalog(kind: MediaKind, query: String="", categoryId: String?=null, page: Int=0, pageSize: Int=60, onlyFavorites: Boolean=false): CatalogPage = withContext(Dispatchers.IO) {
@@ -194,8 +196,10 @@ class AkisRepository(context: Context) {
         if(onlyFavorites)where+="f.item_id IS NOT NULL"
         val condition=where.joinToString(" AND ");val size=pageSize.coerceIn(1,200);val currentPage=page.coerceIn(0,1_000_000)
         val total=database.count(account.info.id,condition,args)
-        val rows=database.items(account.info.id,condition,args,limit=size,offset=currentPage*size)
-        CatalogPage(rows,currentPage,total,(currentPage+1)*size<total)
+        val rowsRaw=database.items(account.info.id,condition,args,limit=size,offset=currentPage*size)
+        val isKids=database.activeProfile().isKids
+        val rows=if (isKids) rowsRaw.filterNot { AdultContentFilter.isAdult(it.name, it.categoryName) } else rowsRaw
+        CatalogPage(rows,currentPage,if (isKids) rows.size else total,(currentPage+1)*size<total)
     }
 
     suspend fun item(id: String): MediaItem? = withContext(Dispatchers.IO) { database.item(saved().info.id,id) }
@@ -219,12 +223,14 @@ class AkisRepository(context: Context) {
         val checkCancelled = { operationContext.ensureActive() }
         checkCancelled()
         val account=saved();ensureCatalog(account,MediaKind.VOD);ensureCatalog(account,MediaKind.SERIES)
+        val isKids=database.activeProfile().isKids
         val allCatalog=buildList {
             var offset=0
             do {
                 checkCancelled()
                 val rows=database.items(account.info.id,"i.kind IN ('vod','series')",limit=20000,offset=offset,checkCancelled=checkCancelled)
-                addAll(rows);offset+=rows.size
+                addAll(if (isKids) rows.filterNot { AdultContentFilter.isAdult(it.name, it.categoryName) } else rows)
+                offset+=rows.size
             } while(rows.size==20000)
         }
         checkCancelled()
@@ -237,6 +243,7 @@ class AkisRepository(context: Context) {
         val seenSeries=mutableSetOf<String>()
         for(row in watched) {
             checkCancelled()
+            if (isKids && AdultContentFilter.isAdult(row.name, row.categoryName)) continue
             var item=row
             if(item.kind==MediaKind.EPISODE) {
                 val parent=item.parentId
@@ -255,11 +262,15 @@ class AkisRepository(context: Context) {
             continuing.add(item)
             if(continuing.size==20)break
         }
+        val favs=database.items(account.info.id,"f.item_id IS NOT NULL",order="f.created_at DESC",limit=24,checkCancelled=checkCancelled)
+        val movies=database.items(account.info.id,"i.kind='vod'",limit=30,checkCancelled=checkCancelled)
+        val seriesList=database.items(account.info.id,"i.kind='series'",limit=30,checkCancelled=checkCancelled)
         HomeSections(
             continuing,
-            database.items(account.info.id,"f.item_id IS NOT NULL",order="f.created_at DESC",limit=24,checkCancelled=checkCancelled),
-            database.items(account.info.id,"i.kind='vod'",limit=30,checkCancelled=checkCancelled),
-            database.items(account.info.id,"i.kind='series'",limit=30,checkCancelled=checkCancelled),discovery,
+            if (isKids) favs.filterNot { AdultContentFilter.isAdult(it.name, it.categoryName) } else favs,
+            if (isKids) movies.filterNot { AdultContentFilter.isAdult(it.name, it.categoryName) } else movies,
+            if (isKids) seriesList.filterNot { AdultContentFilter.isAdult(it.name, it.categoryName) } else seriesList,
+            discovery,
         )
     }
 
@@ -305,6 +316,34 @@ class AkisRepository(context: Context) {
         if (episode.kind != MediaKind.EPISODE) return null
         val parent = episode.parentId?.let { item(it) } ?: return null
         return detail(parent).followingEpisode(episode)
+    }
+
+    suspend fun siblingEpisodes(episode: MediaItem): List<MediaItem> = withContext(Dispatchers.IO) {
+        if (episode.kind != MediaKind.EPISODE || episode.parentId == null) return@withContext emptyList()
+        val acc = saved()
+        database.items(acc.info.id, "i.parent_id=?", listOf(episode.parentId), order = "i.season,i.episode,i.name,i.id", limit = 2000)
+    }
+
+    suspend fun surpriseItem(): MediaItem = withContext(Dispatchers.IO) {
+        val acc = saved(); ensureCatalog(acc, MediaKind.VOD); ensureCatalog(acc, MediaKind.SERIES)
+        val isKids = database.activeProfile().isKids
+        val candidates = database.items(acc.info.id, "i.kind IN ('vod','series')", order = "i.added DESC", limit = 80)
+            .let { list -> if (isKids) list.filterNot { AdultContentFilter.isAdult(it.name, it.categoryName) } else list }
+        if (candidates.isEmpty()) throw IptvException("Önerilecek içerik bulunamadı.")
+        val pool = candidates.sortedByDescending { it.rating }.take(15)
+        pool[java.security.SecureRandom().nextInt(pool.size)]
+    }
+
+    suspend fun profiles(): List<UserProfile> = withContext(Dispatchers.IO) { database.profiles() }
+    suspend fun activeProfile(): UserProfile = withContext(Dispatchers.IO) { database.activeProfile() }
+    suspend fun createProfile(name: String, color: String, isKids: Boolean, pin: String): UserProfile = withContext(Dispatchers.IO) {
+        database.createProfile(name, color, isKids, pin)
+    }
+    suspend fun switchProfile(id: String, pin: String = ""): UserProfile = withContext(Dispatchers.IO) {
+        database.switchProfile(current?.info?.id, id, pin)
+    }
+    suspend fun deleteProfile(id: String) = withContext(Dispatchers.IO) {
+        database.deleteProfile(current?.info?.id, id)
     }
 
     fun streamUrl(item: MediaItem, liveHls: Boolean=false): String {

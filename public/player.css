@@ -100,10 +100,10 @@ dialog.player-dialog:fullscreen {
 .player-dialog #seekRange::-webkit-slider-thumb {
   width: 15px;
   height: 15px;
-  background: #e50914;
+  background: #ff4b45;
   box-shadow: none;
 }
-.player-dialog #seekRange::-moz-range-thumb { width: 15px; height: 15px; background: #e50914; }
+.player-dialog #seekRange::-moz-range-thumb { width: 15px; height: 15px; background: #ff4b45; }
 .player-dialog #seekTime { white-space: nowrap; font-variant-numeric: tabular-nums; font-size: clamp(10px, 1.3vw, 14px); }
 .player-transport { display: flex; align-items: center; gap: clamp(1px, 1.35vw, 18px); }
 .player-icon {
@@ -188,4 +188,48 @@ dialog.player-dialog:fullscreen {
 @media (prefers-reduced-motion: reduce) {
   .player-chrome { transition: none; }
   .episode-ending { animation: none; }
+}
+#playerSurface video.video-cover { object-fit: cover; }
+#playerSurface video::cue { font-size: calc(clamp(16px, 2.2vw, 24px) * var(--cue-scale, 1)); }
+.player-speed-select {
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid #ffffff2e;
+  background: #14171f;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+.sleep-panel, .episode-drawer-panel { min-width: min(300px, calc(100vw - 32px)); }
+.sleep-options { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.episode-drawer-list { display: grid; gap: 6px; max-height: min(46dvh, 320px); overflow-y: auto; margin-top: 8px; }
+.episode-drawer-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #ffffff10;
+  color: #eee;
+  font-size: 13px;
+}
+.episode-drawer-item.active { background: #ff4b4530; border: 1px solid #ff4b45; color: #fff; }
+.player-osd {
+  position: absolute;
+  top: 20%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 99px;
+  background: rgba(14,16,21,.84);
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  pointer-events: none;
+  z-index: 6;
 }

@@ -5,7 +5,7 @@ const $=selector=>document.querySelector(selector);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=new Intl.NumberFormat('tr-TR');
 const kindNames={live:'Canlı TV',vod:'Film',series:'Dizi',episode:'Bölüm'};
-const state={status:null,route:'home',params:new URLSearchParams(),renderId:0,items:new Map(),detail:null,playlists:[],player:null,hls:null,progressTimer:null,pingTimer:null,syncTimer:null,searchTimer:null,playGeneration:0,playClient:Date.now().toString(36)+Math.random().toString(36).slice(2),seekTimer:null,waitingTimer:null};
+const state={status:null,route:'home',params:new URLSearchParams(),renderId:0,items:new Map(),detail:null,playlists:[],player:null,hls:null,progressTimer:null,pingTimer:null,syncTimer:null,searchTimer:null,playGeneration:0,playClient:Date.now().toString(36)+Math.random().toString(36).slice(2),seekTimer:null,waitingTimer:null,playbackRate:1,videoCover:false,sleepTimer:null,sleepUntil:0,osdTimer:null,multiHls:[]};
 function hydrateIcons(root=document){root.querySelectorAll('[data-icon]').forEach(el=>{el.innerHTML=icon(el.dataset.icon);});}
 async function api(path,options={}){const init={...options,headers:{...(options.body?{'Content-Type':'application/json'}:{}),...(options.headers||{})}};if(init.body&&typeof init.body!=='string')init.body=JSON.stringify(init.body);const response=await fetch(path,init);let data;try{data=await response.json();}catch{throw new Error('Sunucudan geçerli bir yanıt alınamadı. Cineva uygulamasının açık olduğundan emin ol.');}if(!response.ok){if(response.status===401&&state.status?.authorized){state.status.authorized=false;render();}const error=new Error(data.error||`İşlem tamamlanamadı (${response.status}).`);error.status=response.status;error.mode=data.mode;error.code=data.code;throw error;}return data;}
 function remember(items){for(const item of items||[])if(item?.id){if(state.items.has(item.id))state.items.delete(item.id);else if(state.items.size>=5000)state.items.delete(state.items.keys().next().value);state.items.set(item.id,item);}return items||[];}
@@ -37,8 +37,8 @@ function pageHeading(title,subtitle,eyebrow='',actions=''){return `<div class="p
 function section(title,items,kind,link,subtitle=''){return `<section class="section"><div class="section-heading"><div><h2>${esc(title)}</h2>${subtitle?`<p class="discovery-subtitle">${esc(subtitle)}</p>`:''}</div>${link?`<a class="text-button" href="#${link}">Tümünü gör ${icon('chevronRight')}</a>`:''}</div>${grid(items,kind)}</section>`;}
 function syncBanner(){const catalog=state.status?.catalog;if(catalog?.syncing)return `<div class="sync-banner"><span class="spinner"></span><span>Kütüphanen eşitleniyor. Geniş arşivlerde bu işlem birkaç dakika sürebilir.</span></div>`;if(catalog?.error)return `<div class="sync-banner error">${icon('alert')}<span>${esc(catalog.error)}</span><button class="text-button" data-action="sync">Tekrar dene</button></div>`;return '';}
 function routeTo(route,params={}){const query=new URLSearchParams(Object.entries(params).filter(([,v])=>v!==''&&v!=null));location.hash=route+(query.size?'?'+query.toString():'');}
-function updateShell(){const status=state.status;const route=state.route;document.querySelectorAll('[data-route]').forEach(el=>el.classList.toggle('active',el.dataset.route===route||(route.startsWith('playlists/')&&el.dataset.route==='playlists')));const names={home:'Cineva Kütüphanesi',live:'Kütüphane / Canlı TV',sports:'Canlı Yayın & EPG Rehberi',vod:'Kütüphane / Filmler',series:'Kütüphane / Diziler',favorites:'Kütüphanem / Favoriler',playlists:'Kütüphanem / Listelerim',settings:'Cineva / Ayarlar',search:'Kütüphane / Arama'};$('#breadcrumb').textContent=names[route]||'Kütüphanem / Listelerim';$('#connectionName').textContent=status?.configured?(status.connection?.name||'Medya Kaynağı'):'Bağlantı bekleniyor';$('#connectionCaption').textContent=status?.catalog?.syncing?'Kütüphane eşitleniyor':status?.catalog?.error?'Bağlantıyı kontrol et':status?.configured?'Kişisel sunucun bağlı':'Ayarlarla başlayalım';$('#connectionLight').className=`connection-light ${status?.configured&&!status?.catalog?.error?'ready':status?.catalog?.error?'error':''}`;$('#footerStatus').textContent=status?.catalog?.updatedAt?`Son eşitleme · ${date(status.catalog.updatedAt)}`:'Bu bilgisayarda çalışıyor';$('#syncButton').classList.toggle('syncing-icon',!!status?.catalog?.syncing);$('#syncButton').disabled=!status?.authorized||!status?.configured||!!status?.catalog?.syncing;const query=state.params.get('q')||'';if(document.activeElement!==$('#searchInput'))$('#searchInput').value=query;document.title=`${route==='home'?'Kütüphane':({live:'Canlı TV',sports:'Yayın Rehberi',vod:'Filmler',series:'Diziler',favorites:'Favoriler',playlists:'Listelerim',settings:'Ayarlar',search:'Arama'}[route]||'Listem')} · Cineva`;}
-async function render(){const token=++state.renderId;const hash=location.hash.slice(1)||'home';const split=hash.indexOf('?');state.route=split<0?hash:hash.slice(0,split);state.params=new URLSearchParams(split<0?'':hash.slice(split+1));updateShell();if(!state.status?.authorized){renderPairing();return;}if(!state.status.configured&&!['settings','sports'].includes(state.route)){renderSetup();return;}const main=$('#main');try{if(state.route==='sports'){await window.AkisSports.render(main,state.params,()=>token===state.renderId);return;}if(state.route==='settings'){renderSettings();return;}if(state.route==='home'){main.innerHTML=loading();const data=await api('/api/home');if(token!==state.renderId)return;renderHome(data);return;}if(['live','vod','series'].includes(state.route)){main.innerHTML=pageHeading({live:'Canlı TV',vod:'Filmler',series:'Diziler'}[state.route],'Kütüphanen yükleniyor…','KENDİ EKRANIN')+loading();const data=await api(`/api/catalog?${new URLSearchParams({kind:state.route,q:state.params.get('q')||'',category:state.params.get('category')||'',sort:state.params.get('sort')||'recent',page:state.params.get('page')||'1',limit:'48'})}`);if(token!==state.renderId)return;renderCatalog(data);return;}if(state.route==='favorites'){main.innerHTML=loading();const data=await api('/api/favorites');if(token!==state.renderId)return;renderFavorites(data.items||[]);return;}if(state.route==='playlists'||state.route.startsWith('playlists/')){main.innerHTML=loading();const data=await api('/api/playlists');if(token!==state.renderId)return;state.playlists=data.playlists||[];renderPlaylists();return;}if(state.route==='search'){main.innerHTML=loading();const q=state.params.get('q')||'';const results=await Promise.all(['vod','series','live'].map(kind=>api(`/api/catalog?${new URLSearchParams({kind,q,limit:'18',page:'1'})}`).then(data=>({...data,kind}))));if(token!==state.renderId)return;renderSearch(q,results);return;}routeTo('home');}catch(error){if(token===state.renderId)main.innerHTML=empty('Bağlantı kurulamadı',error.message,'alert',button('Yeniden dene','reload'));}}
+function updateShell(){const status=state.status;const route=state.route;if(route!=='multiview'&&typeof clearMultiView==='function')clearMultiView();document.querySelectorAll('[data-route]').forEach(el=>el.classList.toggle('active',el.dataset.route===route||(route.startsWith('playlists/')&&el.dataset.route==='playlists')));const names={home:'Cineva Kütüphanesi',live:'Kütüphane / Canlı TV',multiview:'Cineva / Çoklu Ekran',sports:'Canlı Yayın & EPG Rehberi',vod:'Kütüphane / Filmler',series:'Kütüphane / Diziler',favorites:'Kütüphanem / Favoriler',playlists:'Kütüphanem / Listelerim',settings:'Cineva / Ayarlar',search:'Kütüphane / Arama'};$('#breadcrumb').textContent=names[route]||'Kütüphanem / Listelerim';const prof=status?.profile;if(prof){const initEl=$('#profileInitial');if(initEl)initEl.textContent=(prof.name||'A').trim().charAt(0).toUpperCase();const av=$('#profileAvatarBtn');if(av){if(av.style)av.style.background=prof.avatarColor||'#FF4B45';av.title=`Profil: ${prof.name}${prof.isKids?' (Çocuk)':''}`;}};$('#connectionName').textContent=status?.configured?(status.connection?.name||'Medya Kaynağı'):'Bağlantı bekleniyor';$('#connectionCaption').textContent=status?.catalog?.syncing?'Kütüphane eşitleniyor':status?.catalog?.error?'Bağlantıyı kontrol et':status?.configured?'Kişisel sunucun bağlı':'Ayarlarla başlayalım';$('#connectionLight').className=`connection-light ${status?.configured&&!status?.catalog?.error?'ready':status?.catalog?.error?'error':''}`;$('#footerStatus').textContent=status?.catalog?.updatedAt?`Son eşitleme · ${date(status.catalog.updatedAt)}`:'Bu bilgisayarda çalışıyor';$('#syncButton').classList.toggle('syncing-icon',!!status?.catalog?.syncing);$('#syncButton').disabled=!status?.authorized||!status?.configured||!!status?.catalog?.syncing;const query=state.params.get('q')||'';if(document.activeElement!==$('#searchInput'))$('#searchInput').value=query;document.title=`${route==='home'?'Kütüphane':({live:'Canlı TV',multiview:'Çoklu Ekran',sports:'Yayın Rehberi',vod:'Filmler',series:'Diziler',favorites:'Favoriler',playlists:'Listelerim',settings:'Ayarlar',search:'Arama'}[route]||'Listem')} · Cineva`;}
+async function render(){const token=++state.renderId;const hash=location.hash.slice(1)||'home';const split=hash.indexOf('?');state.route=split<0?hash:hash.slice(0,split);state.params=new URLSearchParams(split<0?'':hash.slice(split+1));updateShell();if(!state.status?.authorized){renderPairing();return;}if(!state.status.configured&&!['settings','sports'].includes(state.route)){renderSetup();return;}const main=$('#main');try{if(state.route==='sports'){await window.AkisSports.render(main,state.params,()=>token===state.renderId);return;}if(state.route==='multiview'){await renderMultiView(token);return;}if(state.route==='settings'){renderSettings();return;}if(state.route==='home'){main.innerHTML=loading();const data=await api('/api/home');if(token!==state.renderId)return;renderHome(data);return;}if(['live','vod','series'].includes(state.route)){main.innerHTML=pageHeading({live:'Canlı TV',vod:'Filmler',series:'Diziler'}[state.route],'Kütüphanen yükleniyor…','KENDİ EKRANIN')+loading();const data=await api(`/api/catalog?${new URLSearchParams({kind:state.route,q:state.params.get('q')||'',category:state.params.get('category')||'',sort:state.params.get('sort')||'recent',page:state.params.get('page')||'1',limit:'48'})}`);if(token!==state.renderId)return;renderCatalog(data);return;}if(state.route==='favorites'){main.innerHTML=loading();const data=await api('/api/favorites');if(token!==state.renderId)return;renderFavorites(data.items||[]);return;}if(state.route==='playlists'||state.route.startsWith('playlists/')){main.innerHTML=loading();const data=await api('/api/playlists');if(token!==state.renderId)return;state.playlists=data.playlists||[];renderPlaylists();return;}if(state.route==='search'){main.innerHTML=loading();const q=state.params.get('q')||'';const results=await Promise.all(['vod','series','live'].map(kind=>api(`/api/catalog?${new URLSearchParams({kind,q,limit:'18',page:'1'})}`).then(data=>({...data,kind}))));if(token!==state.renderId)return;renderSearch(q,results);return;}routeTo('home');}catch(error){if(token===state.renderId)main.innerHTML=empty('Bağlantı kurulamadı',error.message,'alert',button('Yeniden dene','reload'));}}
 const featuredDetails = new Map();
 function homeRail(title, items, renderer, link = '', subtitle = '') {
   if (!items.length) return '';
@@ -172,8 +172,8 @@ function renderFavorites(items){$('#main').dataset.favSignature=JSON.stringify(i
 function renderSearch(q,results){$('#main').innerHTML=pageHeading('Aradığın hikâyeyi bul.',`“${q}” için kütüphanendeki sonuçlar.`,'ARAMA')+results.map(result=>result.items?.length?section(`${result.kind==='vod'?'Filmler':result.kind==='series'?'Diziler':'Canlı TV'} · ${count(result.total)}`,remember(result.items),result.kind,`${result.kind}?q=${encodeURIComponent(q)}`):'').join('')+(results.every(r=>!r.items?.length)?empty('Bir eşleşme bulamadık','Farklı bir kelimeyle aramayı dene. Sağlayıcının kullandığı başlıklar farklı olabilir.','search'):'');}
 function renderPlaylists(){$('#main').dataset.listSignature=JSON.stringify(state.playlists);if(state.route.includes('/')){const id=decodeURIComponent(state.route.split('/').slice(1).join('/'));const list=state.playlists.find(l=>String(l.id)===id);if(!list){$('#main').innerHTML=empty('Bu liste bulunamadı','Liste silinmiş olabilir.','list','<a class="button secondary" href="#playlists">Listelerime dön</a>');return;}const items=remember(list.items||[]);$('#main').innerHTML=`<a class="text-button" href="#playlists" style="margin-bottom:20px">${icon('chevronLeft')}Tüm listelerim</a>`+pageHeading(list.name,`${count(items.length)} içerik · Sıralamayı oklarla değiştirebilirsin.`,'SENİN SEÇKİN',`<div class="playlist-tools">${button(icon('edit')+'Yeniden adlandır','rename-list',`data-list="${esc(id)}"`)}${button(icon('trash')+'Sil','delete-list',`data-list="${esc(id)}"`,'danger small')}</div>`)+(items.length?`<div class="playlist-rows">${items.map((item,index)=>`<div class="playlist-row"><span class="row-number">${index+1}</span>${imageUrl(item.poster)?`<img src="${esc(imageUrl(item.poster))}" alt="" class="row-art" data-poster>`:`<span class="row-art row-art-fallback">${icon(item.kind==='live'?'live':item.kind==='series'?'series':'film')}</span>`}<button class="row-info" style="text-align:left;background:none;border:0;padding:0" data-action="detail" data-id="${esc(item.id)}"><strong>${esc(item.name)}</strong><small>${esc(kindNames[item.kind])}${item.categoryName?' · '+esc(item.categoryName):''}</small></button><div class="row-actions"><button class="icon-button row-play" data-action="${item.kind==='series'?'detail':'play'}" data-id="${esc(item.id)}" aria-label="${esc(item.name)} aç">${icon('play')}</button><button class="icon-button" data-action="reorder" data-list="${esc(id)}" data-id="${esc(item.id)}" data-direction="-1" ${index===0?'disabled':''} aria-label="Yukarı taşı">${icon('arrowUp')}</button><button class="icon-button" data-action="reorder" data-list="${esc(id)}" data-id="${esc(item.id)}" data-direction="1" ${index===items.length-1?'disabled':''} aria-label="Aşağı taşı">${icon('arrowDown')}</button><button class="icon-button" data-action="remove-from-list" data-list="${esc(id)}" data-id="${esc(item.id)}" aria-label="Listeden kaldır">${icon('close')}</button></div></div>`).join('')}</div>`:empty('Bu liste sana bakıyor','Bir içerik seç, seçenekler menüsünden “Listeye ekle”ye dokun ve kendi seçkini oluştur.','list','<a href="#vod" class="button">'+icon('plus')+'İçerikleri keşfet</a>'));return;}$('#main').innerHTML=libraryTabs('playlists')+pageHeading('Kendi seçkini oluştur.','Hafta sonu filmleri, takip ettiğin diziler veya favori kanalların.','LİSTELERİM',button(icon('plus')+'Yeni liste','create-list','',''))+(state.playlists.length?`<div class="list-grid">${state.playlists.map(list=>`<button class="playlist-card" data-action="open-list" data-list="${esc(list.id)}"><div class="playlist-art">${(list.items||[]).filter(i=>imageUrl(i.poster)).slice(0,4).map(item=>`<img src="${esc(imageUrl(item.poster))}" alt="" loading="lazy">`).join('')}<span class="playlist-symbol">${icon('list')}</span></div><div class="playlist-info"><div><h3>${esc(list.name)}</h3><span>${count(list.count??list.items?.length)} içerik</span></div>${icon('chevronRight')}</div></button>`).join('')}</div>`:empty('İlk listenin bir adı olsun.','İçerikleri istediğin gibi gruplandır. Listelerin ve izleme konumun aynı sunucuya bağlanan cihazlarında senkronize olur.','list',button(icon('plus')+'Bir liste oluştur','create-list','','')));}
 function renderPairing(){const main=$('#main');main.innerHTML=`<section class="pairing-screen"><div class="brand"><img src="/cineva-mark.svg" alt="" width="34" height="34"><span>cineva<span class="brand-dot">.</span></span></div><span class="eyebrow">AYNI KÜTÜPHANE. YENİ BİR EKRAN.</span><h1>Cihazını Cineva’ya bağla.</h1><p>Ana cihazındaki Cineva ayarlarında görünen eşleştirme kodunu gir. Favorilerin, listelerin ve kaldığın yer bu ekranda da yanında olsun.</p><form id="pairForm"><div class="field"><label for="pairCode" class="muted">Eşleştirme kodu</label><input id="pairCode" name="code" type="text" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code" minlength="6" maxlength="6" placeholder="000000" required><span class="field-hint">Cihazlar aynı yerel ağa bağlı olmalı.</span></div><button class="button" type="submit">${icon('link')}Cihazı bağla</button><div id="pairError" class="inline-error" role="alert"></div></form></section>`;$('#pairForm').addEventListener('submit',async event=>{event.preventDefault();const submit=event.currentTarget.querySelector('button');submit.disabled=true;try{await api('/api/pair',{method:'POST',body:{code:$('#pairCode').value.trim()}});state.status=await api('/api/status');render();}catch(error){$('#pairError').textContent=error.message;}finally{submit.disabled=false;}});}
-function connectionForm(setup=false){const c=state.status?.connection||{};const mode=c.type==='m3u'?'m3u':'xtream';return `<form id="connectionForm"><div class="field"><label for="connectionType">Kaynak türü</label><select id="connectionType" name="type"><option value="m3u" ${mode==='m3u'?'selected':''}>M3U / M3U8 Oynatma Listesi</option><option value="xtream" ${mode==='xtream'?'selected':''}>Xtream API Sunucusu</option></select></div><div class="field"><label for="connectionLabel">Bağlantı adı</label><input id="connectionLabel" name="name" value="${esc(c.name||'Kişisel Kütüphane')}" maxlength="80" required autocomplete="off"></div><div id="m3uFields" ${mode==='m3u'?'':'hidden'}><div class="field"><label for="connectionM3u">M3U / M3U8 liste adresi</label><input id="connectionM3u" name="m3uUrl" type="url" value="${esc(c.m3uUrl||'')}" placeholder="https://example.com/playlist.m3u8" spellcheck="false" autocomplete="url"></div></div><div id="xtreamFields" ${mode==='xtream'?'':'hidden'}><div class="field"><label for="connectionHost">Sunucu adresi</label><input id="connectionHost" name="host" type="url" value="${esc(c.host||'')}" placeholder="https://sunucu-adresi:8080" spellcheck="false" autocomplete="url"><span class="field-hint">Sağlayıcının http:// veya https:// adresini port numarasıyla gir.</span></div><div class="field-row"><div class="field"><label for="connectionUsername">Kullanıcı adı</label><input id="connectionUsername" name="username" placeholder="${setup?'Kullanıcı adın':'Değiştirmek için gir'}" autocomplete="off" spellcheck="false"></div><div class="field"><label for="connectionPassword">Şifre</label><input id="connectionPassword" name="password" type="password" placeholder="${setup?'Parolan':'Kayıtlı şifre korunur'}" autocomplete="new-password"></div></div>${!setup?'<span class="field-hint">Kullanıcı adı ve şifreyi boş bırakırsan mevcut bilgiler korunur.</span>':''}</div><div class="field"><label for="connectionEpg">XMLTV EPG rehber adresi (İsteğe bağlı)</label><input id="connectionEpg" name="epgUrl" type="url" value="${esc(c.epgUrl||'')}" placeholder="https://example.com/guide.xml" spellcheck="false" autocomplete="url"></div><div class="settings-actions"><button class="button" type="submit">${icon('link')}${setup?'Bağlan ve kütüphaneyi getir':'Bağlantıyı kaydet'}</button></div><div id="settingsError" class="inline-error" role="alert"></div></form>`;}
-function bindConnectionForm(){const form=$('#connectionForm');const toggle=()=>$('#connectionType')&&( $('#m3uFields').hidden=$('#connectionType').value!=='m3u', $('#xtreamFields').hidden=$('#connectionType').value!=='xtream');$('#connectionType')?.addEventListener('change',toggle);toggle();form?.addEventListener('submit',async event=>{event.preventDefault();const submit=form.querySelector('[type=submit]');submit.disabled=true;$('#settingsError').textContent='';try{const body=Object.fromEntries(new FormData(form));await api('/api/settings',{method:'POST',body});state.status=await api('/api/status');notify('Bağlantı kaydedildi. Kütüphanen eşitleniyor.');await syncCatalog(false);routeTo('home');if(state.route==='home')render();}catch(error){$('#settingsError').textContent=error.message;}finally{submit.disabled=false;}});}
+function connectionForm(setup=false){const c=state.status?.connection||{};const mode=['m3u','local','xtream'].includes(c.type)?c.type:'xtream';return `<form id="connectionForm"><div class="field"><label for="connectionType">Kaynak türü</label><select id="connectionType" name="type"><option value="m3u" ${mode==='m3u'?'selected':''}>M3U / M3U8 Oynatma Listesi</option><option value="local" ${mode==='local'?'selected':''}>Bilgisayardaki Yerel Klasör</option><option value="xtream" ${mode==='xtream'?'selected':''}>Xtream API Sunucusu</option></select></div><div class="field"><label for="connectionLabel">Bağlantı adı</label><input id="connectionLabel" name="name" value="${esc(c.name||'Kişisel Kütüphane')}" maxlength="80" required autocomplete="off"></div><div id="m3uFields" ${mode==='m3u'?'':'hidden'}><div class="field"><label for="connectionM3u">M3U / M3U8 liste adresi</label><input id="connectionM3u" name="m3uUrl" type="url" value="${esc(c.m3uUrl||'')}" placeholder="https://example.com/playlist.m3u8" spellcheck="false" autocomplete="url"></div></div><div id="localFields" ${mode==='local'?'':'hidden'}><div class="field"><label for="connectionLocalDir">Bilgisayardaki video klasörü yolu</label><input id="connectionLocalDir" name="localDir" value="${esc(c.localDir||'')}" placeholder="/Users/isim/Movies veya C:\\Users\\isim\\Videos" spellcheck="false" autocomplete="off"><span class="field-hint">Klasördeki MP4, MKV, AVI, MOV dosyalarını ve aynı isimli SRT/VTT altyazıları otomatik tarar.</span></div></div><div id="xtreamFields" ${mode==='xtream'?'':'hidden'}><div class="field"><label for="connectionHost">Sunucu adresi</label><input id="connectionHost" name="host" type="url" value="${esc(c.host||'')}" placeholder="https://sunucu-adresi:8080" spellcheck="false" autocomplete="url"><span class="field-hint">Sağlayıcının http:// veya https:// adresini port numarasıyla gir.</span></div><div class="field-row"><div class="field"><label for="connectionUsername">Kullanıcı adı</label><input id="connectionUsername" name="username" placeholder="${setup?'Kullanıcı adın':'Değiştirmek için gir'}" autocomplete="off" spellcheck="false"></div><div class="field"><label for="connectionPassword">Şifre</label><input id="connectionPassword" name="password" type="password" placeholder="${setup?'Parolan':'Kayıtlı şifre korunur'}" autocomplete="new-password"></div></div>${!setup?'<span class="field-hint">Kullanıcı adı ve şifreyi boş bırakırsan mevcut bilgiler korunur.</span>':''}</div><div class="field"><label for="connectionEpg">XMLTV EPG rehber adresi (İsteğe bağlı)</label><input id="connectionEpg" name="epgUrl" type="url" value="${esc(c.epgUrl||'')}" placeholder="https://example.com/guide.xml" spellcheck="false" autocomplete="url"></div><div class="settings-actions"><button class="button" type="submit">${icon('link')}${setup?'Bağlan ve kütüphaneyi getir':'Bağlantıyı kaydet'}</button></div><div id="settingsError" class="inline-error" role="alert"></div></form>`;}
+function bindConnectionForm(){const form=$('#connectionForm');const toggle=()=>$('#connectionType')&&( $('#m3uFields').hidden=$('#connectionType').value!=='m3u', $('#localFields').hidden=$('#connectionType').value!=='local', $('#xtreamFields').hidden=$('#connectionType').value!=='xtream');$('#connectionType')?.addEventListener('change',toggle);toggle();form?.addEventListener('submit',async event=>{event.preventDefault();const submit=form.querySelector('[type=submit]');submit.disabled=true;$('#settingsError').textContent='';try{const body=Object.fromEntries(new FormData(form));await api('/api/settings',{method:'POST',body});state.status=await api('/api/status');notify('Bağlantı kaydedildi. Kütüphanen eşitleniyor.');await syncCatalog(false);routeTo('home');if(state.route==='home')render();}catch(error){$('#settingsError').textContent=error.message;}finally{submit.disabled=false;}});}
 function renderSetup(){$('#main').innerHTML=`<div class="setup-intro"><span class="eyebrow">KENDİ EKRANINA HOŞ GELDİN</span><h1>Kütüphaneni bağla veya hemen dene.</h1><p>Cineva telifli içerik barındırmaz. Kendi M3U / medya kaynağını bağlayabilir ya da açık lisanslı örnek filmlerle uygulamayı anında test edebilirsin.</p><div style="margin-top:16px">${button(icon('play')+'Açık Sinema ile Hemen Dene (Demo)','demo','','')}</div></div><section class="panel setup-panel"><div class="panel-heading"><span>${icon('link')}</span><div><h2>Medya kaynağı bağla</h2><p>M3U listesi, XMLTV EPG veya Xtream API</p></div></div>${connectionForm(true)}</section>`;bindConnectionForm();}
 function renderSettings(){const s=state.status;const a=s.account||{};const network=s.network||{};const lan=network.lanUrls||[];const active=['active','demo'].includes(String(a.status||'').toLowerCase());$('#main').innerHTML=pageHeading('Her şey yerli yerinde.','Bağlantını yönet, diğer ekranlarını bağla ve kütüphaneni koru.','AYARLAR')+syncBanner()+`<div class="settings-grid"><div><section class="panel"><div class="panel-heading"><span>${icon('link')}</span><div><h2>Medya bağlantısı</h2><p>Bilgilerin yalnızca bu cihazda saklanır</p></div></div>${connectionForm(!s.configured)}${s.configured?'<div class="notice">Farklı bir kaynağa geçersen eski kaynağın favorileri, izleme geçmişi ve listelerdeki içerikleri temizlenir.</div>':''}</section><section class="panel"><div class="panel-heading"><span>${icon('shield')}</span><div><h2>Kütüphane yedeği</h2><p>Listeler, favoriler ve izleme geçmişi</p></div></div><p class="settings-note">Başka bir kurulumda kaldığın yerden devam etmek için kişisel kütüphaneni dışa aktar. İçe aktarma, yedekteki listeleri ve favorileri mevcut kütüphanenle birleştirir; aynı içeriğin izleme konumunu günceller.</p><div class="backup-actions">${button(icon('download')+'Yedeği indir','export')}${button(icon('upload')+'Yedeği içe aktar','import')}${button(icon('play')+'Demo Modu','demo','','ghost')}<input type="file" id="importFile" accept="application/json,.json" hidden></div></section></div><div><section class="panel"><div class="panel-heading"><span>${icon('live')}</span><div><h2>Kaynak durumu</h2><p>Bağlantı ve oynatma motoru</p></div></div><dl class="account-list"><div><dt>Durum</dt><dd><span class="status-pill ${!active?'warning':''}">${esc(active?(a.status==='Demo'?'Açık Demo':'Aktif'):a.status||'Henüz sorgulanmadı')}</span></dd></div><div><dt>Bitiş tarihi</dt><dd>${esc(date(a.expires))}</dd></div><div><dt>Eşzamanlı bağlantı</dt><dd>${esc(a.activeConnections??'—')} / ${esc(a.maxConnections??'—')}</dd></div><div><dt>Son eşitleme</dt><dd>${esc(date(s.catalog?.updatedAt))}</dd></div><div><dt>Oynatma desteği</dt><dd>${s.ffmpeg?'Doğrudan + FFmpeg':'Doğrudan oynatma'}</dd></div></dl><div class="settings-section-spacer">${button(icon('refresh')+'Kütüphaneyi eşitle','sync','','secondary small')}</div></section><section class="panel"><div class="panel-heading"><span>${icon('link')}</span><div><h2>Diğer ekranların</h2><p>Android ve aynı ağdaki cihazların</p></div></div><p class="settings-note">Bu bilgisayar açıkken telefonunda veya tabletinde şu adresi aç. Tüm cihazlar aynı kütüphaneyi kullanır.</p>${lan.length?lan.map(url=>`<div class="network-address"><code>${esc(url)}</code><button class="text-button" data-action="copy" data-value="${esc(url)}" aria-label="Adresi kopyala">${icon('copy')}</button></div>`).join(''):'<div class="notice">Yerel ağ adresi bulunamadı. Wi-Fi bağlantını kontrol et.</div>'}${s.pairingCode?`<div class="pairing-code"><span>CİHAZ EŞLEŞTİRME KODU</span><strong>${esc(s.pairingCode)}</strong></div>`:'<div class="notice">Eşleştirme kodu yalnızca ana cihaz ekranında gösterilir.</div>'}<p class="install-note">Tarayıcı menüsünden “Ana ekrana ekle” ile uygulama gibi kurabilirsin.</p><a href="#favorites" class="text-button">${icon('heart')}Favorilerime git</a></section><section class="panel"><div class="panel-heading"><span>${icon('shield')}</span><div><h2>Yasal Bilgiler & Lisanslar</h2><p>Cineva medya oynatıcı politikası</p></div></div><p class="settings-note">Cineva hiçbir televizyon kanalı veya telifli video dağıtmaz; yalnızca kullanıcının eklediği açık veya yasal kaynakları oynatır. Açık kaynak bileşenler: <strong>hls.js (Apache-2.0)</strong>, <strong>LibVLC (LGPL-2.1+)</strong>.</p></section></div></div>`;bindConnectionForm();$('#importFile').addEventListener('change',importBackup);}
 async function syncCatalog(showNotice=true){if(state.status?.catalog?.syncing){if(showNotice)notify('Kütüphane zaten eşitleniyor.');return;}await api('/api/catalog/sync',{method:'POST',body:{}});state.status=await api('/api/status');updateShell();if(showNotice){notify('Eşitleme başladı. Bu sırada kütüphaneni kullanabilirsin.');render();}}
@@ -194,12 +194,67 @@ async function importBackup(e){const file=e.target.files?.[0];if(!file)return;tr
 async function exportBackup(){const response=await fetch('/api/export');if(!response.ok)throw new Error('Yedek indirilemedi.');const blob=await response.blob();const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=`cineva-yedek-${new Date().toISOString().slice(0,10)}.json`;anchor.click();setTimeout(()=>URL.revokeObjectURL(url),10000);notify('Kütüphane yedeğin indirildi.');}
 function playbackHint(mode){return mode==='direct'?'Doğrudan oynatma · Görüntü veya ses gelmezse uyumlu oynatmayı dene.':mode==='remux'?'Uyumlu oynatma · Video değiştirilmeden paketlenir. Ses sorunu varsa dönüştürmeyi dene.':'Dönüştürülerek oynatılıyor · Mac’in işlemcisi kullanılıyor.';}
 function updatePlaybackMode(player){document.querySelectorAll('[data-mode]').forEach(button=>{button.classList.toggle('active',button.dataset.mode===player.mode);button.disabled=button.dataset.mode!=='direct'&&!state.status?.ffmpeg;});$('#playerHint').textContent=playbackHint(player.mode);}
-const playerPanels = [['#trackPanel', '#toggleTracks'], ['#modePanel', '#toggleModes']];
+const playerPanels = [['#trackPanel', '#toggleTracks'], ['#modePanel', '#toggleModes'], ['#sleepPanel', '#toggleSleep'], ['#episodeDrawerPanel', '#toggleEpisodesDrawer']];
 function setPlayerPanel(open = '') {
   for (const [panel, trigger] of playerPanels) {
     $(panel).hidden = panel !== open;
     $(trigger).setAttribute('aria-expanded', String(panel === open));
   }
+}
+function showPlayerOsd(text) {
+  const el = $('#playerOsd');
+  if (!el) return;
+  el.textContent = text;
+  el.hidden = false;
+  clearTimeout(state.osdTimer);
+  state.osdTimer = setTimeout(() => { if ($('#playerOsd')) $('#playerOsd').hidden = true; }, 1400);
+}
+function setSleepTimer(minutes) {
+  clearTimeout(state.sleepTimer);
+  state.sleepTimer = null;
+  state.sleepUntil = 0;
+  const m = Math.max(0, Number(minutes) || 0);
+  const status = $('#sleepStatus');
+  if (!m) {
+    if (status) status.textContent = 'Zamanlayıcı kapalı';
+    showPlayerOsd('Uyku zamanlayıcısı kapatıldı');
+    return;
+  }
+  state.sleepUntil = Date.now() + m * 60000;
+  if (status) status.textContent = `${m} dakika sonra durdurulacak`;
+  showPlayerOsd(`Uyku zamanlayıcısı: ${m} dk`);
+  state.sleepTimer = setTimeout(() => {
+    state.sleepTimer = null;
+    state.sleepUntil = 0;
+    const vid = $('#video');
+    if (vid?.pause) vid.pause();
+    if ($('#sleepStatus')) $('#sleepStatus').textContent = 'Süre doldu, oynatma durduruldu';
+    notify('Uyku zamanlayıcısı süresi doldu.');
+  }, m * 60000);
+}
+async function populateEpisodeDrawer(player) {
+  const listEl = $('#episodeDrawerList');
+  if (!listEl || !player || player.item.kind !== 'episode') return;
+  const parentId = player.item.parentId;
+  if (!parentId) return;
+  if (state.detail?.item?.id !== parentId) {
+    listEl.innerHTML = '<p class="player-hint">Bölümler yükleniyor…</p>';
+    try {
+      const data = await api(`/api/items/${encodeURIComponent(parentId)}`);
+      state.detail = data;
+      remember((data.seasons || []).flatMap(s => s.episodes || []));
+    } catch {
+      listEl.innerHTML = '<p class="player-hint">Bölüm listesi alınamadı.</p>';
+      return;
+    }
+  }
+  const seasons = state.detail?.seasons || [];
+  const allEps = seasons.flatMap(s => s.episodes || []);
+  listEl.innerHTML = allEps.map(ep => `<button type="button" class="episode-drawer-item ${ep.id === player.id ? 'active' : ''}" data-drawer-ep="${esc(ep.id)}"><span>S${esc(ep.season || 1)}·B${esc(ep.episode || '')} — ${esc(ep.name)}</span><small>${ep.progress?.completed ? 'İzlendi' : ''}</small></button>`).join('') || '<p class="player-hint">Başka bölüm bulunamadı.</p>';
+  listEl.querySelectorAll('[data-drawer-ep]').forEach(btn => btn.addEventListener('click', () => {
+    setPlayerPanel();
+    playItem(btn.dataset.drawerEp).catch(error => notify(error.message, true));
+  }));
 }
 function showPlayerControls(player = state.player) {
   const dialog = $('#playerDialog');
@@ -230,6 +285,9 @@ function updateTransport(player = state.player) {
   $('#playerVolume').value = muted ? 0 : video.volume;
   $('#skipBack').hidden = $('#skipForward').hidden = player?.item.kind === 'live';
   $('#nextEpisodeShortcut').hidden = !player?.nextEpisode;
+  if ($('#toggleEpisodesDrawer')) $('#toggleEpisodesDrawer').hidden = player?.item.kind !== 'episode';
+  if ($('#speedSelect') && 'playbackRate' in video) $('#speedSelect').value = String(state.playbackRate || 1);
+  if ($('#pipButton')) $('#pipButton').hidden = typeof document === 'undefined' || !document.pictureInPictureEnabled || typeof video.requestPictureInPicture !== 'function';
 }
 function clearEpisodeEnding(player) {
   clearTimeout(player?.endingTimer);
@@ -399,7 +457,7 @@ function playerPausedMessage(player=state.player){if(!player||state.player!==pla
 function playerError(message,code=''){$('#playerOverlay').hidden=false;$('#playerOverlay').classList.add('error');$('#playerMessage').textContent=message;$('#playerHint').textContent=String(code).startsWith('upstream_')?'Bu bölümün video kaynağı sağlayıcıdan gelmedi. Başka bir bölüm deneyebilir veya daha sonra yeniden açabilirsin.':state.status?.ffmpeg?'Alternatif oynatma seçenekleriyle tekrar deneyebilirsin.':'FFmpeg kurulumu tamamlandığında alternatif oynatma seçenekleri kullanılabilir.';showPlayerControls();}
 function saveProgress(keepalive=false){
   const player=state.player;
-  if(!player||player.item.kind==='live'||!player.ready)return;
+  if(!player||player.localFile||player.item.kind==='live'||!player.ready)return;
   const duration=player.duration||0, current=actualPlaybackPosition(player);
   if(!Number.isFinite(current)||(!player.ended&&current<1))return;
   const position=duration?Math.min(player.ended?duration:current,duration):current;
@@ -430,10 +488,10 @@ function updateSeekDisplay(player=state.player){
   $('#seekTime').textContent=label;
   slider.setAttribute('aria-valuetext',label);
   const p=Math.min(100,shown/player.duration*100),end=Math.min(100,Math.max(shown,pos+ahead)/player.duration*100);
-  slider.style.background=`linear-gradient(to right,#e50914 0%,#e50914 ${p}%,#ffffff86 ${p}%,#ffffff86 ${end}%,#ffffff59 ${end}%,#ffffff59 100%)`;
+  slider.style.background=`linear-gradient(to right,#ff4b45 0%,#ff4b45 ${p}%,#ffffff86 ${p}%,#ffffff86 ${end}%,#ffffff59 ${end}%,#ffffff59 100%)`;
 }
 async function pingPlayback(player=state.player){
-  if(!player?.sessionId||state.player!==player)return;
+  if(!player?.sessionId||player.localFile||state.player!==player)return;
   try{await api(`/api/play/${encodeURIComponent(player.sessionId)}/ping`,{method:'POST',body:{position:Math.max(0,Number($('#video').currentTime)||0)}});}
   catch(error){if(error.status===410&&state.player===player)interruptPlayback('Başka bir cihazda oynatma başlatılmış veya oturum sona ermiş olabilir. Yeniden başlatmak için bir oynatma seçeneğine dokun.');}
 }
@@ -473,11 +531,12 @@ async function stopPlayer(close=true,persist=true){
   hideBuffering();
   if(!player){if(close)closeDialog('playerDialog');return;}
   player.mediaBound=false;
-  const progress=persist?(player.endProgress||saveProgress(true)):null;
+  const progress=persist&&!player.localFile?(player.endProgress||saveProgress(true)):null;
   clearInterval(state.progressTimer);clearInterval(state.pingTimer);state.progressTimer=null;state.pingTimer=null;state.player=null;
   if(state.hls){state.hls.destroy();state.hls=null;}
   const video=$('#video');
   video.pause();video.removeAttribute('src');video.load();
+  if(player.blobUrl&&typeof URL!=='undefined'&&URL.revokeObjectURL)URL.revokeObjectURL(player.blobUrl);
   if(player.sessionId){
     const release=()=>fetch(`/api/play/${encodeURIComponent(player.sessionId)}`,{method:'DELETE',keepalive:true}).catch(()=>{});
     if(progress)progress.finally(release);else release();
@@ -497,9 +556,12 @@ async function exitPlayerFullscreen(){
 function bindPlayer(){
   const video=$('#video');
   const dialog=$('#playerDialog');
+  if(dialog.dataset.bound==='1')return;
+  dialog.dataset.bound='1';
   const currentPlayer=()=>{const p=state.player;return p?.mediaBound&&!p.retrying?p:null;};
   const readDuration=()=>{
     const p=currentPlayer();
+    if(p&&'playbackRate'in video&&state.playbackRate&&state.playbackRate!==1)video.playbackRate=state.playbackRate;
     if(p?.mode==='direct'&&p.item.kind!=='live'&&Number.isFinite(video.duration)&&video.duration>0){
       p.duration=video.duration;updateSeekDisplay(p);
     }
@@ -558,7 +620,42 @@ function bindPlayer(){
   $('#seekRange').addEventListener('change',e=>requestSeek(Number(e.target.value),true));
   $('#skipBack')?.addEventListener('click',()=>skipPlayback(-10));
   $('#skipForward')?.addEventListener('click',()=>skipPlayback(10));
-  for(const [panel,trigger] of playerPanels)$(trigger).addEventListener('click',()=>{setPlayerPanel($(panel).hidden?panel:'');showPlayerControls();});
+  for(const [panel,trigger] of playerPanels)$(trigger)?.addEventListener('click',()=>{
+    const opening=$(panel).hidden;
+    setPlayerPanel(opening?panel:'');
+    if(opening&&panel==='#episodeDrawerPanel'&&state.player)populateEpisodeDrawer(state.player);
+    showPlayerControls();
+  });
+  setPlayerPanel();
+  $('#speedSelect')?.addEventListener('change',e=>{
+    const rate=Math.max(0.5,Math.min(2,Number(e.target.value)||1));
+    state.playbackRate=rate;
+    if('playbackRate' in video)video.playbackRate=rate;
+    showPlayerOsd(`Hız: ${rate}x`);
+  });
+  $('#fitButton')?.addEventListener('click',()=>{
+    state.videoCover=!state.videoCover;
+    video.classList?.toggle('video-cover',state.videoCover);
+    showPlayerOsd(state.videoCover?'Ekran: Doldur':'Ekran: Sığdır');
+  });
+  $('#subtitleScaleSelect')?.addEventListener('change',e=>{
+    const scale=e.target.value||'1';
+    $('#playerSurface')?.style?.setProperty?.('--cue-scale',scale);
+    showPlayerOsd(`Altyazı boyutu: ${e.target.selectedOptions?.[0]?.textContent||scale}`);
+  });
+  $('#pipButton')?.addEventListener('click',async()=>{
+    try{
+      if(document.pictureInPictureElement)await document.exitPictureInPicture();
+      else if(video.requestPictureInPicture)await video.requestPictureInPicture();
+    }catch(error){notify(error.message||'Resim içinde resim açılamadı.',true);}
+  });
+  $('#sleepPanel')?.addEventListener('click',e=>{
+    const btn=e.target.closest?.('[data-sleep]');
+    if(!btn)return;
+    setSleepTimer(Number(btn.dataset.sleep));
+    setPlayerPanel();
+  });
+  video.addEventListener('dblclick',()=>{if(requestFullscreen)fullscreen();});
   $('#togglePlay').addEventListener('click',togglePlay);
   $('#mutePlayer').addEventListener('click',()=>{if(video.volume===0)video.volume=1;else video.muted=!video.muted;});
   $('#playerVolume').addEventListener('input',event=>{video.volume=Number(event.target.value);video.muted=false;});
@@ -567,11 +664,28 @@ function bindPlayer(){
   document.addEventListener('keydown',event=>{
     const active=document.activeElement;
     if(!state.player||!dialog.open||event.altKey||event.ctrlKey||event.metaKey||(active!==$('#seekRange')&&['INPUT','TEXTAREA','SELECT'].includes(active?.tagName)))return;
+    const key=event.key.toLowerCase();
     if(event.key==='ArrowLeft'||event.key==='ArrowRight'){
       event.preventDefault();skipPlayback(event.key==='ArrowLeft'?-10:10);
-    }else if(event.code==='Space'&&!['BUTTON','INPUT'].includes(active?.tagName)){
+    }else if(event.key==='ArrowUp'||event.key==='ArrowDown'){
+      event.preventDefault();
+      const nextVol=Math.max(0,Math.min(1,(Number(video.volume)||1)+(event.key==='ArrowUp'?0.1:-0.1)));
+      video.volume=Math.round(nextVol*100)/100;video.muted=video.volume===0;
+      showPlayerOsd(`Ses: %${Math.round(video.volume*100)}`);
+    }else if((event.code==='Space'||key==='k')&&!['BUTTON','INPUT'].includes(active?.tagName)){
       event.preventDefault();togglePlay();
-    }else if(event.key.toLowerCase()==='f'){
+    }else if(key==='m'){
+      event.preventDefault();if(video.volume===0)video.volume=1;else video.muted=!video.muted;
+      showPlayerOsd(video.muted?'Ses kapalı':`Ses: %${Math.round(video.volume*100)}`);
+    }else if(key==='['||key===']'){
+      event.preventDefault();
+      const steps=[0.5,0.75,1,1.25,1.5,2];
+      const idx=steps.indexOf(Number(state.playbackRate)||1);
+      const next=steps[Math.max(0,Math.min(steps.length-1,(idx<0?2:idx)+(key===']'?1:-1)))];
+      state.playbackRate=next;if('playbackRate' in video)video.playbackRate=next;
+      if($('#speedSelect'))$('#speedSelect').value=String(next);
+      showPlayerOsd(`Hız: ${next}x`);
+    }else if(key==='f'){
       event.preventDefault();fullscreen();
     }else return;
     showPlayerControls();
@@ -587,7 +701,159 @@ function bindPlayer(){
   document.addEventListener('webkitfullscreenchange',updateFullscreen);
   window.addEventListener('pagehide',()=>{saveProgress(true);const p=state.player;if(p?.sessionId)fetch(`/api/play/${encodeURIComponent(p.sessionId)}`,{method:'DELETE',keepalive:true}).catch(()=>{});});
 }
-const actions={reload:async()=>{state.status=await api('/api/status');render();},demo:async()=>{await api('/api/demo',{method:'POST',body:{}});state.status=await api('/api/status');notify('Açık Sinema demo kütüphanesi hazır.');routeTo('home');if(state.route==='home')render();},sync:()=>syncCatalog(),detail:el=>{closeDialog('listDialog');return openDetail(el.dataset.id);},play:el=>playItem(el.dataset.id),favorite:el=>toggleFavorite(el.dataset.id),'item-menu':el=>itemMenu(el.dataset.id),'add-list':el=>addToListDialog(el.dataset.id),'create-list':el=>listNameDialog('',el.dataset.item||''),'rename-list':el=>listNameDialog(el.dataset.list),'open-list':el=>routeTo('playlists/'+encodeURIComponent(el.dataset.list)),'select-list':async el=>{await api(`/api/playlists/${encodeURIComponent(el.dataset.list)}`,{method:'PATCH',body:{itemId:el.dataset.id}});closeDialog('listDialog');notify('İçerik listene eklendi.');if(state.route.startsWith('playlists'))render();},'remove-from-list':async el=>{await api(`/api/playlists/${encodeURIComponent(el.dataset.list)}`,{method:'PATCH',body:{removeItemId:el.dataset.id}});notify('İçerik listeden kaldırıldı.');render();},'delete-list':el=>confirmDialog('Listeyi sil?','Bu liste kaldırılacak. İçerikler ve izleme kayıtları kütüphanende kalır.',async()=>{await api(`/api/playlists/${encodeURIComponent(el.dataset.list)}`,{method:'DELETE'});routeTo('playlists');notify('Liste silindi.');},'Listeyi sil'),reorder:async el=>{const list=state.playlists.find(l=>String(l.id)===el.dataset.list);if(!list)return;const ids=(list.items||[]).map(i=>i.id),i=ids.indexOf(el.dataset.id),j=i+Number(el.dataset.direction);if(i<0||j<0||j>=ids.length)return;[ids[i],ids[j]]=[ids[j],ids[i]];await api(`/api/playlists/${encodeURIComponent(list.id)}`,{method:'PATCH',body:{order:ids}});render();},category:el=>changeCatalog({category:el.dataset.category,page:1}),page:el=>{changeCatalog({page:el.dataset.page});window.scrollTo({top:0,behavior:'smooth'});},'reset-filters':()=>routeTo(state.route),'clear-search':()=>changeCatalog({q:'',page:1}),'favorite-filter':el=>routeTo('favorites',{kind:el.dataset.kind}),'clear-progress':el=>clearProgress(el.dataset.id),export:()=>exportBackup(),import:()=>$('#importFile').click(),copy:async el=>{const value=el.dataset.value;if(navigator.clipboard?.writeText){try{await navigator.clipboard.writeText(value);notify('Adres kopyalandı.');return;}catch{}}const field=document.createElement('textarea');field.value=value;document.body.append(field);field.select();const copied=document.execCommand('copy');field.remove();notify(copied?'Adres kopyalandı.':`Adres: ${value}`,!copied);}};
+function clearMultiView(){
+  for(const h of state.multiHls||[]){try{h.destroy();}catch{}}
+  state.multiHls=[];
+}
+async function renderMultiView(token){
+  clearMultiView();
+  const main=$('#main');
+  main.innerHTML=pageHeading('Çoklu Ekran (2×2)','Aynı anda dört canlı kanalı izle; istediğin birinin sesini aç.','CANLI MOZAİK')+loading();
+  const data=await api('/api/catalog?kind=live&limit=100&page=1');
+  if(token!==state.renderId)return;
+  const channels=remember(data.items||[]);
+  if(!channels.length){
+    main.innerHTML=pageHeading('Çoklu Ekran (2×2)','Aynı anda dört canlı kanalı izle.','CANLI MOZAİK')+empty('Canlı kanal bulunamadı','Çoklu ekran için canlı TV kanalı içeren bir M3U veya Xtream kaynağı bağla.','live');
+    return;
+  }
+  const initial=[0,1,2,3].map(i=>channels[i%channels.length]);
+  const optionsHtml=(selId)=>channels.map(ch=>`<option value="${esc(ch.id)}" ${ch.id===selId?'selected':''}>${esc(ch.name)}</option>`).join('');
+  main.innerHTML=pageHeading('Çoklu Ekran (2×2)','Otomatik oynatma kuralları gereği başlangıçta sessiz açılır; ses simgesiyle tek kanalı dinleyebilirsin.','CANLI MOZAİK')
+    +`<div class="multiview-grid">${initial.map((ch,idx)=>`<article class="multiview-tile" data-mv-idx="${idx}"><div class="multiview-video-wrap"><video id="mvVideo${idx}" muted playsinline autoplay></video></div><div class="multiview-bar"><select class="sort-select" data-mv-select="${idx}" aria-label="Kanal ${idx+1}">${optionsHtml(ch.id)}</select><div class="multiview-actions"><button type="button" class="icon-button" data-mv-mute="${idx}" title="Sesi aç/kapat" aria-label="Sesi aç/kapat">🔇</button><button type="button" class="icon-button" data-mv-full="${idx}" title="Tam oynatıcıda aç" aria-label="Tam oynatıcıda aç">${icon('expand')}</button></div></div></article>`).join('')}</div>`;
+  const slots=initial.map(ch=>({id:ch.id,sid:null,hls:null}));
+  const loadSlot=async(idx,itemId)=>{
+    const slot=slots[idx];
+    if(slot.hls){try{slot.hls.destroy();}catch{}slot.hls=null;}
+    if(slot.sid){fetch(`/api/play/${encodeURIComponent(slot.sid)}`,{method:'DELETE',keepalive:true}).catch(()=>{});slot.sid=null;}
+    const vid=$(`#mvVideo${idx}`);
+    if(!vid||token!==state.renderId)return;
+    try{
+      const res=await api('/api/play',{method:'POST',body:{id:itemId,mode:'direct',start:0}});
+      if(token!==state.renderId){if(res.sessionId)fetch(`/api/play/${encodeURIComponent(res.sessionId)}`,{method:'DELETE',keepalive:true}).catch(()=>{});return;}
+      slot.id=itemId;slot.sid=res.sessionId;
+      if(res.type==='hls'&&typeof Hls!=='undefined'&&Hls.isSupported()&&!vid.canPlayType('application/vnd.apple.mpegurl')){
+        const h=new Hls({lowLatencyMode:true});h.loadSource(res.url);h.attachMedia(vid);slot.hls=h;state.multiHls.push(h);
+      }else{
+        vid.src=res.url;
+      }
+      vid.play().catch(()=>{});
+    }catch(err){notify(`${itemFor(itemId)?.name||'Kanal'}: ${err.message}`,true);}
+  };
+  slots.forEach((_,idx)=>loadSlot(idx,slots[idx].id));
+  main.querySelectorAll('[data-mv-select]').forEach(sel=>sel.addEventListener('change',()=>loadSlot(Number(sel.dataset.mvSelect),sel.value)));
+  main.querySelectorAll('[data-mv-mute]').forEach(btn=>btn.addEventListener('click',()=>{
+    const targetIdx=Number(btn.dataset.mvMute);
+    const targetVid=$(`#mvVideo${targetIdx}`);
+    const unmute=targetVid.muted;
+    slots.forEach((_,i)=>{
+      const v=$(`#mvVideo${i}`),b=main.querySelector(`[data-mv-mute="${i}"]`);
+      if(v){v.muted=i!==targetIdx||!unmute;}
+      if(b){b.textContent=(v&&!v.muted)?'🔊':'🔇';}
+    });
+  }));
+  main.querySelectorAll('[data-mv-full]').forEach(btn=>btn.addEventListener('click',()=>{
+    const id=slots[Number(btn.dataset.mvFull)]?.id;
+    clearMultiView();
+    if(id)playItem(id).catch(e=>notify(e.message,true));
+  }));
+}
+async function playLocalFile(file){
+  if(!file||typeof URL==='undefined'||!URL.createObjectURL)return;
+  if(state.player)await stopPlayer(false);
+  const url=URL.createObjectURL(file);
+  const player={id:'local:'+file.name,item:{id:'local',name:file.name.replace(/\.[^.]+$/,''),kind:'vod'},mode:'direct',start:0,offset:0,duration:0,sessionId:null,ready:true,mediaBound:true,localFile:true,blobUrl:url};
+  state.player=player;
+  $('#playerTitle').textContent=player.item.name;
+  $('#playerEyebrow').textContent='YEREL DOSYA';
+  $('#playerOverlay').hidden=true;$('#playerOverlay').classList.remove('error');
+  setPlayerPanel();
+  updateTransport(player);
+  showPlayerControls(player);
+  openDialog('playerDialog');
+  const video=$('#video');
+  video.src=url;
+  video.onloadedmetadata=()=>{if(state.player===player&&Number.isFinite(video.duration)){player.duration=video.duration;updateSeekDisplay(player);}};
+  video.play().catch(()=>{});
+}
+async function pickSurprise(){
+  const res=await api('/api/surprise');
+  if(!res?.item)throw new Error('Önerilecek içerik bulunamadı.');
+  remember([res.item]);
+  notify(`Sürpriz seçim: ${res.item.name}`);
+  if(res.item.kind==='series')return openDetail(res.item.id);
+  return playItem(res.item.id);
+}
+async function openProfilesDialog(){
+  const data=await api('/api/profiles');
+  const profiles=data.profiles||[];
+  const colors=['#FF4B45','#FF9933','#34C759','#5E5CE6','#0A84FF','#BF5AF2'];
+  $('#listContent').innerHTML=`<h2>Profiller</h2><p>Her profilin kendi favorileri, listeleri ve kaldığı yeri ayrı saklanır.</p>
+    <div class="profile-grid">${profiles.map(p=>`<button type="button" class="profile-tile ${p.active?'active':''}" data-pick-profile="${esc(p.id)}" data-has-pin="${p.hasPin?'1':'0'}">
+      <div class="profile-tile-avatar" style="background:${esc(p.avatarColor)}">${esc((p.name||'P').charAt(0).toUpperCase())}</div>
+      <strong>${esc(p.name)}</strong>
+      ${p.isKids?'<span class="profile-badge-kid">Çocuk Modu</span>':''}
+      ${p.hasPin?'<span class="profile-pin-tag">🔒 PIN Korumalı</span>':''}
+      ${p.id!=='default'?`<span class="profile-delete-btn" data-del-profile="${esc(p.id)}" title="Profili sil">✕</span>`:''}
+    </button>`).join('')}</div>
+    <div id="pinPromptBox" class="field" hidden><label for="switchPinInput">Profil PIN kodu</label><div style="display:flex;gap:8px"><input id="switchPinInput" type="password" inputmode="numeric" maxlength="8" placeholder="PIN"><button type="button" class="button" id="confirmPinBtn">Geç</button></div><div id="profileError" class="inline-error" role="alert"></div></div>
+    <form id="createProfileForm" class="profile-form">
+      <strong>Yeni Profil Ekle</strong>
+      <div class="field-row">
+        <div class="field"><label for="newProfileName">Profil adı</label><input id="newProfileName" maxlength="40" placeholder="Örneğin: Çocuklar" required></div>
+        <div class="field"><label for="newProfilePin">PIN (isteğe bağlı, 4-8 rakam)</label><input id="newProfilePin" type="password" inputmode="numeric" pattern="[0-9]{4,8}" placeholder="Boş bırakılabilir"></div>
+      </div>
+      <div class="field-row" style="align-items:center">
+        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="newProfileKids"> Çocuk Profili (+18 / Korku gizlenir)</label>
+        <select id="newProfileColor" aria-label="Profil rengi">${colors.map(col=>`<option value="${col}">${col}</option>`).join('')}</select>
+      </div>
+      <button type="submit" class="button">${icon('plus')}Profil Oluştur</button>
+      <div id="createProfileError" class="inline-error" role="alert"></div>
+    </form>`;
+  openDialog('listDialog');
+  let pendingPinProfile='';
+  const doSwitch=async(id,pin='')=>{
+    const res=await api('/api/profiles/switch',{method:'POST',body:{id,pin}});
+    state.status=await api('/api/status');
+    closeDialog('listDialog');
+    notify(`${res.profile?.name||'Profil'} aktif edildi.`);
+    render();
+  };
+  $('#listContent').querySelectorAll('[data-del-profile]').forEach(el=>el.addEventListener('click',async e=>{
+    e.stopPropagation();
+    const id=el.dataset.delProfile;
+    await api(`/api/profiles/${encodeURIComponent(id)}`,{method:'DELETE'});
+    openProfilesDialog();
+  }));
+  $('#listContent').querySelectorAll('[data-pick-profile]').forEach(btn=>btn.addEventListener('click',async()=>{
+    const id=btn.dataset.pickProfile;
+    if(btn.dataset.hasPin==='1'){
+      pendingPinProfile=id;
+      $('#pinPromptBox').hidden=false;
+      $('#profileError').textContent='';
+      $('#switchPinInput').value='';
+      $('#switchPinInput').focus();
+      return;
+    }
+    try{await doSwitch(id,'');}catch(err){notify(err.message,true);}
+  }));
+  $('#confirmPinBtn')?.addEventListener('click',async()=>{
+    try{await doSwitch(pendingPinProfile,$('#switchPinInput').value);}catch(err){$('#profileError').textContent=err.message;}
+  });
+  $('#createProfileForm')?.addEventListener('submit',async e=>{
+    e.preventDefault();
+    $('#createProfileError').textContent='';
+    try{
+      await api('/api/profiles',{method:'POST',body:{
+        name:$('#newProfileName').value.trim(),
+        pin:$('#newProfilePin').value.trim(),
+        isKids:$('#newProfileKids').checked,
+        avatarColor:$('#newProfileColor').value,
+      }});
+      openProfilesDialog();
+    }catch(err){$('#createProfileError').textContent=err.message;}
+  });
+}
+const actions={reload:async()=>{state.status=await api('/api/status');render();},surprise:()=>pickSurprise(),'open-local-file':()=>$('#localFilePicker')?.click(),'open-profiles':()=>openProfilesDialog(),demo:async()=>{await api('/api/demo',{method:'POST',body:{}});state.status=await api('/api/status');notify('Açık Sinema demo kütüphanesi hazır.');routeTo('home');if(state.route==='home')render();},sync:()=>syncCatalog(),detail:el=>{closeDialog('listDialog');return openDetail(el.dataset.id);},play:el=>playItem(el.dataset.id),favorite:el=>toggleFavorite(el.dataset.id),'item-menu':el=>itemMenu(el.dataset.id),'add-list':el=>addToListDialog(el.dataset.id),'create-list':el=>listNameDialog('',el.dataset.item||''),'rename-list':el=>listNameDialog(el.dataset.list),'open-list':el=>routeTo('playlists/'+encodeURIComponent(el.dataset.list)),'select-list':async el=>{await api(`/api/playlists/${encodeURIComponent(el.dataset.list)}`,{method:'PATCH',body:{itemId:el.dataset.id}});closeDialog('listDialog');notify('İçerik listene eklendi.');if(state.route.startsWith('playlists'))render();},'remove-from-list':async el=>{await api(`/api/playlists/${encodeURIComponent(el.dataset.list)}`,{method:'PATCH',body:{removeItemId:el.dataset.id}});notify('İçerik listeden kaldırıldı.');render();},'delete-list':el=>confirmDialog('Listeyi sil?','Bu liste kaldırılacak. İçerikler ve izleme kayıtları kütüphanende kalır.',async()=>{await api(`/api/playlists/${encodeURIComponent(el.dataset.list)}`,{method:'DELETE'});routeTo('playlists');notify('Liste silindi.');},'Listeyi sil'),reorder:async el=>{const list=state.playlists.find(l=>String(l.id)===el.dataset.list);if(!list)return;const ids=(list.items||[]).map(i=>i.id),i=ids.indexOf(el.dataset.id),j=i+Number(el.dataset.direction);if(i<0||j<0||j>=ids.length)return;[ids[i],ids[j]]=[ids[j],ids[i]];await api(`/api/playlists/${encodeURIComponent(list.id)}`,{method:'PATCH',body:{order:ids}});render();},category:el=>changeCatalog({category:el.dataset.category,page:1}),page:el=>{changeCatalog({page:el.dataset.page});window.scrollTo({top:0,behavior:'smooth'});},'reset-filters':()=>routeTo(state.route),'clear-search':()=>changeCatalog({q:'',page:1}),'favorite-filter':el=>routeTo('favorites',{kind:el.dataset.kind}),'clear-progress':el=>clearProgress(el.dataset.id),export:()=>exportBackup(),import:()=>$('#importFile').click(),copy:async el=>{const value=el.dataset.value;if(navigator.clipboard?.writeText){try{await navigator.clipboard.writeText(value);notify('Adres kopyalandı.');return;}catch{}}const field=document.createElement('textarea');field.value=value;document.body.append(field);field.select();const copied=document.execCommand('copy');field.remove();notify(copied?'Adres kopyalandı.':`Adres: ${value}`,!copied);}};
 document.addEventListener('click',async event=>{const close=event.target.closest('[data-close]');if(close){closeDialog(close.dataset.close);return;}const el=event.target.closest('[data-action]');if(!el||el.disabled)return;const action=actions[el.dataset.action];if(!action)return;try{await action(el);}catch(error){notify(error.message,true);}});
 document.addEventListener('error',event=>{if(event.target instanceof HTMLImageElement){event.target.hidden=true;event.target.style.display='none';}},true);
 ['detailDialog','listDialog'].forEach(id=>{$('#'+id).addEventListener('click',event=>{if(event.target===event.currentTarget){const rect=event.currentTarget.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)closeDialog(id);}});});
@@ -596,5 +862,18 @@ $('#searchForm').addEventListener('submit',event=>{event.preventDefault();const 
 document.addEventListener('keydown',event=>{if(event.key==='/'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)&&!document.querySelector('dialog[open]')){event.preventDefault();$('#searchInput').focus();}});
 window.addEventListener('hashchange',()=>{window.scrollTo(0,0);render();});
 async function pollStatus(){if(document.hidden||state.player)return;try{const previous=state.status;const next=await api('/api/status');state.status=next;updateShell();if(previous?.catalog?.syncing&&!next.catalog?.syncing){notify(next.catalog?.error?'Eşitleme tamamlanamadı: '+next.catalog.error:'Kütüphanen güncel.',!!next.catalog?.error);render();}else if(previous?.configured!==next.configured||previous?.authorized!==next.authorized||previous?.catalog?.updatedAt!==next.catalog?.updatedAt)render();else if(state.route==='favorites'&&!document.querySelector('dialog[open]')&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)){const data=await api('/api/favorites');const sig=JSON.stringify(data.items||[]);if(state.route==='favorites'&&$('#main').dataset.favSignature!==sig){$('#main').dataset.favSignature=sig;renderFavorites(data.items||[]);}}else if(state.route.startsWith('playlists')&&!document.querySelector('dialog[open]')&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)){const data=await api('/api/playlists');const sig=JSON.stringify(data.playlists||[]);if(state.route.startsWith('playlists')&&$('#main').dataset.listSignature!==sig){$('#main').dataset.listSignature=sig;state.playlists=data.playlists||[];renderPlaylists();}}else if(state.route==='home'&&!document.querySelector('dialog[open]')){const data=await api('/api/home');if(state.route==='home')renderHome(data);}}catch{/* Leave the current screen usable during a temporary disconnect. */}}
-async function init(){hydrateIcons();bindPlayer();window.AkisTracks?.bind();try{state.status=await api('/api/status');await render();}catch(error){$('#main').innerHTML=empty('Cineva sunucusuna ulaşamadık',error.message,'alert',button('Tekrar bağlan','reload'));}setInterval(pollStatus,15000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)pollStatus();});if('serviceWorker'in navigator&&window.isSecureContext)navigator.serviceWorker.register('/sw.js').catch(()=>{});}
+async function init(){
+  hydrateIcons();bindPlayer();window.AkisTracks?.bind();
+  $('#localFilePicker')?.addEventListener('change',e=>{const f=e.target.files?.[0];if(f)playLocalFile(f);e.target.value='';});
+  let dragDepth=0;
+  document.addEventListener('dragenter',e=>{if(e.dataTransfer?.types?.includes('Files')){dragDepth++;if($('#dropOverlay'))$('#dropOverlay').hidden=false;}});
+  document.addEventListener('dragover',e=>{if(e.dataTransfer?.types?.includes('Files'))e.preventDefault();});
+  document.addEventListener('dragleave',()=>{dragDepth=Math.max(0,dragDepth-1);if(!dragDepth&&$('#dropOverlay'))$('#dropOverlay').hidden=true;});
+  document.addEventListener('drop',e=>{
+    const f=e.dataTransfer?.files?.[0];
+    dragDepth=0;if($('#dropOverlay'))$('#dropOverlay').hidden=true;
+    if(f&&(/\.(mp4|mkv|avi|mov|m4v|webm|ts)$/i.test(f.name)||f.type?.startsWith('video/'))){e.preventDefault();playLocalFile(f);}
+  });
+  try{state.status=await api('/api/status');await render();}catch(error){$('#main').innerHTML=empty('Cineva sunucusuna ulaşamadık',error.message,'alert',button('Tekrar bağlan','reload'));}setInterval(pollStatus,15000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)pollStatus();});if('serviceWorker'in navigator&&window.isSecureContext)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+}
 init();

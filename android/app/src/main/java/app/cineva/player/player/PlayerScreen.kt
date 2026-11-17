@@ -1,9 +1,13 @@
 package app.cineva.player.player
 
 import android.app.Activity
+import android.app.PictureInPictureParams
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
+import android.media.AudioManager
+import android.os.Build
+import android.util.Rational
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -13,6 +17,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -67,7 +73,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
@@ -111,12 +119,17 @@ fun PlayerScreen(
     onNextEpisode: () -> Unit = {},
     onProgress: (positionMs: Long, durationMs: Long) -> Unit,
     onTrackSelection: (audioId: Int?, subtitleId: Int?) -> Unit = { _, _ -> },
+    episodes: List<Pair<String, String>> = emptyList(),
+    currentEpisodeId: String = "",
+    onSelectEpisode: (String) -> Unit = {},
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
     val view = LocalView.current
+    val isTablet = LocalConfiguration.current.smallestScreenWidthDp >= 600
     val lifecycleOwner = LocalLifecycleOwner.current
     val activity = remember(context) { context.findActivity() }
+    val audioManager = remember(context) { context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
     val latestNextEpisode by rememberUpdatedState(onNextEpisode)
     val lifecycleState by lifecycleOwner.lifecycle.currentStateFlow.collectAsState()
     val reducedMotion = rememberReducedMotion()
@@ -149,6 +162,11 @@ fun PlayerScreen(
     var controlsVisible by remember(sourceUrl) { mutableStateOf(true) }
     var interactionVersion by remember(sourceUrl) { mutableIntStateOf(0) }
     var trackDialog by remember(sourceUrl) { mutableStateOf<String?>(null) }
+    var episodeDrawerOpen by remember(sourceUrl) { mutableStateOf(false) }
+    var locked by remember(sourceUrl) { mutableStateOf(false) }
+    var unlockHintVisible by remember(sourceUrl) { mutableStateOf(false) }
+    var sleepMinutes by rememberSaveable { mutableIntStateOf(0) }
+    var gestureFeedback by remember(sourceUrl) { mutableStateOf<String?>(null) }
     var dragging by remember(sourceUrl) { mutableStateOf(false) }
     var scrubFraction by remember(sourceUrl) { mutableFloatStateOf(0f) }
     var dragDurationMs by remember(sourceUrl) { mutableLongStateOf(0L) }
@@ -157,7 +175,8 @@ fun PlayerScreen(
     var landscape by rememberSaveable(isLive) { mutableStateOf(!isLive) }
     var nextDismissed by remember(sourceUrl) { mutableStateOf(false) }
     var secondsToNext by remember(sourceUrl) { mutableIntStateOf(NEXT_EPISODE_SECONDS) }
-    val showNext = !isLive && playback.ended && nextEpisode != null && !nextDismissed
+    val inPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && activity?.isInPictureInPictureMode == true
+    val showNext = !isLive && playback.ended && nextEpisode != null && !nextDismissed && !inPip
     fun advanceEpisode() {
         if (nextDismissed) return
         nextDismissed = true
@@ -178,10 +197,31 @@ fun PlayerScreen(
             if (previousOrientation != null) activity?.requestedOrientation = previousOrientation
         }
     }
-    LaunchedEffect(landscape) {
+    LaunchedEffect(landscape, isTablet) {
+        if (isTablet) return@LaunchedEffect
         if (landscape) activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         else if (activity?.requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE) {
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+    }
+    LaunchedEffect(sleepMinutes) {
+        if (sleepMinutes > 0) {
+            delay(sleepMinutes * 60_000L)
+            controller.pausePlayback()
+            sleepMinutes = 0
+            gestureFeedback = "Uyku zamanlayıcısı: Oynatma durduruldu"
+        }
+    }
+    LaunchedEffect(gestureFeedback) {
+        if (gestureFeedback != null) {
+            delay(1300)
+            gestureFeedback = null
+        }
+    }
+    LaunchedEffect(unlockHintVisible) {
+        if (unlockHintVisible) {
+            delay(2500)
+            unlockHintVisible = false
         }
     }
     LaunchedEffect(playback.buffering, playback.error) {
@@ -191,8 +231,8 @@ fun PlayerScreen(
             showBuffering = true
         }
     }
-    LaunchedEffect(controlsVisible, playback.playing, trackDialog, dragging, interactionVersion) {
-        if (controlsVisible && playback.playing && trackDialog == null && !dragging) {
+    LaunchedEffect(controlsVisible, playback.playing, trackDialog, episodeDrawerOpen, dragging, interactionVersion, locked) {
+        if (controlsVisible && playback.playing && trackDialog == null && !episodeDrawerOpen && !dragging && !locked) {
             delay(4000)
             controlsVisible = false
         }
@@ -213,16 +253,62 @@ fun PlayerScreen(
         }
     }
     BackHandler {
-        if (showNext) nextDismissed = true else {
+        if (locked) { unlockHintVisible = true }
+        else if (showNext) nextDismissed = true
+        else {
             controller.persistProgress()
             onBack()
         }
     }
 
+    var brightnessAccum by remember { mutableFloatStateOf(-1f) }
+    var volumeAccum by remember { mutableFloatStateOf(-1f) }
     Box(
         Modifier.fillMaxSize().background(Color.Black)
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                controlsVisible = !controlsVisible
+            .pointerInput(locked, isLive, playback.seekable, playback.ended) {
+                detectTapGestures(
+                    onTap = {
+                        if (locked) unlockHintVisible = !unlockHintVisible
+                        else controlsVisible = !controlsVisible
+                    },
+                    onDoubleTap = { offset ->
+                        if (locked || isLive || (!playback.seekable && !playback.ended)) return@detectTapGestures
+                        val delta = if (offset.x < size.width / 2f) -10_000L else 10_000L
+                        controller.skipBy(delta)
+                        gestureFeedback = if (delta < 0) "« 10 sn" else "10 sn »"
+                        interactionVersion++
+                    },
+                )
+            }
+            .pointerInput(locked) {
+                if (locked) return@pointerInput
+                detectVerticalDragGestures(
+                    onDragStart = {
+                        val lp = activity?.window?.attributes
+                        val currentBri = lp?.screenBrightness?.takeIf { it in 0f..1f } ?: 0.5f
+                        brightnessAccum = currentBri
+                        val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+                        volumeAccum = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / maxVol
+                    },
+                    onVerticalDrag = { change, dragAmount ->
+                        val height = size.height.coerceAtLeast(1).toFloat()
+                        val delta = -dragAmount / (height * 0.7f)
+                        if (change.position.x < size.width / 2f) {
+                            brightnessAccum = (brightnessAccum + delta).coerceIn(0.04f, 1.0f)
+                            activity?.window?.let { win ->
+                                val attrs = win.attributes
+                                attrs.screenBrightness = brightnessAccum
+                                win.attributes = attrs
+                            }
+                            gestureFeedback = "Parlaklık: %${(brightnessAccum * 100).toInt()}"
+                        } else {
+                            volumeAccum = (volumeAccum + delta).coerceIn(0f, 1.0f)
+                            val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+                            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (volumeAccum * maxVol).toInt().coerceIn(0, maxVol), 0)
+                            gestureFeedback = "Ses: %${(volumeAccum * 100).toInt()}"
+                        }
+                    },
+                )
             }
     ) {
         key(controller) {
@@ -236,8 +322,23 @@ fun PlayerScreen(
                 CircularProgressIndicator(color = AkisRed, strokeWidth = 3.dp, modifier = Modifier.size(35.dp))
             }
         }
+        gestureFeedback?.let { label ->
+            Box(
+                Modifier.align(Alignment.TopCenter).padding(top = 56.dp)
+                    .clip(RoundedCornerShape(99.dp)).background(Color.Black.copy(alpha = .72f))
+                    .padding(horizontal = 18.dp, vertical = 8.dp),
+            ) { Text(label, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
+        }
+        if (locked && unlockHintVisible && !inPip) {
+            Button(
+                onClick = { locked = false; controlsVisible = true; unlockHintVisible = false },
+                modifier = Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(bottom = 28.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
+                shape = RoundedCornerShape(99.dp),
+            ) { Text("Kilidi Aç", fontWeight = FontWeight.Bold) }
+        }
         AnimatedVisibility(
-            visible = controlsVisible || !playback.playing || playback.error != null,
+            visible = !locked && !inPip && (controlsVisible || !playback.playing || playback.error != null),
             enter = if (reducedMotion) EnterTransition.None else fadeIn(),
             exit = if (reducedMotion) ExitTransition.None else fadeOut(),
             modifier = Modifier.fillMaxSize(),
@@ -254,6 +355,18 @@ fun PlayerScreen(
                         Text(if (isLive) "CANLI YAYIN" else "ŞİMDİ OYNATILIYOR", fontSize = 9.sp, letterSpacing = 2.sp, color = Color.White.copy(alpha = .68f), fontWeight = FontWeight.Bold)
                         Text(title, modifier = Modifier.testTag("player-title"), fontSize = 17.sp,
                             fontWeight = FontWeight.SemiBold, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && activity != null) {
+                        TextButton(onClick = {
+                            runCatching {
+                                activity.enterPictureInPictureMode(
+                                    PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build()
+                                )
+                            }
+                        }) { Text("PiP", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                    }
+                    TextButton(onClick = { locked = true; controlsVisible = false; unlockHintVisible = true }) {
+                        Text("Kilitle", color = Color.White, fontSize = 12.sp)
                     }
                     PlayerControl(if (muted) "♪̸" else "♪", if (muted) "Sesi aç" else "Sesi kapat", size = 44) { muted = controller.toggleMute() }
                 }
@@ -301,11 +414,39 @@ fun PlayerScreen(
                     TextButton(onClick = { trackDialog = "subtitle"; controlsVisible = true; interactionVersion++ }) {
                         Text("Altyazı", color = Color.White, fontSize = 12.sp)
                     }
+                    if (!isLive) {
+                        TextButton(onClick = {
+                            val steps = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+                            val idx = steps.indexOfFirst { kotlin.math.abs(it - playback.playbackRate) < 0.05f }
+                            val next = steps[(idx + 1) % steps.size]
+                            controller.setPlaybackRate(next)
+                            gestureFeedback = "Hız: ${next}x"
+                            interactionVersion++
+                        }) { Text("${playback.playbackRate}x", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                    }
+                    TextButton(onClick = {
+                        val nextFill = !playback.fillScreen
+                        controller.setFillScreen(nextFill)
+                        gestureFeedback = if (nextFill) "Ekran: Doldur" else "Ekran: Sığdır"
+                        interactionVersion++
+                    }) { Text(if (playback.fillScreen) "Doldur" else "Sığdır", color = Color.White.copy(alpha = .85f), fontSize = 11.sp) }
+                    TextButton(onClick = {
+                        val nextMins = when (sleepMinutes) { 0 -> 15; 15 -> 30; 30 -> 45; 45 -> 60; else -> 0 }
+                        sleepMinutes = nextMins
+                        gestureFeedback = if (nextMins > 0) "Uyku zamanlayıcısı: $nextMins dk" else "Uyku zamanlayıcısı kapalı"
+                        interactionVersion++
+                    }) { Text(if (sleepMinutes > 0) "${sleepMinutes}dk" else "Uyku", color = if (sleepMinutes > 0) AkisRed else Color.White.copy(alpha = .85f), fontSize = 11.sp) }
                     Spacer(Modifier.weight(1f))
-                    if (nextEpisode != null && !playback.ended) {
+                    if (episodes.isNotEmpty()) {
+                        TextButton(onClick = { episodeDrawerOpen = true; controlsVisible = true; interactionVersion++ }) {
+                            Text("Bölümler", color = Color.White, fontSize = 12.sp)
+                        }
+                    } else if (nextEpisode != null && !playback.ended) {
                         TextButton(onClick = ::advanceEpisode) { Text("Sonraki bölüm", color = Color.White, fontSize = 12.sp) }
                     }
-                    PlayerControl(if (landscape) "↙" else "↗", if (landscape) "Dikey ekrana geç" else "Yatay tam ekran", size = 44) { landscape = !landscape; controlsVisible = true; interactionVersion++ }
+                    if (!isTablet) {
+                        PlayerControl(if (landscape) "↙" else "↗", if (landscape) "Dikey ekrana geç" else "Yatay tam ekran", size = 44) { landscape = !landscape; controlsVisible = true; interactionVersion++ }
+                    }
                 }
             }
         }
@@ -333,11 +474,39 @@ fun PlayerScreen(
             initialLabel = if (kind == "audio") "Varsayılan ses" else "Kapalı",
             initialValue = if (kind == "audio") null else -1,
             selected = if (kind == "audio") playback.audioPreference else playback.subtitlePreference,
+            subtitleDelayMs = if (kind == "subtitle") playback.subtitleDelayMs else null,
+            onAdjustDelay = { deltaMs -> controller.setSubtitleDelayMs(playback.subtitleDelayMs + deltaMs) },
+            onResetDelay = { controller.setSubtitleDelayMs(0L) },
             onDismiss = { trackDialog = null },
             onSelect = { id ->
                 if (kind == "audio") controller.selectAudio(id) else controller.selectSubtitle(id)
                 trackDialog = null
             },
+        )
+    }
+    if (episodeDrawerOpen && episodes.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = { episodeDrawerOpen = false },
+            containerColor = Color(0xFF191C24), titleContentColor = Color.White,
+            title = { Text("Bölümler", fontSize = 20.sp, fontWeight = FontWeight.SemiBold) },
+            text = {
+                Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+                    episodes.forEach { (epId, epLabel) ->
+                        val active = epId == currentEpisodeId
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (active) AkisRed.copy(alpha = .24f) else Color.Transparent)
+                                .clickable { episodeDrawerOpen = false; if (!active) onSelectEpisode(epId) }
+                                .padding(horizontal = 10.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(epLabel, color = if (active) Color.White else Color(0xFFD0D4DC), fontWeight = if (active) FontWeight.Bold else FontWeight.Normal, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { episodeDrawerOpen = false }) { Text("Kapat", color = AkisRed) } },
         )
     }
 }
@@ -391,6 +560,9 @@ private fun TrackChoiceDialog(
     initialLabel: String,
     initialValue: Int?,
     selected: Int?,
+    subtitleDelayMs: Long? = null,
+    onAdjustDelay: (Long) -> Unit = {},
+    onResetDelay: () -> Unit = {},
     onDismiss: () -> Unit,
     onSelect: (Int?) -> Unit,
 ) {
@@ -403,6 +575,15 @@ private fun TrackChoiceDialog(
                 TrackChoiceRow(initialLabel, selected == initialValue) { onSelect(initialValue) }
                 tracks.forEach { track -> TrackChoiceRow(track.label, selected == track.id) { onSelect(track.id) } }
                 if (tracks.isEmpty()) Text("Bu kaynakta ek parça bulunmuyor.", color = Color(0xFF999FAA), fontSize = 12.sp, modifier = Modifier.padding(top = 12.dp))
+                if (subtitleDelayMs != null) {
+                    HorizontalDivider(Modifier.padding(vertical = 10.dp), color = Color.White.copy(alpha = .12f))
+                    Text("Altyazı senkronu: ${"%.1f".format(subtitleDelayMs / 1000.0)} sn", color = Color(0xFFD0D4DC), fontSize = 12.sp)
+                    Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { onAdjustDelay(-500L) }) { Text("-0.5 sn", color = Color.White) }
+                        TextButton(onClick = onResetDelay) { Text("Sıfırla", color = AkisRed) }
+                        TextButton(onClick = { onAdjustDelay(500L) }) { Text("+0.5 sn", color = Color.White) }
+                    }
+                }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Kapat", color = AkisRed) } },

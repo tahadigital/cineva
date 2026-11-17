@@ -1,8 +1,10 @@
 package app.cineva.player
 
+import android.app.PictureInPictureParams
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
+import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
@@ -46,6 +48,17 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
         setContent { AkisTheme { AkisApplication(model) } }
     }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && model.player != null) {
+            runCatching {
+                enterPictureInPictureMode(
+                    PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build()
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -58,6 +71,7 @@ fun AkisApplication(model: MainViewModel) {
     val snackbar=remember { SnackbarHostState() }
     val exportFile=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri -> uri?.let(model::exportTo) }
     val importFile=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(model::importFrom) }
+    val localVideoFile=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(model::playLocalUri) }
     LaunchedEffect(model.notice) { model.notice?.let { message -> snackbar.showSnackbar(message);if(model.notice==message)model.notice=null } }
     val playing=model.player
     if(launch) {
@@ -80,6 +94,9 @@ fun AkisApplication(model: MainViewModel) {
             onNextEpisode = { model.playNext(playing.generation) },
             onProgress = { position, duration -> model.saveProgress(playing.accountId, playing.item, position, duration) },
             onTrackSelection = { audio, subtitle -> model.saveTracks(playing.accountId, playing.item.id, audio, subtitle) },
+            episodes = playing.episodes,
+            currentEpisodeId = playing.item.id,
+            onSelectEpisode = model::playEpisodeById,
             onBack = model::closePlayer,
         )
     } else {
@@ -94,11 +111,11 @@ fun AkisApplication(model: MainViewModel) {
         Box(Modifier.fillMaxSize()) {
             Crossfade(targetState=when { account==null->"setup";model.settings->"settings";model.detail!=null->"detail";else->"library" },animationSpec=tween(if (reducedMotion) 0 else 220),label="akis-navigation") { screen ->
                 when(screen) {
-                    "setup" -> AkisSetupScreen(model.setupLoading,model.setupError,model::login,model::loginM3u,model::loginDemo)
+                    "setup" -> AkisSetupScreen(model.setupLoading,model.setupError,model::login,model::loginM3u,model::loginDemo) { localVideoFile.launch(arrayOf("video/*")) }
                     "settings" -> AkisSettingsScreen(accountName=account?.let { "${it.name} · ${it.username}" }.orEmpty(),catalogSummary="Doğrudan cihaz içi oynatma · Bulut/masaüstü gerektirmez",refreshing=model.library.refreshing,error=model.library.error,
                         onBack={model.settings=false},onRefresh=model::refresh,onExport={exportFile.launch("Cineva-Yedek-${LocalDate.now()}.json")},onImport={importFile.launch(arrayOf("application/json","text/plain"))},onSync={syncDialog=true},onLogout=model::logout,versionName=BuildConfig.VERSION_NAME)
                     "detail" -> model.detail?.let { state -> AkisDetailScreen(state,model::closeDetail,model::play,model::favorite,model::play,model::season,{model.addToCollection(it)},{model.detail?.media?.let(model::openDetail)},model::clearProgress) }
-                    else -> AkisLibraryScreen(model.library,model::changeTab,model::search,model::category,model::openDetail,model::play,model::favorite,model::refresh,{model.settings=true},model::openCollection,{model.addToCollection(null)},model::loadMore,model::addToCollection,model::deleteCollection,model::closeCollection) {
+                    else -> AkisLibraryScreen(model.library,model::changeTab,model::search,model::category,model::openDetail,model::play,model::favorite,model::refresh,{model.settings=true},model::openCollection,{model.addToCollection(null)},model::loadMore,model::addToCollection,model::deleteCollection,model::closeCollection,model.activeProfile.name,model.activeProfile.avatarColor,{model.profileError=null;model.showProfilePicker=true},model::surpriseMe,{localVideoFile.launch(arrayOf("video/*"))}) {
                         sportsState.SaveableStateProvider("sports") {
                             AkisSportsScreen(findChannels = model::findSportsChannels, onWatch = model::watchSportsChannel, epgUrl = account?.epgUrl.orEmpty())
                         }
@@ -109,6 +126,7 @@ fun AkisApplication(model: MainViewModel) {
         }
     }
     if(model.showCollectionPicker)AkisCollectionPicker(model.collections,model::chooseCollection,model::createCollection,{model.showCollectionPicker=false})
+    if(model.showProfilePicker)ProfilePickerDialog(model.profiles,model.profileError,model::switchProfile,model::createProfile,model::deleteProfile,{model.showProfilePicker=false})
     if(syncDialog)MacSyncDialog(onDismiss={syncDialog=false},onSync={address,code->syncDialog=false;model.syncMac(address,code)})
 }
 

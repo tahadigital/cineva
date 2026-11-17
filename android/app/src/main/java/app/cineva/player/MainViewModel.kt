@@ -2,6 +2,7 @@ package app.cineva.player
 
 import android.app.Application
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.compose.runtime.getValue
@@ -26,6 +27,8 @@ data class PlayingItem(
     val accountId: String,
     val generation: Long,
     val nextEpisode: MediaItem? = null,
+    val episodes: List<Pair<String, String>> = emptyList(),
+    val isLocalUri: Boolean = false,
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -41,6 +44,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     var collections by mutableStateOf<List<UiCollection>>(emptyList()); private set
     var collectionTarget by mutableStateOf<UiMedia?>(null)
     var showCollectionPicker by mutableStateOf(false)
+    var profiles by mutableStateOf<List<UserProfile>>(emptyList()); private set
+    var activeProfile by mutableStateOf(UserProfile("default", "Ana Profil", "#FF4B45", active = true)); private set
+    var showProfilePicker by mutableStateOf(false)
+    var profileError by mutableStateOf<String?>(null)
     private var page = 0
     private var currentCollection: String? = null
     private var loadJob: Job? = null
@@ -51,6 +58,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val knownItems = mutableMapOf<String, MediaItem>()
 
     init {
+        refreshProfiles()
         viewModelScope.launch { repository.discoveryUpdates.collect { if(it>0 && account.value!=null && library.tab==LibraryTab.HOME)loadLibrary() } }
         viewModelScope.launch {
             var previous: String? = null
@@ -226,15 +234,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     } catch (_: Exception) {
                         null // Missing episode metadata must never stop the current stream.
                     }
-                    if (next != null && generation == playGeneration && account.value?.id == accountId) {
-                        player = playing.copy(nextEpisode = next)
+                    val siblings = runCatching {
+                        repository.siblingEpisodes(item).map { ep ->
+                            val tag = if (ep.season > 0 && ep.episode > 0) "S${ep.season}·B${ep.episode} — " else ""
+                            ep.id to "$tag${ep.name}"
+                        }
+                    }.getOrDefault(emptyList())
+                    if (generation == playGeneration && account.value?.id == accountId) {
+                        player = playing.copy(nextEpisode = next, episodes = siblings)
                     }
                 }
             } catch(error: Exception) { if(error is CancellationException)throw error;notice=message(error) }
         }
     }
-    fun closePlayer() { playJob?.cancel();playGeneration++;player=null;loadLibrary();detail?.media?.let { openDetail(it) } }
+    fun closePlayer() { playJob?.cancel();playGeneration++;player=null;if(account.value!=null){loadLibrary();detail?.media?.let { openDetail(it) }} }
     fun saveProgress(accountId: String, item: MediaItem, position: Long, duration: Long) {
+        if (player?.isLocalUri == true || accountId == "_local") return
         viewModelScope.launch {
             progressWrites.withLock {
                 if (account.value?.id == accountId) {
@@ -285,5 +300,83 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun exportTo(uri: Uri) { viewModelScope.launch { try { val json=repository.exportState();withContext(Dispatchers.IO) { getApplication<Application>().contentResolver.openOutputStream(uri,"wt")?.use { it.write(json.toByteArray()) }?:throw IptvException("Yedek dosyası yazılamadı.") };notice="Yedek kaydedildi." } catch(error: Exception) { if(error is CancellationException)throw error;notice=message(error) } } }
     fun importFrom(uri: Uri) { viewModelScope.launch { try { val json=withContext(Dispatchers.IO) { getApplication<Application>().contentResolver.openInputStream(uri)?.use { stream -> val bytes=stream.readBounded();if(bytes.size>25*1024*1024)throw IptvException("Dosya çok büyük.");bytes.toString(Charsets.UTF_8) }?:throw IptvException("Dosya okunamadı.") };repository.importState(json);notice="Yedek birleştirildi.";loadLibrary() } catch(error: Exception) { if(error is CancellationException)throw error;notice=message(error) } } }
     fun syncMac(address: String, code: String) { viewModelScope.launch { try { withContext(Dispatchers.IO) { MacSync.merge(repository,address,code) };notice="Mac ve telefondaki izleme kayıtları, favoriler ve listeler birleştirildi.";loadLibrary() } catch(error: Exception) { if(error is CancellationException)throw error;notice=message(error) } } }
+    fun refreshProfiles() {
+        viewModelScope.launch {
+            runCatching { repository.profiles() to repository.activeProfile() }.onSuccess { (list, current) ->
+                profiles = list
+                activeProfile = current
+            }
+        }
+    }
+    fun createProfile(name: String, avatarColor: String, isKids: Boolean, pin: String) {
+        profileError = null
+        viewModelScope.launch {
+            try {
+                repository.createProfile(name, avatarColor, isKids, pin)
+                refreshProfiles()
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                profileError = message(error)
+            }
+        }
+    }
+    fun switchProfile(id: String, pin: String = "") {
+        profileError = null
+        viewModelScope.launch {
+            try {
+                activeProfile = repository.switchProfile(id, pin)
+                refreshProfiles()
+                showProfilePicker = false
+                detail = null
+                notice = "${activeProfile.name} profili aktif."
+                if (account.value != null) loadLibrary()
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                profileError = message(error)
+            }
+        }
+    }
+    fun deleteProfile(id: String) {
+        profileError = null
+        viewModelScope.launch {
+            try {
+                repository.deleteProfile(id)
+                refreshProfiles()
+                if (account.value != null) loadLibrary()
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                profileError = message(error)
+            }
+        }
+    }
+    fun playEpisodeById(episodeId: String) {
+        startPlayback { repository.item(episodeId) ?: throw IptvException("Bölüm bulunamadı.") }
+    }
+    fun playLocalUri(uri: Uri) {
+        playJob?.cancel()
+        val generation = ++playGeneration
+        val resolver = getApplication<Application>().contentResolver
+        val title = runCatching {
+            resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                if (c.moveToFirst()) c.getString(0) else null
+            }
+        }.getOrNull()?.substringBeforeLast('.')?.takeIf { it.isNotBlank() } ?: "Yerel Video"
+        val item = MediaItem("local:${uri.hashCode()}", "local", title, MediaKind.VOD, "", "Cihazım", sourceUrl = uri.toString())
+        player = PlayingItem(item, uri.toString(), 0L, TrackPreference(), "_local", generation, isLocalUri = true)
+    }
+    fun surpriseMe() {
+        viewModelScope.launch {
+            try {
+                val chosen = repository.surpriseItem()
+                knownItems[chosen.id] = chosen
+                val ui = present(chosen)
+                notice = "Sürpriz seçim: ${chosen.name}"
+                if (chosen.kind == MediaKind.SERIES) openDetail(ui) else startPlayback { chosen }
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                notice = message(error)
+            }
+        }
+    }
     fun logout() { viewModelScope.launch { repository.logout();knownItems.clear() } }
 }

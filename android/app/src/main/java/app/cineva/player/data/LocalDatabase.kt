@@ -43,7 +43,7 @@ internal fun values(vararg pairs: Pair<String, Any?>): ContentValues = ContentVa
     }
 }
 
-internal class LocalDatabase(context: Context, name: String = "cineva_library.db") : SQLiteOpenHelper(context, name, null, 3) {
+internal class LocalDatabase(context: Context, name: String = "cineva_library.db") : SQLiteOpenHelper(context, name, null, 4) {
     init { setWriteAheadLoggingEnabled(true) }
     override fun onConfigure(db: SQLiteDatabase) { db.setForeignKeyConstraintsEnabled(true) }
     override fun onCreate(db: SQLiteDatabase) {
@@ -59,10 +59,21 @@ internal class LocalDatabase(context: Context, name: String = "cineva_library.db
         db.execSQL("CREATE TABLE track_preferences(account TEXT NOT NULL,item_id TEXT NOT NULL,data TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(account,item_id))")
         db.execSQL("CREATE TABLE native_track_preferences(account TEXT NOT NULL,item_id TEXT NOT NULL,data TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(account,item_id))")
         db.execSQL("CREATE TABLE cache_meta(account TEXT NOT NULL,key TEXT NOT NULL,data TEXT NOT NULL,updated INTEGER NOT NULL,PRIMARY KEY(account,key))")
+        ensureProfileSchema(db)
     }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if(oldVersion<2)db.execSQL("CREATE TABLE IF NOT EXISTS native_track_preferences(account TEXT NOT NULL,item_id TEXT NOT NULL,data TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(account,item_id))")
         if(oldVersion<3)db.execSQL("CREATE INDEX IF NOT EXISTS items_recent ON items(account,kind,added DESC,name COLLATE NOCASE,id)")
+        if(oldVersion<4)ensureProfileSchema(db)
+    }
+
+    private fun ensureProfileSchema(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS profiles(id TEXT PRIMARY KEY,name TEXT NOT NULL,avatar_color TEXT NOT NULL,is_kids INTEGER DEFAULT 0,pin_hash TEXT DEFAULT '',active INTEGER DEFAULT 0,created_at TEXT NOT NULL)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS profile_snapshots(account TEXT NOT NULL,profile_id TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(account,profile_id))")
+        val hasProfiles = db.rawQuery("SELECT COUNT(*) FROM profiles", null).use { it.moveToFirst(); it.getInt(0) > 0 }
+        if (!hasProfiles) {
+            db.insertWithOnConflict("profiles", null, values("id" to "default", "name" to "Ana Profil", "avatar_color" to "#FF4B45", "is_kids" to 0, "pin_hash" to "", "active" to 1, "created_at" to nowIso()), SQLiteDatabase.CONFLICT_IGNORE)
+        }
     }
 
     fun transaction(block: (SQLiteDatabase) -> Unit) {
@@ -158,4 +169,105 @@ internal class LocalDatabase(context: Context, name: String = "cineva_library.db
     }
     fun removeFromPlaylist(account: String, playlistId: String, itemId: String) { writableDatabase.delete("playlist_items","account=? AND playlist_id=? AND item_id=?",arrayOf(account,playlistId,itemId)) }
     fun deletePlaylist(account: String, playlistId: String) { writableDatabase.delete("playlists","account=? AND id=?",arrayOf(account,playlistId)) }
+
+    fun profiles(): List<UserProfile> = readableDatabase.rawQuery(
+        "SELECT id,name,avatar_color,is_kids,pin_hash,active FROM profiles ORDER BY CASE WHEN id='default' THEN 0 ELSE 1 END, created_at",
+        null,
+    ).use { c ->
+        buildList {
+            while (c.moveToNext()) {
+                add(UserProfile(c.getString(0), c.getString(1), c.getString(2), c.getInt(3) != 0, c.getString(4).isNotEmpty(), c.getInt(5) != 0))
+            }
+        }
+    }
+
+    fun activeProfile(): UserProfile = profiles().firstOrNull { it.active } ?: profiles().firstOrNull()
+        ?: UserProfile("default", "Ana Profil", "#FF4B45", active = true)
+
+    fun createProfile(name: String, avatarColor: String, isKids: Boolean, pin: String): UserProfile {
+        val clean = name.trim().take(60)
+        if (clean.isEmpty()) throw IptvException("Profil adı boş olamaz.")
+        val color = if (avatarColor.matches(Regex("^#[0-9A-Fa-f]{6}$"))) avatarColor else "#FF4B45"
+        val pinHash = ProfilePinHasher.hash(pin)
+        val id = "p_" + UUID.randomUUID().toString().replace("-", "").take(12)
+        writableDatabase.insertOrThrow("profiles", null, values("id" to id, "name" to clean, "avatar_color" to color, "is_kids" to if (isKids) 1 else 0, "pin_hash" to pinHash, "active" to 0, "created_at" to nowIso()))
+        return UserProfile(id, clean, color, isKids, pinHash.isNotEmpty(), false)
+    }
+
+    fun deleteProfile(account: String?, profileId: String) {
+        if (profileId == "default") throw IptvException("Ana profil silinemez.")
+        val current = activeProfile()
+        if (current.id == profileId) switchProfile(account, "default", "")
+        writableDatabase.delete("profiles", "id=?", arrayOf(profileId))
+        writableDatabase.delete("profile_snapshots", "profile_id=?", arrayOf(profileId))
+    }
+
+    fun switchProfile(account: String?, targetId: String, pin: String = ""): UserProfile {
+        val targetRow = readableDatabase.rawQuery("SELECT id,name,avatar_color,is_kids,pin_hash,active FROM profiles WHERE id=?", arrayOf(targetId)).use { c ->
+            if (!c.moveToFirst()) throw IptvException("Profil bulunamadı.")
+            Tuple6(c.getString(0), c.getString(1), c.getString(2), c.getInt(3) != 0, c.getString(4), c.getInt(5) != 0)
+        }
+        if (targetRow.fifth.isNotEmpty() && !ProfilePinHasher.verify(pin, targetRow.fifth)) {
+            throw IptvException("Profil PIN kodu hatalı.")
+        }
+        if (targetRow.sixth) return activeProfile()
+        transaction { db ->
+            val prevId = db.rawQuery("SELECT id FROM profiles WHERE active=1 LIMIT 1", null).use { if (it.moveToFirst()) it.getString(0) else "default" }
+            if (account != null) {
+                db.insertWithOnConflict("profile_snapshots", null, values("account" to account, "profile_id" to prevId, "data" to dumpSnapshot(db, account).toString()), SQLiteDatabase.CONFLICT_REPLACE)
+                for (table in listOf("playlist_items", "playlists", "favorites", "progress", "native_track_preferences")) {
+                    db.delete(table, "account=?", arrayOf(account))
+                }
+                val snapJson = db.rawQuery("SELECT data FROM profile_snapshots WHERE account=? AND profile_id=?", arrayOf(account, targetId)).use { if (it.moveToFirst()) it.getString(0) else null }
+                if (snapJson != null) restoreSnapshot(db, account, JSONObject(snapJson))
+            }
+            db.execSQL("UPDATE profiles SET active = CASE WHEN id = ? THEN 1 ELSE 0 END", arrayOf(targetId))
+        }
+        return activeProfile()
+    }
+
+    private fun dumpSnapshot(db: SQLiteDatabase, account: String): JSONObject {
+        val favs = org.json.JSONArray()
+        db.rawQuery("SELECT item_id,created_at FROM favorites WHERE account=?", arrayOf(account)).use { c ->
+            while (c.moveToNext()) favs.put(JSONObject().put("id", c.getString(0)).put("t", c.getString(1)))
+        }
+        val prog = org.json.JSONArray()
+        db.rawQuery("SELECT item_id,position,duration,completed,updated_at FROM progress WHERE account=?", arrayOf(account)).use { c ->
+            while (c.moveToNext()) prog.put(JSONObject().put("id", c.getString(0)).put("p", c.getDouble(1)).put("d", c.getDouble(2)).put("c", c.getInt(3)).put("u", c.getString(4)))
+        }
+        val lists = org.json.JSONArray()
+        db.rawQuery("SELECT id,name,created_at FROM playlists WHERE account=?", arrayOf(account)).use { c ->
+            while (c.moveToNext()) lists.put(JSONObject().put("id", c.getString(0)).put("n", c.getString(1)).put("t", c.getString(2)))
+        }
+        val listItems = org.json.JSONArray()
+        db.rawQuery("SELECT playlist_id,item_id,position FROM playlist_items WHERE account=?", arrayOf(account)).use { c ->
+            while (c.moveToNext()) listItems.put(JSONObject().put("lid", c.getString(0)).put("iid", c.getString(1)).put("pos", c.getInt(2)))
+        }
+        return JSONObject().put("favorites", favs).put("progress", prog).put("playlists", lists).put("playlistItems", listItems)
+    }
+
+    private fun restoreSnapshot(db: SQLiteDatabase, account: String, snap: JSONObject) {
+        snap.optJSONArray("favorites")?.let { arr ->
+            for (i in 0 until arr.length()) arr.optJSONObject(i)?.let {
+                db.insertWithOnConflict("favorites", null, values("account" to account, "item_id" to it.getString("id"), "created_at" to it.getString("t")), SQLiteDatabase.CONFLICT_IGNORE)
+            }
+        }
+        snap.optJSONArray("progress")?.let { arr ->
+            for (i in 0 until arr.length()) arr.optJSONObject(i)?.let {
+                db.insertWithOnConflict("progress", null, values("account" to account, "item_id" to it.getString("id"), "position" to it.getDouble("p"), "duration" to it.getDouble("d"), "completed" to (it.getInt("c") != 0), "updated_at" to it.getString("u")), SQLiteDatabase.CONFLICT_REPLACE)
+            }
+        }
+        snap.optJSONArray("playlists")?.let { arr ->
+            for (i in 0 until arr.length()) arr.optJSONObject(i)?.let {
+                db.insertWithOnConflict("playlists", null, values("account" to account, "id" to it.getString("id"), "name" to it.getString("n"), "created_at" to it.getString("t")), SQLiteDatabase.CONFLICT_IGNORE)
+            }
+        }
+        snap.optJSONArray("playlistItems")?.let { arr ->
+            for (i in 0 until arr.length()) arr.optJSONObject(i)?.let {
+                db.insertWithOnConflict("playlist_items", null, values("account" to account, "playlist_id" to it.getString("lid"), "item_id" to it.getString("iid"), "position" to it.getInt("pos")), SQLiteDatabase.CONFLICT_IGNORE)
+            }
+        }
+    }
+
+    private data class Tuple6(val first: String, val second: String, val third: String, val fourth: Boolean, val fifth: String, val sixth: Boolean)
 }

@@ -7,6 +7,7 @@ import android.media.AudioManager
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,6 +40,9 @@ data class PlaybackSnapshot(
     val subtitleTrackId: Int = -1,
     val audioPreference: Int? = null,
     val subtitlePreference: Int? = -1,
+    val playbackRate: Float = 1.0f,
+    val fillScreen: Boolean = false,
+    val subtitleDelayMs: Long = 0L,
 )
 
 /**
@@ -77,6 +81,7 @@ internal class NativePlaybackController(
     private var libVlc: LibVLC? = null
     private var player: MediaPlayer? = null
     private var layout: VLCVideoLayout? = null
+    private var openPfd: ParcelFileDescriptor? = null
     private var viewsAttached = false
     private var initialized = false
     private var sourceOpened = false
@@ -130,9 +135,18 @@ internal class NativePlaybackController(
         }, main)
         .build()
 
+    private fun isValidSource(url: String): Boolean {
+        val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return false
+        val scheme = uri.scheme?.lowercase(Locale.ROOT) ?: return false
+        return when (scheme) {
+            "http", "https" -> !uri.host.isNullOrBlank()
+            "content", "file" -> url.length > scheme.length + 3
+            else -> false
+        }
+    }
+
     fun attach(view: VLCVideoLayout) {
-        val uri = runCatching { Uri.parse(sourceUrl) }.getOrNull()
-        if (uri == null || uri.scheme?.lowercase(Locale.ROOT) !in listOf("http", "https") || uri.host.isNullOrBlank()) {
+        if (!isValidSource(sourceUrl)) {
             fail("Yayın adresi geçersiz. Hesap bağlantısını kontrol edin.")
             return
         }
@@ -225,8 +239,17 @@ internal class NativePlaybackController(
             val mp = player ?: return@command
             mp.setEventListener(null)
             if (sourceOpened) mp.stop()
+            runCatching { openPfd?.close() }; openPfd = null
             if (released || !foreground || generation != requestGeneration) return@command
-            val media = Media(requireNotNull(libVlc), Uri.parse(url))
+            val parsedUri = Uri.parse(url)
+            val media = if (parsedUri.scheme.equals("content", ignoreCase = true)) {
+                val pfd = appContext.contentResolver.openFileDescriptor(parsedUri, "r")
+                    ?: run { fail("Yerel video dosyası açılamadı."); return@command }
+                openPfd = pfd
+                Media(requireNotNull(libVlc), pfd.fileDescriptor)
+            } else {
+                Media(requireNotNull(libVlc), parsedUri)
+            }
             try {
                 media.setHWDecoderEnabled(true, false)
                 media.addOption(":network-caching=${if (isLive) 1400 else 3000}")
@@ -273,6 +296,9 @@ internal class NativePlaybackController(
                     refreshTracks()
                     applyPreferences()
                     applyPendingSeek()
+                    player?.rate = state.value.playbackRate
+                    player?.setVideoScale(if (state.value.fillScreen) MediaPlayer.ScaleType.SURFACE_FILL else MediaPlayer.ScaleType.SURFACE_BEST_FIT)
+                    if (state.value.subtitleDelayMs != 0L) player?.setSpuDelay(state.value.subtitleDelayMs * 1000L)
                     if (!userWantsPlayback || !foreground) player?.pause()
                 }
             }
@@ -510,6 +536,30 @@ internal class NativePlaybackController(
         return muted
     }
 
+    fun setPlaybackRate(rate: Float) {
+        val clamped = rate.coerceIn(0.5f, 2.0f)
+        mutableState.update { it.copy(playbackRate = clamped) }
+        command { player?.rate = clamped }
+    }
+
+    fun setFillScreen(fill: Boolean) {
+        mutableState.update { it.copy(fillScreen = fill) }
+        command { player?.setVideoScale(if (fill) MediaPlayer.ScaleType.SURFACE_FILL else MediaPlayer.ScaleType.SURFACE_BEST_FIT) }
+    }
+
+    fun setSubtitleDelayMs(delayMs: Long) {
+        val clamped = delayMs.coerceIn(-30_000L, 30_000L)
+        mutableState.update { it.copy(subtitleDelayMs = clamped) }
+        command { player?.setSpuDelay(clamped * 1000L) }
+    }
+
+    fun pausePlayback() {
+        userWantsPlayback = false
+        outputClock = PlaybackOutputClock()
+        command { player?.pause() }
+        audioManager.abandonAudioFocusRequest(focusRequest)
+    }
+
     fun retry() {
         if (released || !foreground) return
         errorRetries = 0
@@ -586,6 +636,7 @@ internal class NativePlaybackController(
         // Queue directly: normal commands intentionally skip work after release.
         nativeQueue.execute {
             runCatching { player?.setEventListener(null); player?.stop() }
+            runCatching { openPfd?.close() }; openPfd = null
             runCatching { player?.release() }
             runCatching { libVlc?.release() }
             player = null

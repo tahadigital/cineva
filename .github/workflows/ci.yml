@@ -1,0 +1,55 @@
+name: Cineva Multi-Platform CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  backend-and-web-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install optional media dependency
+        run: pip install -r requirements.txt
+      - name: Run Python Backend Unit & Integration Tests
+        run: python -m unittest discover -s tests
+      - name: Run Web Frontend Unit Tests
+        run: node --test tests/test_*.mjs
+
+  android-build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Run Android Unit Tests & Build APK
+        working-directory: android
+        run: ./gradlew :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin :app:assembleRelease
+
+  windows-desktop-package:
+    runs-on: windows-latest
+    needs: backend-and-web-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build Standalone Windows Executable
+        run: |
+          pip install pyinstaller imageio-ffmpeg
+          pyinstaller windows\cineva.spec
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cineva-Windows
+          path: dist/Cineva.exe
