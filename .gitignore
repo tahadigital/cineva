@@ -1,6 +1,9 @@
 .venv/
 /data/
 /cloud_data/
+.netlify/
+website/.netlify/
+website/node_modules/
 __pycache__/
 *.py[cod]
 .DS_Store

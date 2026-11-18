@@ -26,6 +26,7 @@ class CloudAdminHTTPTests(unittest.TestCase):
             Path(cls.temp.name),
             admin_email='owner@cineva.app',
             admin_password='AdminStrongPass!2026',
+            admin_gate_key='test-gate-secret-key',
         )
         cls.httpd = ThreadingHTTPServer(('127.0.0.1', 0), cloud_admin.make_handler(cls.service))
         cls.port = cls.httpd.server_address[1]
@@ -38,21 +39,25 @@ class CloudAdminHTTPTests(unittest.TestCase):
         cls.httpd.server_close()
         cls.temp.cleanup()
 
-    def req(self, method: str, path: str, body: dict | None = None, *, token: str = '', raw: bool = False):
-        headers = {}
+    def req(self, method: str, path: str, body: dict | None = None, *, token: str = '', raw: bool = False, headers: dict | None = None, gate: bool = True):
+        req_headers = {}
         if token:
-            headers['Authorization'] = f'Bearer {token}'
+            req_headers['Authorization'] = f'Bearer {token}'
+        if gate:
+            req_headers['X-Admin-Gate'] = 'test-gate-secret-key'
+        if headers:
+            req_headers.update(headers)
         data = None
         if body is not None:
             data = json.dumps(body).encode('utf-8')
-            headers['Content-Type'] = 'application/json'
+            req_headers['Content-Type'] = 'application/json'
         conn = http.client.HTTPConnection('127.0.0.1', self.port, timeout=10)
         try:
-            conn.request(method, path, body=data, headers=headers)
+            conn.request(method, path, body=data, headers=req_headers)
             resp = conn.getresponse()
             raw_bytes = resp.read()
             if raw:
-                return resp.status, raw_bytes.decode('utf-8', errors='replace')
+                return resp.status, raw_bytes.decode('utf-8', errors='replace'), dict(resp.getheaders())
             return resp.status, (json.loads(raw_bytes.decode('utf-8')) if raw_bytes else None)
         finally:
             conn.close()
@@ -60,13 +65,32 @@ class CloudAdminHTTPTests(unittest.TestCase):
     def test_1_static_website_routes_and_download_tracking(self):
         for route, needle in (
             ('/', 'Cineva'),
-            ('/admin', 'Yönetici Girişi'),
             ('/privacy', 'Gizlilik Politikası'),
             ('/terms', 'Kullanım Koşulları'),
         ):
-            code, html = self.req('GET', route, raw=True)
+            code, html, _ = self.req('GET', route, raw=True, gate=False)
             self.assertEqual(code, 200, route)
             self.assertIn(needle, html)
+
+        # Public homepage hides /admin links
+        _, home_html, _ = self.req('GET', '/', raw=True, gate=False)
+        self.assertNotIn('href="/admin"', home_html)
+
+        # Admin routes stay hidden (404) without valid gate key/cookie
+        for locked in ('/admin', '/admin/', '/admin.html', '/api/v1/admin/overview'):
+            code_blocked, _, _ = self.req('GET', locked, raw=True, gate=False)
+            self.assertEqual(code_blocked, 404, locked)
+
+        # Opening secret access URL sets HttpOnly gate cookie and reveals Admin login
+        code_redir, _, redir_hdrs = self.req('GET', '/admin?access=test-gate-secret-key', raw=True, gate=False)
+        self.assertEqual(code_redir, 302)
+        set_cookie = next((v for k, v in redir_hdrs.items() if k.lower() == 'set-cookie'), '')
+        self.assertIn('cineva_admin_gate=', set_cookie)
+        cookie_pair = set_cookie.split(';', 1)[0]
+
+        code_adm, adm_html, _ = self.req('GET', '/admin', raw=True, gate=False, headers={'Cookie': cookie_pair})
+        self.assertEqual(code_adm, 200)
+        self.assertIn('Yönetici Girişi', adm_html)
 
         code, track1 = self.req('POST', '/api/v1/downloads/track', {'target': 'windows-installer'})
         self.assertEqual(code, 200)
@@ -152,12 +176,16 @@ class CloudAdminHTTPTests(unittest.TestCase):
         c_login_blocked, _ = self.req('POST', '/api/v1/auth/login', {'email': 'ali@example.com', 'password': 'UserPass123!'})
         self.assertEqual(c_login_blocked, 403)
 
-        # Admin upgrades to lifetime, reactivates, removes 1 device, issues reset token & sets announcement
+        # Admin upgrades to lifetime, reactivates, tests admin role invite/revoke, removes 1 device, issues reset token & sets announcement
         c_react, react_res = self.req('PATCH', f'/api/v1/admin/users/{uid}', {
-            'status': 'active', 'plan': 'lifetime', 'maxDevices': 5,
+            'status': 'active', 'plan': 'lifetime', 'maxDevices': 5, 'role': 'admin',
         }, token=admin_token)
         self.assertEqual(c_react, 200)
         self.assertEqual(react_res['user']['effectivePlan'], 'lifetime')
+        self.assertEqual(react_res['user']['role'], 'admin')
+        c_demote, demote_res = self.req('PATCH', f'/api/v1/admin/users/{uid}', {'role': 'user'}, token=admin_token)
+        self.assertEqual(c_demote, 200)
+        self.assertEqual(demote_res['user']['role'], 'user')
 
         c_rm_dev, _ = self.req('DELETE', f'/api/v1/admin/users/{uid}/devices/d0', token=admin_token)
         self.assertEqual(c_rm_dev, 200)

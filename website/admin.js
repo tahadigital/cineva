@@ -76,6 +76,7 @@
     document.getElementById('euName').value = user.displayName;
     document.getElementById('euPlan').value = user.plan;
     document.getElementById('euStatus').value = user.status;
+    document.getElementById('euRole').value = user.role || 'user';
     document.getElementById('euMaxDev').value = user.maxDevices;
     document.getElementById('euAddDays').value = '';
     document.getElementById('euNote').value = user.adminNote || '';
@@ -171,6 +172,7 @@
         displayName: document.getElementById('euName').value.trim(),
         plan: document.getElementById('euPlan').value,
         status: document.getElementById('euStatus').value,
+        role: document.getElementById('euRole').value,
         maxDevices: Number(document.getElementById('euMaxDev').value) || 2,
         adminNote: document.getElementById('euNote').value,
       };

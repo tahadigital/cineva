@@ -20,7 +20,6 @@ import unicodedata
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 TMDB_API = 'https://api.themoviedb.org/3'
 TMDB_IMG = 'https://image.tmdb.org/t/p/w780'
@@ -123,7 +122,7 @@ def refresh(directory, api_key=None, language='tr-TR'):
         old = _memory or {}
         metas = {m['id']: m for m in old.get('metas', []) if m.get('id')}
         charts = []
-        week_date = dt.datetime.now(ZoneInfo('UTC')).date().isoformat()
+        week_date = dt.datetime.now(dt.timezone.utc).date().isoformat()
         specs = [('movie', 'trending/movie/week'), ('tv', 'trending/tv/week'), ('movie', 'movie/popular'), ('tv', 'tv/popular')]
 
         def fetch(spec):
@@ -192,7 +191,7 @@ def genres(item):
 
 
 def build(catalog, history, feed, today=None):
-    today = today or dt.datetime.now(ZoneInfo('UTC')).date()
+    today = today or dt.datetime.now(dt.timezone.utc).date()
     candidates = [dict(i) for i in catalog if i['kind'] in ('vod', 'series')]
     index = {}
     for item in candidates:

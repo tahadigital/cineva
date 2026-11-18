@@ -12,9 +12,12 @@ import threading
 import time
 import unicodedata
 import xml.etree.ElementTree as ET
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-ZONE = ZoneInfo('Europe/Istanbul')
+try:
+    ZONE = ZoneInfo('Europe/Istanbul')
+except ZoneInfoNotFoundError:
+    ZONE = dt.timezone(dt.timedelta(hours=3))
 MAX_PAGE = 8 * 1024 * 1024
 FRESH = 15 * 60
 MAX_STALE = 12 * 60 * 60

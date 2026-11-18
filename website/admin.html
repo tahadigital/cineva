@@ -165,12 +165,13 @@
         </div>
         <div class="field-row">
           <div class="field"><label for="euStatus">Hesap Durumu</label><select id="euStatus"><option value="active">Aktif</option><option value="suspended">Askıya Alındı</option></select></div>
-          <div class="field"><label for="euMaxDev">Maksimum Cihaz</label><input id="euMaxDev" type="number" min="1" max="50"></div>
+          <div class="field"><label for="euRole">Yetki Rolü</label><select id="euRole"><option value="user">Standart Kullanıcı</option><option value="admin">Yetkili Yönetici (Admin)</option></select></div>
         </div>
         <div class="field-row">
+          <div class="field"><label for="euMaxDev">Maksimum Cihaz</label><input id="euMaxDev" type="number" min="1" max="50"></div>
           <div class="field"><label for="euAddDays">Süre Ekle (Gün — boş bırakılabilir)</label><input id="euAddDays" type="number" min="1" max="3650" placeholder="Örneğin: 30"></div>
-          <div class="field"><label for="euNote">Yönetici Notu</label><input id="euNote" placeholder="VIP / Destek notu"></div>
         </div>
+        <div class="field"><label for="euNote">Yönetici Notu</label><input id="euNote" placeholder="VIP / Destek notu"></div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0">
           <button class="btn" type="submit">Değişiklikleri Kaydet</button>
           <button id="euResetBtn" class="btn secondary" type="button">Şifre Sıfırlama Kodu Üret</button>

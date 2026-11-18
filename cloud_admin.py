@@ -14,6 +14,7 @@ import contextlib
 import datetime as dt
 import hashlib
 import hmac
+import http.cookies
 import json
 import mimetypes
 import os
@@ -32,6 +33,7 @@ WEBSITE = ROOT / 'website'
 MAX_JSON = 512 * 1024
 PLANS = ('free', 'pro', 'family', 'lifetime')
 STATUSES = ('active', 'suspended')
+ROLES = ('user', 'admin')
 EMAIL_RE = re.compile(r'^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,24}$')
 
 
@@ -61,6 +63,7 @@ class CloudService:
         secret_key: str = '',
         admin_email: str = '',
         admin_password: str = '',
+        admin_gate_key: str = '',
     ):
         self.data_dir = Path(data_dir).resolve()
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -68,10 +71,45 @@ class CloudService:
             os.chmod(self.data_dir, 0o700)
         self.db_path = self.data_dir / 'cloud.sqlite3'
         self.secret = self._load_or_create_secret(secret_key)
+        self.admin_gate_key = self._load_gate_key(admin_gate_key)
         self._lock = threading.Lock()
         self._rate_limits: dict[str, list[float]] = collections.defaultdict(list)
         self._init_schema()
         self.bootstrap_admin_password: str | None = self._ensure_admin(admin_email, admin_password)
+
+    def _load_gate_key(self, explicit: str) -> str:
+        clean = explicit.strip()
+        if clean and clean != '__auto__':
+            return clean
+        if clean != '__auto__':
+            return ''
+        gate_file = self.data_dir / 'admin_gate.key'
+        if gate_file.exists():
+            raw = gate_file.read_text(encoding='utf-8').strip()
+            if raw:
+                return raw
+        generated = secrets.token_urlsafe(18)
+        fd = os.open(gate_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            f.write(generated)
+        return generated
+
+    def sign_gate_cookie(self, ttl_seconds: int = 12 * 3600) -> str:
+        exp = str(int(time.time()) + ttl_seconds)
+        sig = hmac.new(self.secret, ('gate:' + exp).encode('ascii'), hashlib.sha256).hexdigest()
+        return f'{exp}.{sig}'
+
+    def verify_gate_cookie(self, value: str) -> bool:
+        if not value or '.' not in value:
+            return False
+        try:
+            exp_s, sig_hex = value.strip().split('.', 1)
+            if int(exp_s) < int(time.time()):
+                return False
+            expected = hmac.new(self.secret, ('gate:' + exp_s).encode('ascii'), hashlib.sha256).hexdigest()
+            return hmac.compare_digest(sig_hex, expected)
+        except (ValueError, TypeError):
+            return False
 
     def _load_or_create_secret(self, explicit: str) -> bytes:
         clean = explicit.strip()
@@ -487,6 +525,11 @@ class CloudService:
             status = str(patch.get('status', old['status'])).strip().lower()
             if status not in STATUSES:
                 raise ValueError('Geçersiz hesap durumu.')
+            role = str(patch.get('role', old['role'])).strip().lower()
+            if role not in ROLES:
+                raise ValueError('Geçersiz rol.')
+            if old['id'] == actor['id'] and role != 'admin':
+                raise ValueError('Kendi yönetici rolünüzü kaldıramazsınız.')
             max_devices = max(1, min(50, int(patch.get('maxDevices', old['max_devices']))))
             display_name = (str(patch.get('displayName', old['display_name'])).strip() or old['display_name'])[:80]
             admin_note = str(patch.get('adminNote', old['admin_note'] or ''))[:500]
@@ -503,12 +546,12 @@ class CloudService:
             if plan == 'lifetime':
                 expires_at = ''
             c.execute(
-                'UPDATE users SET plan=?,status=?,max_devices=?,display_name=?,admin_note=?,expires_at=? WHERE id=?',
-                (plan, status, max_devices, display_name, admin_note, expires_at, user_id),
+                'UPDATE users SET plan=?,status=?,role=?,max_devices=?,display_name=?,admin_note=?,expires_at=? WHERE id=?',
+                (plan, status, role, max_devices, display_name, admin_note, expires_at, user_id),
             )
             self._audit(c, actor, 'user.update', 'user', user_id, {
-                'old': {'plan': old['plan'], 'status': old['status'], 'maxDevices': old['max_devices']},
-                'new': {'plan': plan, 'status': status, 'maxDevices': max_devices, 'expiresAt': expires_at},
+                'old': {'plan': old['plan'], 'status': old['status'], 'role': old['role'], 'maxDevices': old['max_devices']},
+                'new': {'plan': plan, 'status': status, 'role': role, 'maxDevices': max_devices, 'expiresAt': expires_at},
             })
             updated = c.execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
             devs = [dict(d) for d in c.execute('SELECT device_id AS id,device_name AS name,platform,last_seen_at AS lastSeenAt FROM devices WHERE user_id=?', (user_id,))]
@@ -654,7 +697,7 @@ def make_handler(service: CloudService, cors_origin: str = ''):
                 return None
             return u
 
-        def _serve_static(self, rel_path: str) -> None:
+        def _serve_static(self, rel_path: str, extra_headers: dict | None = None) -> None:
             target = (WEBSITE / rel_path.lstrip('/')).resolve()
             if not target.is_relative_to(WEBSITE.resolve()) or not target.is_file():
                 self._json({'error': 'Sayfa bulunamadı.'}, 404)
@@ -668,8 +711,25 @@ def make_handler(service: CloudService, cors_origin: str = ''):
             self.send_header('Content-Length', str(len(raw)))
             self.send_header('X-Content-Type-Options', 'nosniff')
             self.send_header('X-Frame-Options', 'DENY')
+            for k, v in (extra_headers or {}).items():
+                self.send_header(k, str(v))
             self.end_headers()
             self.wfile.write(raw)
+
+        def _has_admin_gate(self) -> bool:
+            if not service.admin_gate_key:
+                return True
+            hdr = self.headers.get('X-Admin-Gate', '').strip()
+            if hdr and hmac.compare_digest(hdr, service.admin_gate_key):
+                return True
+            try:
+                cookies = http.cookies.SimpleCookie(self.headers.get('Cookie', ''))
+                gate = cookies.get('cineva_admin_gate')
+                if gate and service.verify_gate_cookie(gate.value):
+                    return True
+            except http.cookies.CookieError:
+                pass
+            return False
 
         def do_OPTIONS(self):
             self.send_response(204)
@@ -694,6 +754,8 @@ def make_handler(service: CloudService, cors_origin: str = ''):
                         return
                     return self._json({'user': service.get_user_by_id(user['id'], include_devices=True)})
                 if p.startswith('/api/v1/admin/'):
+                    if not self._has_admin_gate():
+                        return self._json({'error': 'Sayfa bulunamadı.'}, 404)
                     admin = self._require_admin()
                     if not admin:
                         return
@@ -719,7 +781,21 @@ def make_handler(service: CloudService, cors_origin: str = ''):
                 if p in ('/', '/index.html'):
                     return self._serve_static('index.html')
                 if p in ('/admin', '/admin/', '/admin.html'):
-                    return self._serve_static('admin.html')
+                    if service.admin_gate_key:
+                        access = q.get('access', [''])[0].strip()
+                        if access and hmac.compare_digest(access, service.admin_gate_key):
+                            cookie_val = service.sign_gate_cookie()
+                            self.send_response(302)
+                            self.send_header('Location', '/admin')
+                            self.send_header('Set-Cookie', f'cineva_admin_gate={cookie_val}; Path=/; HttpOnly; SameSite=Strict; Max-Age=43200')
+                            self.send_header('Cache-Control', 'no-store')
+                            self.send_header('X-Robots-Tag', 'noindex, nofollow')
+                            self.send_header('Content-Length', '0')
+                            self.end_headers()
+                            return
+                        if not self._has_admin_gate():
+                            return self._json({'error': 'Sayfa bulunamadı.'}, 404)
+                    return self._serve_static('admin.html', {'X-Robots-Tag': 'noindex, nofollow', 'Cache-Control': 'no-store'})
                 if p == '/privacy':
                     return self._serve_static('privacy.html')
                 if p == '/terms':
@@ -773,6 +849,8 @@ def make_handler(service: CloudService, cors_origin: str = ''):
                     updated = service.redeem_license(user, body.get('code', ''))
                     return self._json({'ok': True, 'user': updated})
                 if p.startswith('/api/v1/admin/'):
+                    if not self._has_admin_gate():
+                        return self._json({'error': 'Sayfa bulunamadı.'}, 404)
                     admin = self._require_admin()
                     if not admin:
                         return
@@ -821,6 +899,7 @@ def main() -> int:
         secret_key=os.environ.get('CINEVA_CLOUD_SECRET', ''),
         admin_email=os.environ.get('CINEVA_ADMIN_EMAIL', ''),
         admin_password=os.environ.get('CINEVA_ADMIN_PASSWORD', ''),
+        admin_gate_key=os.environ.get('CINEVA_ADMIN_GATE_KEY', '__auto__'),
     )
     server = ThreadingHTTPServer((args.host, args.port), make_handler(service, os.environ.get('CINEVA_CORS_ORIGIN', '')))
     server.daemon_threads = True
@@ -831,8 +910,11 @@ def main() -> int:
     signal.signal(signal.SIGINT, stop)
     signal.signal(signal.SIGTERM, stop)
 
-    print(f'Cineva Portal & Yönetim Paneli hazır: http://{args.host}:{args.port}/', flush=True)
-    print(f'Admin Paneli: http://{args.host}:{args.port}/admin', flush=True)
+    print(f'Cineva Portal hazır: http://{args.host}:{args.port}/', flush=True)
+    if service.admin_gate_key:
+        print(f'Gizli Yönetim Paneli Bağlantısı: http://{args.host}:{args.port}/admin?access={service.admin_gate_key}', flush=True)
+    else:
+        print(f'Admin Paneli: http://{args.host}:{args.port}/admin', flush=True)
     if service.bootstrap_admin_password:
         print(f'[İLK KURULUM] Yönetici E-posta: admin@cineva.app | Geçici Parola: {service.bootstrap_admin_password}', flush=True)
     try:

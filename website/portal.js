@@ -70,7 +70,7 @@
     try { await req('/api/v1/downloads/track', { method: 'POST', body: { target } }); loadConfig(); } catch {}
     const box = document.getElementById('downloadNotice');
     box.hidden = false;
-    box.innerHTML = `İndirme başlatılıyor: <a href="${esc(url)}" style="color:var(--amber);text-decoration:underline">${esc(url)}</a> <br><small style="color:var(--muted)">(Henüz <code>v2.0.0</code> etiketi GitHub'a pushlanmadıysa derleme tamamlanana kadar dosya bulunamadı uyarısı görebilirsiniz.)</small>`;
+    box.innerHTML = `İndirme başlatılıyor: <a href="${esc(url)}" style="color:var(--amber);text-decoration:underline">${esc(url)}</a>`;
     window.location.href = url;
   }
 

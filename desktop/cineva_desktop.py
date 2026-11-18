@@ -117,7 +117,6 @@ def main() -> int:
                     shutil.rmtree(profile_dir, ignore_errors=True)
             else:
                 webbrowser.open(base_url + '/')
-                print(f'Cineva çalışıyor: {base_url}/ (Kapatmak için Ctrl+C)')
                 return server_proc.wait()
         except KeyboardInterrupt:
             return 0
