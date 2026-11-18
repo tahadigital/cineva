@@ -31,15 +31,15 @@
       <form id="adminLoginForm">
         <div class="field">
           <label for="adminEmail">Yönetici E-postası</label>
-          <input id="adminEmail" type="email" required value="admin@cineva.app">
+          <input id="adminEmail" type="email" required autocomplete="username" placeholder="E-posta adresiniz">
         </div>
         <div class="field">
           <label for="adminPassword">Parola</label>
-          <input id="adminPassword" type="password" required placeholder="Başlangıç parolası terminalde veya ortam değişkenindedir">
+          <input id="adminPassword" type="password" required autocomplete="current-password" placeholder="••••••••">
         </div>
         <div class="field">
           <label for="adminApiUrl">Sunucu Adresi (Aynı sunucudaysa boş bırakın)</label>
-          <input id="adminApiUrl" placeholder="http://127.0.0.1:8899">
+          <input id="adminApiUrl" placeholder="İsteğe bağlı özel sunucu adresi">
         </div>
         <div id="adminLoginErr" class="error-msg"></div>
         <button class="btn" type="submit" style="width:100%">Panele Gir</button>
