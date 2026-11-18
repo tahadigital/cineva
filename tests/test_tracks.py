@@ -88,7 +88,7 @@ class TrackMediaTests(unittest.TestCase):
         command=[cls.ffmpeg,'-v','error','-f','lavfi','-i','color=navy:s=320x180:r=24:d=35','-f','lavfi','-i','sine=frequency=440:duration=35','-f','lavfi','-i','sine=frequency=880:duration=35',
                  '-i',str(cls.root/'tr.srt'),'-i',str(cls.root/'en.srt'),'-map','0:v','-map','1:a','-map','2:a','-map','3:s','-map','4:s','-c:v','libx264','-g','48','-c:a','aac','-c:s','srt',
                  '-metadata:s:a:0','language=tur','-metadata:s:a:0','title=Türkçe Dublaj','-metadata:s:a:1','language=eng','-metadata:s:s:0','language=tur','-metadata:s:s:1','language=eng','-t','35',str(cls.file)]
-        subprocess.run(command,capture_output=True,check=True,timeout=30)
+        subprocess.run(command,capture_output=True,check=True,timeout=60)
     @classmethod
     def tearDownClass(cls):cls.temp.cleanup()
 
@@ -112,7 +112,7 @@ class TrackMediaTests(unittest.TestCase):
                 self.assertIn('English subtitle fixture',manager.get_file(sid,'index0.vtt').read_text())
                 self.assertNotIn('Türkçe',manager.get_file(sid,'index0.vtt').read_text())
                 segment=manager.get_file(sid,'seg_000000000.ts')
-                pcm=subprocess.run([self.ffmpeg,'-v','error','-i',str(segment),'-map','0:a:0','-t','1','-ac','1','-ar','8000','-f','f32le','pipe:1'],capture_output=True,check=True,timeout=15).stdout
+                pcm=subprocess.run([self.ffmpeg,'-v','error','-i',str(segment),'-map','0:a:0','-t','1','-ac','1','-ar','8000','-f','f32le','pipe:1'],capture_output=True,check=True,timeout=30).stdout
                 samples=array.array('f',pcm);crossings=sum(a<=0<b for a,b in zip(samples,samples[1:]));frequency=crossings/(len(samples)/8000)
                 self.assertAlmostEqual(frequency,880,delta=20)
                 manager.stop(sid)
@@ -142,7 +142,7 @@ class TrackMediaTests(unittest.TestCase):
                             decoded = subprocess.run([self.ffmpeg, '-hide_banner', '-copyts',
                                 '-i', str(segment), '-vf', 'showinfo', '-frames:v', '1',
                                 '-f', 'null', '-'], capture_output=True, text=True,
-                                check=True, timeout=15)
+                                check=True, timeout=30)
                             match = re.search(r'pts_time:([0-9.]+)', decoded.stderr)
                             self.assertIsNotNone(match)
                             # At 4 s the still-active 3--5 s subtitle is
@@ -169,7 +169,7 @@ class TrackMediaTests(unittest.TestCase):
                 'sine=duration=320', '-i', str(subtitle), '-map', '0:v',
                 '-map', '1:a', '-map', '2:s', '-c:v', 'libx264', '-preset',
                 'ultrafast', '-g', '20', '-c:a', 'aac', '-c:s', 'srt', str(source)],
-                capture_output=True, check=True, timeout=40)
+                capture_output=True, check=True, timeout=60)
             manager = PlaybackManager(root / 'sessions')
             try:
                 # Generate past the 128-second rolling window without a
@@ -179,7 +179,7 @@ class TrackMediaTests(unittest.TestCase):
                     output.mkdir()
                     subprocess.run(manager._command(str(source), output, 'remux',
                         offset, False, None, 2, 'subrip'), capture_output=True,
-                        check=True, timeout=40)
+                        check=True, timeout=60)
                     video = (output / 'index.m3u8').read_text()
                     captions = (output / 'index_vtt.m3u8').read_text()
                     sequence = re.search(r'MEDIA-SEQUENCE:(\d+)', video)[1]

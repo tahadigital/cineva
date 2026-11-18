@@ -1,6 +1,8 @@
 # Windows PyInstaller Build Spec for standalone Cineva.exe
 # Usage on Windows: pyinstaller windows\cineva.spec
 
+from PyInstaller.utils.hooks import collect_data_files
+
 block_cipher = None
 
 a = Analysis(
@@ -16,6 +18,7 @@ a = Analysis(
         ('../m3u.py', '.'),
         ('../local_media.py', '.'),
         ('../legal', 'legal'),
+        *collect_data_files('imageio_ffmpeg'),
     ],
     hiddenimports=['imageio_ffmpeg', 'server', 'playback', 'discovery', 'sports', 'm3u', 'local_media'],
     hookspath=[],

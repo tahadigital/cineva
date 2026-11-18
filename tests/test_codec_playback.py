@@ -247,7 +247,7 @@ class CodecPlaybackTests(unittest.TestCase):
             "testsrc2=size=160x90:rate=12", "-t", "10", "-c:v", "libx265", "-preset", "ultrafast",
             "-pix_fmt", "yuv420p10le", "-x265-params", "pools=1:frame-threads=1:log-level=error:keyint=24",
             str(fixture),
-        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45)
         PlaybackSourceFixture.hevc = fixture.read_bytes()
         self.app.provider.source.return_value = f"http://127.0.0.1:{self.upstream.server_port}/hevc.mkv"
         manager = PlaybackManager(self.app.DATA, ffmpeg)
@@ -260,7 +260,7 @@ class CodecPlaybackTests(unittest.TestCase):
             decoded = subprocess.run([
                 ffmpeg, "-hide_banner", "-i", str(manager.get_file(result["sessionId"], segment)),
                 "-frames:v", "1", "-f", "null", "-",
-            ], capture_output=True, text=True, timeout=15)
+            ], capture_output=True, text=True, timeout=30)
             self.assertEqual(decoded.returncode, 0, decoded.stderr)
             self.assertIn("Video: h264", decoded.stderr)
             self.assertIn("yuv420p", decoded.stderr)

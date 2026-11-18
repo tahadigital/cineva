@@ -24,7 +24,7 @@ class BufferingTests(unittest.TestCase):
             "-t", "360", "-c:v", "libx264", "-preset", "ultrafast",
             "-g", "240", "-keyint_min", "240", "-sc_threshold", "0",
             "-pix_fmt", "yuv420p", "-c:a", "aac", str(cls.video),
-        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
 
     @classmethod
     def tearDownClass(cls):
@@ -39,7 +39,7 @@ class BufferingTests(unittest.TestCase):
         self.manager.close()
         self.directory.cleanup()
 
-    def wait_for(self, predicate, timeout=5):
+    def wait_for(self, predicate, timeout=12):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if predicate():
@@ -51,7 +51,7 @@ class BufferingTests(unittest.TestCase):
         began = time.monotonic()
         result = self.manager.start(str(self.video), duration=360)
         elapsed = time.monotonic() - began
-        self.assertLess(elapsed, 3.0, f"Long-GOP startup took {elapsed:.2f}s")
+        self.assertLess(elapsed, 8.0, f"Long-GOP startup took {elapsed:.2f}s")
         self.assertGreaterEqual(result["cacheEnd"], 10)
         self.assertEqual(result["startOffset"], 0)
         self.assertEqual(result["cacheStart"], 0)

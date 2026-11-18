@@ -32,7 +32,7 @@ android {
         debug { if (signingProperties.isNotEmpty()) signingConfig = signingConfigs.getByName("personal") }
         release {
             isMinifyEnabled = false
-            if (signingProperties.isNotEmpty()) signingConfig = signingConfigs.getByName("personal")
+            signingConfig = if (signingProperties.isNotEmpty()) signingConfigs.getByName("personal") else signingConfigs.getByName("debug")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

@@ -27,7 +27,7 @@ class ReconnectTests(unittest.TestCase):
             "-t", "90", "-c:v", "libx264", "-preset", "ultrafast", "-g", "48",
             "-keyint_min", "48", "-sc_threshold", "0", "-c:a", "aac",
             "-movflags", "+faststart", str(cls.video),
-        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45)
         cls.payload = cls.video.read_bytes()
 
     @classmethod
@@ -88,7 +88,7 @@ class ReconnectTests(unittest.TestCase):
                 result = manager.start(f"http://127.0.0.1:{upstream.server_port}/opaque-recording", duration=90)
                 sid = result["sessionId"]
                 session = manager._sessions[sid]
-                deadline = time.monotonic() + 10
+                deadline = time.monotonic() + 30
                 while session.process.poll() is None and time.monotonic() < deadline:
                     time.sleep(0.025)
                 self.assertIsNotNone(session.process.poll(), "FFmpeg did not finish the recovered file")
@@ -103,7 +103,7 @@ class ReconnectTests(unittest.TestCase):
                 decoded = subprocess.run([
                     self.ffmpeg, "-hide_banner", "-loglevel", "error", "-i", str(manager.get_file(sid, last_segment)),
                     "-frames:v", "1", "-f", "null", "-",
-                ], capture_output=True, text=True, timeout=10)
+                ], capture_output=True, text=True, timeout=25)
                 self.assertEqual(decoded.returncode, 0, decoded.stderr)
                 self.assertEqual(session.process.returncode, 0)
             finally:

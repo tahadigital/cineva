@@ -105,9 +105,6 @@ def find_ffmpeg(explicit: str | None = None) -> str | None:
         explicit,
         os.environ.get("FFMPEG_PATH"),
         os.environ.get("IMAGEIO_FFMPEG_EXE"),
-        "ffmpeg",
-        "/opt/homebrew/bin/ffmpeg",
-        "/usr/local/bin/ffmpeg",
     ]
     try:
         spec = importlib.util.find_spec("imageio_ffmpeg")
@@ -118,6 +115,11 @@ def find_ffmpeg(explicit: str | None = None) -> str | None:
         pass
     project = Path(__file__).resolve().parent
     candidates.extend(sorted(project.glob(".venv/lib/python*/site-packages/imageio_ffmpeg/binaries/ffmpeg-*")))
+    candidates.extend([
+        "ffmpeg",
+        "/opt/homebrew/bin/ffmpeg",
+        "/usr/local/bin/ffmpeg",
+    ])
     for candidate in candidates:
         resolved = _executable(candidate)
         if resolved:
