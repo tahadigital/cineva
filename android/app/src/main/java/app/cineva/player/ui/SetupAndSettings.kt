@@ -28,6 +28,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.cineva.player.data.CloudAccountState
 
 @Composable
 fun AkisSetupScreen(
@@ -213,6 +214,11 @@ fun AkisSettingsScreen(
     onSync: () -> Unit,
     onLogout: () -> Unit,
     versionName: String = "2.0.0",
+    cloudState: CloudAccountState = CloudAccountState(),
+    onCloudAuth: (url: String, email: String, password: String, register: Boolean) -> Unit = { _, _, _, _ -> },
+    onCloudRedeem: (code: String) -> Unit = {},
+    onCloudRefresh: () -> Unit = {},
+    onCloudLogout: () -> Unit = {},
 ) {
     val context = LocalContext.current
     var confirmLogout by remember { mutableStateOf(false) }
@@ -250,6 +256,35 @@ fun AkisSettingsScreen(
                     }
                     TextButton(onClick = onSync, modifier = Modifier.fillMaxWidth()) {
                         Icon(Icons.Outlined.Devices, null, Modifier.size(19.dp)); Spacer(Modifier.width(8.dp)); Text("Masaüstü ile eşitle")
+                    }
+                }
+                SettingsCard("Cineva Hesabı & Pro Lisans (İsteğe Bağlı)", "Yalnızca plan ve cihaz limiti senkronize edilir; M3U adresiniz cihazda kalır.") {
+                    if (cloudState.announcementMessage.isNotBlank()) {
+                        Text("${cloudState.announcementTitle}: ${cloudState.announcementMessage}", color = CinevaRed, style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (cloudState.signedIn) {
+                        var licenseInput by remember { mutableStateOf("") }
+                        Text("${cloudState.displayName} (${cloudState.email})", fontWeight = FontWeight.SemiBold)
+                        Text("Plan: ${cloudState.plan.uppercase()} · Durum: ${cloudState.status} · Max Cihaz: ${cloudState.maxDevices}", color = CinevaMuted, style = MaterialTheme.typography.bodySmall)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(value = licenseInput, onValueChange = { licenseInput = it }, label = { Text("Lisans Kodu") }, placeholder = { Text("CINEVA-...") }, singleLine = true, modifier = Modifier.weight(1f))
+                            Button(onClick = { if (licenseInput.isNotBlank()) { onCloudRedeem(licenseInput); licenseInput = "" } }) { Text("Aç") }
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            TextButton(onClick = onCloudRefresh) { Text("Planı Yenile") }
+                            TextButton(onClick = onCloudLogout) { Text("Hesaptan Çık", color = MaterialTheme.colorScheme.error) }
+                        }
+                    } else {
+                        var cloudUrl by rememberSaveable { mutableStateOf(cloudState.cloudUrl.ifBlank { "http://127.0.0.1:8899" }) }
+                        var clEmail by rememberSaveable { mutableStateOf("") }
+                        var clPass by remember { mutableStateOf("") }
+                        OutlinedTextField(value = cloudUrl, onValueChange = { cloudUrl = it }, label = { Text("Portal Sunucu Adresi") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(value = clEmail, onValueChange = { clEmail = it }, label = { Text("E-posta") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(value = clPass, onValueChange = { clPass = it }, label = { Text("Parola") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth())
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = { onCloudAuth(cloudUrl, clEmail, clPass, false) }, enabled = clEmail.isNotBlank() && clPass.length >= 8, modifier = Modifier.weight(1f)) { Text("Giriş") }
+                            OutlinedButton(onClick = { onCloudAuth(cloudUrl, clEmail, clPass, true) }, enabled = clEmail.isNotBlank() && clPass.length >= 8, modifier = Modifier.weight(1f)) { Text("Kayıt Ol") }
+                        }
                     }
                 }
                 SettingsCard("Yasal Bilgiler & Lisanslar", "Gizlilik, kullanım koşulları ve açık kaynak bildirimleri.") {

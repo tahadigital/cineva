@@ -33,7 +33,9 @@ data class PlayingItem(
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     val repository = AkisRepository(application)
+    val cloudClient = CloudClient(application)
     val account = repository.account
+    var cloudState by mutableStateOf(cloudClient.current()); private set
     var library by mutableStateOf(LibraryUiState(loading = true)); private set
     var detail by mutableStateOf<DetailUiState?>(null); private set
     var settings by mutableStateOf(false)
@@ -59,6 +61,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         refreshProfiles()
+        refreshCloudStatus()
         viewModelScope.launch { repository.discoveryUpdates.collect { if(it>0 && account.value!=null && library.tab==LibraryTab.HOME)loadLibrary() } }
         viewModelScope.launch {
             var previous: String? = null
@@ -377,6 +380,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 notice = message(error)
             }
         }
+    }
+    fun refreshCloudStatus() {
+        viewModelScope.launch {
+            runCatching { cloudClient.refreshStatus() }.onSuccess { cloudState = it }.onFailure { cloudState = cloudClient.current() }
+        }
+    }
+    fun cloudAuthenticate(url: String, email: String, password: String, register: Boolean) {
+        viewModelScope.launch {
+            try {
+                cloudState = cloudClient.authenticate(url, email, password, register)
+                notice = "Cineva hesabına bağlanıldı (${cloudState.plan})."
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                notice = message(error)
+            }
+        }
+    }
+    fun cloudRedeem(code: String) {
+        viewModelScope.launch {
+            try {
+                cloudState = cloudClient.redeemLicense(code)
+                notice = "Lisans etkinleştirildi: ${cloudState.plan}"
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                notice = message(error)
+            }
+        }
+    }
+    fun cloudLogout() {
+        cloudClient.logout()
+        cloudState = cloudClient.current()
     }
     fun logout() { viewModelScope.launch { repository.logout();knownItems.clear() } }
 }

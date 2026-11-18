@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Cineva Yönetim Paneli — Hesap, Lisans & Sürüm Kontrolü</title>
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <a class="brand" href="/">
+        <img src="/cineva-mark.svg" alt="" width="28" height="28">
+        <span>cineva<span class="brand-dot">.</span> <small style="font-size:12px;color:var(--muted);font-weight:600">Yönetim</small></span>
+      </a>
+      <div class="nav-actions">
+        <a class="btn ghost small" href="/">İndirme Sitesi</a>
+        <button id="adminLogoutBtn" class="btn danger small" type="button" hidden>Çıkış</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container" style="padding:28px 0 64px">
+    <!-- Giriş Ekranı -->
+    <section id="adminLoginCard" class="card" style="max-width:460px;margin:48px auto">
+      <h1 style="margin:0 0 6px;font-size:24px">Yönetici Girişi</h1>
+      <p style="margin:0 0 18px;color:var(--muted);font-size:13px">
+        Kullanıcı hesaplarını, abonelik planlarını, lisans anahtarlarını ve uygulama duyurularını buradan yönetin.
+      </p>
+      <form id="adminLoginForm">
+        <div class="field">
+          <label for="adminEmail">Yönetici E-postası</label>
+          <input id="adminEmail" type="email" required value="admin@cineva.app">
+        </div>
+        <div class="field">
+          <label for="adminPassword">Parola</label>
+          <input id="adminPassword" type="password" required placeholder="Başlangıç parolası terminalde veya ortam değişkenindedir">
+        </div>
+        <div class="field">
+          <label for="adminApiUrl">Sunucu Adresi (Aynı sunucudaysa boş bırakın)</label>
+          <input id="adminApiUrl" placeholder="http://127.0.0.1:8899">
+        </div>
+        <div id="adminLoginErr" class="error-msg"></div>
+        <button class="btn" type="submit" style="width:100%">Panele Gir</button>
+      </form>
+    </section>
+
+    <!-- Yönetim Paneli -->
+    <section id="adminDashboard" hidden>
+      <div class="card" style="border-color:#34c75933;margin-bottom:18px;padding:14px 18px">
+        <strong style="font-size:13px">KVKK / GDPR Gizlilik Kuralı Aktif:</strong>
+        <span style="font-size:13px;color:var(--muted)">Bu panelde yalnızca hesap, plan, cihaz limiti ve lisans anahtarları görünür. Kullanıcıların eklediği özel M3U/Xtream adresleri cihazlarında kalır.</span>
+      </div>
+
+      <div id="kpiGrid" class="kpi-grid"></div>
+
+      <div class="tabs" role="tablist">
+        <button class="tab-btn active" data-tab="users" type="button">Hesaplar</button>
+        <button class="tab-btn" data-tab="licenses" type="button">Lisans & Kuponlar</button>
+        <button class="tab-btn" data-tab="config" type="button">İndirme Linkleri & Duyuru</button>
+        <button class="tab-btn" data-tab="audit" type="button">Denetim Kayıtları</button>
+      </div>
+
+      <!-- Hesaplar Sekmesi -->
+      <div id="tab-users">
+        <div class="toolbar">
+          <input id="searchUser" placeholder="E-posta veya ad ara…" style="min-width:240px">
+          <select id="filterPlan">
+            <option value="">Tüm Planlar</option>
+            <option value="free">Ücretsiz</option>
+            <option value="pro">Cineva Pro</option>
+            <option value="family">Aile Planı</option>
+            <option value="lifetime">Ömür Boyu</option>
+          </select>
+          <select id="filterStatus">
+            <option value="">Tüm Durumlar</option>
+            <option value="active">Aktif</option>
+            <option value="suspended">Askıda</option>
+          </select>
+          <button id="refreshUsersBtn" class="btn secondary small" type="button">Yenile</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>E-posta</th><th>Ad</th><th>Plan</th><th>Durum</th><th>Cihaz</th><th>Bitiş</th><th>Not</th><th>İşlem</th></tr>
+            </thead>
+            <tbody id="usersTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Lisanslar Sekmesi -->
+      <div id="tab-licenses" hidden>
+        <form id="createLicenseForm" class="card" style="margin-bottom:16px">
+          <h3 style="margin:0 0 12px">Yeni Lisans / Hediye Anahtarı Oluştur</h3>
+          <div class="field-row" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
+            <div class="field"><label for="licPlan">Plan</label><select id="licPlan"><option value="pro">Cineva Pro</option><option value="family">Aile Planı</option><option value="lifetime">Ömür Boyu</option></select></div>
+            <div class="field"><label for="licDays">Süre (Gün)</label><input id="licDays" type="number" value="365" min="1" max="3650"></div>
+            <div class="field"><label for="licDevs">Max Cihaz</label><input id="licDevs" type="number" value="5" min="1" max="50"></div>
+            <div class="field"><label for="licUses">Kullanım Hakkı</label><input id="licUses" type="number" value="1" min="1" max="10000"></div>
+            <div class="field"><label for="licNote">Not</label><input id="licNote" placeholder="Örneğin: Lansman hediyesi"></div>
+          </div>
+          <button class="btn" type="submit">Kod Üret</button>
+          <div id="licCreatedMsg" class="ok-msg"></div>
+        </form>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Lisans Kodu</th><th>Plan</th><th>Süre</th><th>Cihaz</th><th>Kullanım</th><th>Not</th><th>İşlem</th></tr></thead>
+            <tbody id="licensesTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Ayarlar & İndirme Linkleri Sekmesi -->
+      <div id="tab-config" hidden>
+        <form id="adminConfigForm" class="card">
+          <h3 style="margin:0 0 12px">İndirme Adresleri & Uzaktan Uygulama Duyurusu</h3>
+          <div class="field-row">
+            <div class="field"><label for="cfgWinInstaller">Windows Setup (.exe) İndirme Adresi</label><input id="cfgWinInstaller" type="url"></div>
+            <div class="field"><label for="cfgWinPortable">Windows Taşınabilir (.exe) İndirme Adresi</label><input id="cfgWinPortable" type="url"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label for="cfgAndroidApk">Android (.apk) İndirme Adresi</label><input id="cfgAndroidApk" type="url"></div>
+            <div class="field"><label for="cfgWinVer">Güncel Windows Sürümü</label><input id="cfgWinVer"></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label for="cfgAnnTitle">Duyuru Başlığı</label><input id="cfgAnnTitle" placeholder="Yeni Güncelleme Yayınlandı"></div>
+            <div class="field"><label for="cfgAnnSeverity">Önem Derecesi</label><select id="cfgAnnSeverity"><option value="info">Bilgi</option><option value="warning">Uyarı</option><option value="critical">Kritik</option></select></div>
+          </div>
+          <div class="field"><label for="cfgAnnMsg">Duyuru Mesajı</label><input id="cfgAnnMsg" placeholder="Web sitesi ve Windows uygulamasında görünecek metin"></div>
+          <label style="display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:13px">
+            <input id="cfgAnnEnabled" type="checkbox"> Duyuru bandını kullanıcılara göster
+          </label>
+          <button class="btn" type="submit">Ayarları Yayınla</button>
+          <div id="cfgMsg" class="ok-msg"></div>
+        </form>
+      </div>
+
+      <!-- Denetim Kayıtları Sekmesi -->
+      <div id="tab-audit" hidden>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Zaman</th><th>Yönetici</th><th>İşlem</th><th>Hedef</th><th>Detay</th></tr></thead>
+            <tbody id="auditTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Kullanıcı Düzenleme Modalı -->
+  <div id="editUserModal" class="modal-backdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="editUserTitle">
+      <div class="modal-head">
+        <h2 id="editUserTitle" style="margin:0;font-size:19px">Hesabı Yönet</h2>
+        <button id="closeEditUser" class="btn ghost small" type="button">Kapat</button>
+      </div>
+      <form id="editUserForm">
+        <input type="hidden" id="euId">
+        <div id="euEmailLabel" style="font-size:13px;color:var(--muted);margin-bottom:12px"></div>
+        <div class="field-row">
+          <div class="field"><label for="euName">Görünen Ad</label><input id="euName" required></div>
+          <div class="field"><label for="euPlan">Abonelik Planı</label><select id="euPlan"><option value="free">Ücretsiz</option><option value="pro">Cineva Pro</option><option value="family">Aile Planı</option><option value="lifetime">Ömür Boyu</option></select></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label for="euStatus">Hesap Durumu</label><select id="euStatus"><option value="active">Aktif</option><option value="suspended">Askıya Alındı</option></select></div>
+          <div class="field"><label for="euMaxDev">Maksimum Cihaz</label><input id="euMaxDev" type="number" min="1" max="50"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label for="euAddDays">Süre Ekle (Gün — boş bırakılabilir)</label><input id="euAddDays" type="number" min="1" max="3650" placeholder="Örneğin: 30"></div>
+          <div class="field"><label for="euNote">Yönetici Notu</label><input id="euNote" placeholder="VIP / Destek notu"></div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0">
+          <button class="btn" type="submit">Değişiklikleri Kaydet</button>
+          <button id="euResetBtn" class="btn secondary" type="button">Şifre Sıfırlama Kodu Üret</button>
+        </div>
+        <div id="euMsg" class="ok-msg"></div>
+      </form>
+      <div id="euDevicesSection" style="margin-top:16px"></div>
+    </div>
+  </div>
+
+  <script src="/admin.js"></script>
+</body>
+</html>

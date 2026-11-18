@@ -474,6 +474,101 @@ def surprise_pick():
     return {'item': pool[secrets.randbelow(len(pool))]}
 
 
+CLOUD_OPENER = urllib.request.build_opener(urllib.request.HTTPSHandler(context=TLS_CONTEXT))
+
+
+def _cloud_state():
+    saved = meta_get('cloud_auth', {})
+    if not isinstance(saved, dict):
+        saved = {}
+    url = saved.get('cloudUrl') or os.environ.get('CINEVA_CLOUD_URL', '').strip()
+    return {'cloudUrl': url, 'token': saved.get('token', ''), 'deviceId': saved.get('deviceId') or meta_get('cloud_device_id') or ''}
+
+
+def _ensure_cloud_device_id():
+    did = meta_get('cloud_device_id')
+    if not did:
+        did = 'dev_' + secrets.token_hex(8)
+        meta_set('cloud_device_id', did)
+    return did
+
+
+def _cloud_request(cloud_url, path, method='GET', payload=None, token=''):
+    base = validate_host(cloud_url)
+    headers = {'User-Agent': 'Cineva-Desktop/2.0', 'Accept': 'application/json'}
+    if token:
+        headers['Authorization'] = 'Bearer ' + token
+    raw = None
+    if payload is not None:
+        raw = json.dumps(payload, ensure_ascii=False).encode('utf-8')
+        headers['Content-Type'] = 'application/json'
+    req = urllib.request.Request(base + path, data=raw, method=method, headers=headers)
+    try:
+        with CLOUD_OPENER.open(req, timeout=6) as r:
+            body = r.read(256 * 1024)
+            return json.loads(body.decode('utf-8')) if body else {}
+    except urllib.error.HTTPError as err:
+        raw_err = err.read(64 * 1024)
+        msg = 'Bulut sunucusu isteği reddetti.'
+        with contextlib.suppress(Exception):
+            msg = json.loads(raw_err.decode('utf-8')).get('error') or msg
+        raise ValueError(msg) from None
+    except (urllib.error.URLError, TimeoutError) as err:
+        raise RuntimeError('Cineva Bulut sunucusuna şu anda ulaşılamıyor.') from err
+
+
+def cloud_status():
+    st = _cloud_state()
+    if not st['cloudUrl']:
+        return {'connected': False, 'cloudUrl': '', 'user': None, 'config': None}
+    cfg = None
+    with contextlib.suppress(Exception):
+        cfg = _cloud_request(st['cloudUrl'], '/api/v1/app-config')
+    user = None
+    if st['token']:
+        try:
+            user = _cloud_request(st['cloudUrl'], '/api/v1/me', token=st['token']).get('user')
+        except ValueError:
+            meta_set('cloud_auth', {'cloudUrl': st['cloudUrl'], 'token': ''})
+        except Exception:
+            pass
+    return {'connected': True, 'cloudUrl': st['cloudUrl'], 'user': user, 'config': cfg}
+
+
+def cloud_auth(action, d):
+    cloud_url = validate_host(d.get('cloudUrl') or _cloud_state().get('cloudUrl') or '')
+    endpoint = '/api/v1/auth/register' if action == 'register' else '/api/v1/auth/login'
+    res = _cloud_request(cloud_url, endpoint, method='POST', payload={
+        'email': str(d.get('email', '')).strip(),
+        'password': str(d.get('password', '')),
+        'displayName': str(d.get('displayName', '')).strip(),
+    })
+    token = res.get('token', '')
+    if token:
+        meta_set('cloud_auth', {'cloudUrl': cloud_url, 'token': token})
+        with contextlib.suppress(Exception):
+            _cloud_request(cloud_url, '/api/v1/devices/register', method='POST', payload={
+                'deviceId': _ensure_cloud_device_id(),
+                'deviceName': socket.gethostname() or 'Cineva Masaüstü',
+                'platform': 'desktop',
+            }, token=token)
+    return cloud_status()
+
+
+def cloud_redeem(d):
+    st = _cloud_state()
+    if not st['cloudUrl'] or not st['token']:
+        raise ValueError('Önce Cineva hesabınızla giriş yapın.')
+    res = _cloud_request(st['cloudUrl'], '/api/v1/licenses/redeem', method='POST', payload={'code': d.get('code', '')}, token=st['token'])
+    return {'ok': True, 'user': res.get('user')}
+
+
+def cloud_logout():
+    st = _cloud_state()
+    meta_set('cloud_auth', {'cloudUrl': st.get('cloudUrl', ''), 'token': ''})
+    return {'ok': True}
+
+
 def catalog(q):
     kind = q.get('kind', ['vod'])[0]
     if kind not in KINDS: raise ValueError('İçerik türü geçersiz.')
@@ -1078,6 +1173,7 @@ class Handler(BaseHTTPRequestHandler):
                 if p == '/api/home': return self.send_json(home())
                 if p == '/api/surprise': return self.send_json(surprise_pick())
                 if p == '/api/profiles': return self.send_json({'activeProfileId': active_profile_id(), 'profiles': list_profiles()})
+                if p == '/api/cloud/status': return self.send_json(cloud_status())
                 if p == '/api/sports':
                     day = sports.selected_date(q.get('date', [''])[0])
                     epg_url = q.get('epgUrl', [''])[0].strip() or provider.config.get('epgUrl') or provider.config.get('discoveredEpgUrl', '')
@@ -1272,6 +1368,10 @@ class Handler(BaseHTTPRequestHandler):
             if p == '/api/track-preferences' and method == 'POST':
                 iid = str(d.get('id', '')); get_row(iid)
                 return self.send_json({'ok': True, 'selection': save_track_preferences(iid, d)})
+            if p == '/api/cloud/login' and method == 'POST': return self.send_json(cloud_auth('login', d))
+            if p == '/api/cloud/register' and method == 'POST': return self.send_json(cloud_auth('register', d))
+            if p == '/api/cloud/redeem' and method == 'POST': return self.send_json(cloud_redeem(d))
+            if p == '/api/cloud/logout' and method == 'POST': return self.send_json(cloud_logout())
             if p == '/api/import' and method == 'POST': return self.import_state(d.get('data'))
             if p == '/api/devices/revoke' and method == 'POST':
                 if not self.is_local: return self.send_json({'error': 'Bu işlem yalnızca Mac üzerinde kullanılabilir.'}, 403)

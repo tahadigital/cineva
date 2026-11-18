@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Cineva — Evrensel Kişisel Medya & Yayın Merkezi</title>
+  <meta name="description" content="Windows (.exe), Android Telefon/Tablet ve Web için hızlı, yasal, gizlilik odaklı kişisel medya merkezi.">
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="announceBanner" class="announce-bar" hidden></div>
+
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <a class="brand" href="/">
+        <img src="/cineva-mark.svg" alt="" width="30" height="30">
+        <span>cineva<span class="brand-dot">.</span></span>
+      </a>
+      <nav class="nav-links" aria-label="Üst menü">
+        <a href="#features">Özellikler</a>
+        <a href="#downloads">İndir</a>
+        <a href="#privacy-shield">Gizlilik</a>
+        <a href="/admin">Yönetim Paneli</a>
+      </nav>
+      <div class="nav-actions">
+        <button id="openAccountBtn" class="btn secondary small" type="button">Hesabım / Lisans</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="container">
+        <span class="eyebrow">WINDOWS · ANDROID TELEFON & TABLET · WEB</span>
+        <h1>Tüm medyalarınız, kendi ekranınızda.</h1>
+        <p class="lead">
+          Cineva; bilgisayarınızdaki filmleri, kendi M3U / XMLTV EPG listelerinizi ve açık lisanslı yayınları tek bir akıcı sinema arayüzünde birleştirir. Telifli içerik barındırmaz; hesap açmadan hemen kullanabilirsiniz.
+        </p>
+        <div class="hero-cta-row">
+          <a id="primaryDownloadBtn" class="btn" href="#downloads">Windows için İndir (.exe)</a>
+          <a id="secondaryDownloadBtn" class="btn secondary" href="#downloads">Android APK İndir</a>
+          <a class="btn ghost" href="#downloads">Tüm Sürümler</a>
+        </div>
+        <p id="platformHint" class="platform-note"></p>
+      </div>
+    </section>
+
+    <section id="downloads" class="section">
+      <div class="container">
+        <h2 class="section-title">Cihazınız için Cineva'yı İndirin</h2>
+        <p class="section-sub">Tek sürüm, şeffaf lisans ve otomatik güncelleme desteği. İstediğiniz platformu seçin.</p>
+        <div class="grid-3">
+          <article class="card download-card">
+            <div>
+              <span class="badge pro" id="winVerBadge">Windows 10 / 11 (64-bit)</span>
+              <h3 style="margin-top:10px">Cineva Kurulum (.exe)</h3>
+              <p>Çift tıkla çalışan tam Windows kurulum sihirbazı (Başlat Menüsü & Masaüstü kısayolu + yerel FFmpeg oynatıcı).</p>
+            </div>
+            <div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn" data-dl="windows-installer" type="button">Setup (.exe) İndir</button>
+                <button class="btn secondary" data-dl="windows-portable" type="button">Taşınabilir .exe</button>
+              </div>
+              <small id="dlWinCount" style="display:block;margin-top:8px;color:var(--muted)"></small>
+            </div>
+          </article>
+
+          <article class="card download-card">
+            <div>
+              <span class="badge active" id="androidVerBadge">Android 8+ Telefon & Tablet</span>
+              <h3 style="margin-top:10px">Cineva Android (.apk)</h3>
+              <p>Çift dokunma sarma, parlaklık/ses kaydırma, PiP, ekran kilidi, profil PIN ve 2 panelli Tablet arayüzü.</p>
+            </div>
+            <div>
+              <button class="btn" data-dl="android-apk" type="button">Android APK İndir</button>
+              <small id="dlAndroidCount" style="display:block;margin-top:8px;color:var(--muted)"></small>
+            </div>
+          </article>
+
+          <article class="card download-card">
+            <div>
+              <span class="badge">Tarayıcı & Yerel Sunucu</span>
+              <h3 style="margin-top:10px">Web & Ev Ağı (LAN)</h3>
+              <p>Mac, Windows veya Linux üzerinde başlatıp aynı Wi-Fi'daki TV, tablet veya tarayıcıdan bağlanın; 2×2 Çoklu Ekran ile izleyin.</p>
+            </div>
+            <div>
+              <button class="btn secondary" type="button" id="howLocalBtn">Nasıl Başlatılır?</button>
+              <small style="display:block;margin-top:8px;color:var(--muted)">Bilgisayarda <code>python desktop/cineva_desktop.py</code></small>
+            </div>
+          </article>
+        </div>
+        <div id="downloadNotice" class="card" style="margin-top:16px;border-color:#ff993355" hidden></div>
+      </div>
+    </section>
+
+    <section id="features" class="section">
+      <div class="container">
+        <h2 class="section-title">Neden Cineva?</h2>
+        <p class="section-sub">Klasik oynatıcıların dağınıklığını ortadan kaldıran özenli mühendislik.</p>
+        <div class="grid-3">
+          <div class="card"><h3>Doğrudan Yerel Medya</h3><p>Bilgisayardaki film klasörlerinizi veya telefonunuzdaki MKV/MP4 dosyalarını sürükleyip bırakın; aynı adlı SRT/VTT altyazılar otomatik tanınır.</p></div>
+          <div class="card"><h3>Profiller & Çocuk Modu</h3><p>Her kişi için ayrı favoriler ve kaldığı yer. 4–8 haneli PBKDF2 PIN kilidi ve yetişkin/korku filtreli Çocuk Modu.</p></div>
+          <div class="card"><h3>2×2 Çoklu Ekran & PiP</h3><p>Web'de aynı anda 4 canlı yayını tek ızgarada izleyin; Android ve Web'de küçük pencerede (PiP) çoklu göreve devam edin.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="privacy-shield" class="section">
+      <div class="container">
+        <div class="card">
+          <h3>Sıfır-Bilgi (Zero-Knowledge) Gizlilik & Yasal Güvence</h3>
+          <p style="margin-top:8px">
+            Cineva hesap oluşturmayı zorunlu tutmaz. İsteğe bağlı Pro / lisans yönetimi için açtığınız hesaplarda yalnızca e-posta, abonelik planı ve kayıtlı cihaz sınırı saklanır; eklediğiniz kişisel M3U/Xtream adresleri veya izleme geçmişiniz asla merkezi sunucuya gönderilmez.
+          </p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-row">
+      <span>© Cineva — Kişisel Medya Merkezi</span>
+      <div style="display:flex;gap:16px">
+        <a href="/privacy">Gizlilik Politikası</a>
+        <a href="/terms">Kullanım Koşulları</a>
+        <a href="/admin">Yönetim Paneli</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Hesabım & Lisans Modalı -->
+  <div id="accountModal" class="modal-backdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="accTitle">
+      <div class="modal-head">
+        <h2 id="accTitle" style="margin:0;font-size:20px">Cineva Hesabım & Lisans</h2>
+        <button id="closeAccountModal" class="btn ghost small" type="button">Kapat</button>
+      </div>
+      <div id="accountLoggedOut">
+        <div class="tabs" style="margin-top:0">
+          <button type="button" class="tab-btn active" data-auth-tab="login">Giriş Yap</button>
+          <button type="button" class="tab-btn" data-auth-tab="register">Hesap Oluştur</button>
+        </div>
+        <form id="userAuthForm">
+          <div id="regNameWrap" class="field" hidden>
+            <label for="uName">Adınız / Görünen Ad</label>
+            <input id="uName" placeholder="Örneğin: Ahmet">
+          </div>
+          <div class="field">
+            <label for="uEmail">E-posta</label>
+            <input id="uEmail" type="email" required placeholder="ad@ornek.com">
+          </div>
+          <div class="field">
+            <label for="uPass">Parola (en az 8 karakter)</label>
+            <input id="uPass" type="password" required minlength="8">
+          </div>
+          <div id="uAuthErr" class="error-msg"></div>
+          <button class="btn" type="submit" id="uAuthSubmit">Giriş Yap</button>
+        </form>
+      </div>
+      <div id="accountLoggedIn" hidden>
+        <div id="uProfileSummary" class="card" style="background:#0f131c;margin-bottom:14px"></div>
+        <form id="redeemForm" style="margin-bottom:14px">
+          <div class="field">
+            <label for="licenseCodeInput">Lisans / Kupon Kodu Etkinleştir</label>
+            <div style="display:flex;gap:8px">
+              <input id="licenseCodeInput" placeholder="CINEVA-XXXX-XXXX-XXXX">
+              <button class="btn" type="submit">Etkinleştir</button>
+            </div>
+          </div>
+          <div id="redeemMsg" class="ok-msg"></div>
+        </form>
+        <div id="uDevicesList"></div>
+        <div style="margin-top:14px;display:flex;justify-content:flex-end">
+          <button id="uLogoutBtn" class="btn danger small" type="button">Çıkış Yap</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/portal.js"></script>
+</body>
+</html>
