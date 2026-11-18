@@ -23,7 +23,12 @@ jobs:
           node-version: '22'
       - name: Install optional media dependency
         run: pip install -r requirements.txt
+      - name: Install native Ubuntu FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Run Python Backend, Cloud Admin & Security Tests
+        env:
+          FFMPEG_PATH: /usr/bin/ffmpeg
+          IMAGEIO_FFMPEG_EXE: /usr/bin/ffmpeg
         run: python -m unittest discover -s tests -v
       - name: Run Web Frontend Unit Tests
         run: node --test tests/test_*.mjs
