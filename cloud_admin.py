@@ -181,9 +181,9 @@ class CloudService:
                     'windowsMin': '2.0.0',
                     'androidLatest': '2.0.0',
                     'androidMin': '2.0.0',
-                    'windowsInstallerUrl': 'https://github.com/OWNER/cineva/releases/latest/download/Cineva-Setup.exe',
-                    'windowsPortableUrl': 'https://github.com/OWNER/cineva/releases/latest/download/Cineva.exe',
-                    'androidApkUrl': 'https://github.com/OWNER/cineva/releases/latest/download/Cineva-Android.apk',
+                    'windowsInstallerUrl': 'https://github.com/tahadigital/cineva/releases/latest/download/Cineva-Setup.exe',
+                    'windowsPortableUrl': 'https://github.com/tahadigital/cineva/releases/latest/download/Cineva.exe',
+                    'androidApkUrl': 'https://github.com/tahadigital/cineva/releases/latest/download/Cineva-Android.apk',
                 }),
             }
             for k, v in defaults.items():

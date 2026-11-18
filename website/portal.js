@@ -62,18 +62,15 @@
   async function startDownload(target) {
     const v = configData?.versions || {};
     const urls = {
-      'windows-installer': v.windowsInstallerUrl || 'https://github.com/OWNER/cineva/releases/latest/download/Cineva-Setup.exe',
-      'windows-portable': v.windowsPortableUrl || 'https://github.com/OWNER/cineva/releases/latest/download/Cineva.exe',
-      'android-apk': v.androidApkUrl || 'https://github.com/OWNER/cineva/releases/latest/download/Cineva-Android.apk',
+      'windows-installer': v.windowsInstallerUrl || 'https://github.com/tahadigital/cineva/releases/latest/download/Cineva-Setup.exe',
+      'windows-portable': v.windowsPortableUrl || 'https://github.com/tahadigital/cineva/releases/latest/download/Cineva.exe',
+      'android-apk': v.androidApkUrl || 'https://github.com/tahadigital/cineva/releases/latest/download/Cineva-Android.apk',
     };
     const url = urls[target];
     try { await req('/api/v1/downloads/track', { method: 'POST', body: { target } }); loadConfig(); } catch {}
     const box = document.getElementById('downloadNotice');
-    if (url.includes('OWNER/cineva')) {
-      box.hidden = false;
-      box.innerHTML = `<strong>Henüz GitHub Release adresi bağlanmadı:</strong> Kodu GitHub deponuza pushlayıp <code>v2.0.0</code> etiketi bastığınızda <a href="/admin" style="color:var(--amber);text-decoration:underline">Yönetim Paneli → Ayarlar</a> içinden gerçek indirme adresini kaydedebilirsiniz. Şimdilik Windows üzerinde yerel başlatmak için: <code>windows\\Cineva.bat</code> veya <code>pyinstaller windows\\cineva.spec</code> kullanabilirsiniz.`;
-      return;
-    }
+    box.hidden = false;
+    box.innerHTML = `İndirme başlatılıyor: <a href="${esc(url)}" style="color:var(--amber);text-decoration:underline">${esc(url)}</a> <br><small style="color:var(--muted)">(Henüz <code>v2.0.0</code> etiketi GitHub'a pushlanmadıysa derleme tamamlanana kadar dosya bulunamadı uyarısı görebilirsiniz.)</small>`;
     window.location.href = url;
   }
 
