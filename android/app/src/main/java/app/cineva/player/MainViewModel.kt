@@ -390,7 +390,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 cloudState = cloudClient.authenticate(url, email, password, register)
-                notice = "Cineva hesabına bağlanıldı (${cloudState.plan})."
+                if (account.value != null) {
+                    runCatching { cloudClient.syncState(repository); loadLibrary() }
+                }
+                notice = "Cineva hesabına bağlanıldı ve veriler eşitlendi (${cloudState.plan})."
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                notice = message(error)
+            }
+        }
+    }
+    fun cloudSync() {
+        viewModelScope.launch {
+            try {
+                cloudClient.syncState(repository)
+                loadLibrary()
+                notice = "Bulut eşitlemesi tamamlandı: Favoriler, izleme kayıtları ve listeler eşitlendi."
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
                 notice = message(error)

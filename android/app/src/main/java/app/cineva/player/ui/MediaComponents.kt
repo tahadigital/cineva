@@ -1,6 +1,8 @@
 package app.cineva.player.ui
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -134,12 +136,57 @@ internal fun MessagePanel(title: String, message: String, modifier: Modifier = M
 }
 
 @Composable
+internal fun LoadingStageBanner(
+    title: String = "Sahne Hazırlanıyor",
+    subtitle: String = "Kütüphanen, afişler ve yayın akışları yükleniyor…",
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth().border(1.dp, Color.White.copy(alpha = .09f), RoundedCornerShape(14.dp)),
+        color = Color(0xFF1A1E29),
+        shape = RoundedCornerShape(14.dp),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                CircularProgressIndicator(Modifier.size(18.dp), color = AkisRed, strokeWidth = 2.4.dp)
+                Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            }
+            Text(subtitle, color = AkisMuted, fontSize = 12.sp)
+            LinearProgressIndicator(
+                modifier = Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(99.dp)),
+                color = AkisRed,
+                trackColor = Color.White.copy(alpha = .12f),
+            )
+        }
+    }
+}
+
+@Composable
 internal fun LoadingPoster(modifier: Modifier = Modifier) {
+    val reducedMotion = rememberReducedMotion()
+    val alpha = if (reducedMotion) 0.75f else {
+        val transition = rememberInfiniteTransition(label = "poster-shimmer")
+        transition.animateFloat(
+            initialValue = 0.45f,
+            targetValue = 0.95f,
+            animationSpec = infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            label = "poster-alpha",
+        ).value
+    }
     Column(modifier) {
-        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp)).background(AkisPanel))
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp))
+                .background(Brush.verticalGradient(listOf(AkisPanel.copy(alpha = alpha), Color(0xFF141821).copy(alpha = alpha)))),
+            contentAlignment = Alignment.BottomStart,
+        ) {
+            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Box(Modifier.fillMaxWidth(.7f).height(8.dp).clip(RoundedCornerShape(3.dp)).background(Color.White.copy(alpha = .10f * alpha)))
+                Box(Modifier.fillMaxWidth(.45f).height(6.dp).clip(RoundedCornerShape(3.dp)).background(Color.White.copy(alpha = .07f * alpha)))
+            }
+        }
         Spacer(Modifier.height(9.dp))
-        Box(Modifier.fillMaxWidth(.8f).height(12.dp).clip(RoundedCornerShape(4.dp)).background(AkisPanel))
+        Box(Modifier.fillMaxWidth(.8f).height(12.dp).clip(RoundedCornerShape(4.dp)).background(AkisPanel.copy(alpha = alpha)))
         Spacer(Modifier.height(6.dp))
-        Box(Modifier.fillMaxWidth(.5f).height(8.dp).clip(RoundedCornerShape(4.dp)).background(AkisPanel))
+        Box(Modifier.fillMaxWidth(.5f).height(8.dp).clip(RoundedCornerShape(4.dp)).background(AkisPanel.copy(alpha = alpha * .85f)))
     }
 }

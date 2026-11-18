@@ -218,6 +218,7 @@ fun AkisSettingsScreen(
     onCloudAuth: (url: String, email: String, password: String, register: Boolean) -> Unit = { _, _, _, _ -> },
     onCloudRedeem: (code: String) -> Unit = {},
     onCloudRefresh: () -> Unit = {},
+    onCloudSync: () -> Unit = {},
     onCloudLogout: () -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -270,12 +271,17 @@ fun AkisSettingsScreen(
                             OutlinedTextField(value = licenseInput, onValueChange = { licenseInput = it }, label = { Text("Lisans Kodu") }, placeholder = { Text("CINEVA-...") }, singleLine = true, modifier = Modifier.weight(1f))
                             Button(onClick = { if (licenseInput.isNotBlank()) { onCloudRedeem(licenseInput); licenseInput = "" } }) { Text("Aç") }
                         }
+                        OutlinedButton(onClick = onCloudSync, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(6.dp)) {
+                            Icon(Icons.Outlined.Refresh, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Hesap Verilerini Şimdi Eşitle (Bulut)")
+                        }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             TextButton(onClick = onCloudRefresh) { Text("Planı Yenile") }
                             TextButton(onClick = onCloudLogout) { Text("Hesaptan Çık", color = MaterialTheme.colorScheme.error) }
                         }
                     } else {
-                        var cloudUrl by rememberSaveable { mutableStateOf(cloudState.cloudUrl.ifBlank { "http://127.0.0.1:8899" }) }
+                        var cloudUrl by rememberSaveable { mutableStateOf(cloudState.cloudUrl.ifBlank { "https://cineva-app.netlify.app" }) }
                         var clEmail by rememberSaveable { mutableStateOf("") }
                         var clPass by remember { mutableStateOf("") }
                         OutlinedTextField(value = cloudUrl, onValueChange = { cloudUrl = it }, label = { Text("Portal Sunucu Adresi") }, singleLine = true, modifier = Modifier.fillMaxWidth())

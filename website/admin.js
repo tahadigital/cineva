@@ -160,7 +160,10 @@
     document.getElementById('adminLogoutBtn').addEventListener('click', () => { localStorage.removeItem(TOKEN_KEY); showLogin(); });
     document.querySelectorAll('[data-tab]').forEach(btn => btn.addEventListener('click', () => {
       document.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('active', b === btn));
-      ['users', 'licenses', 'config', 'audit'].forEach(name => { document.getElementById('tab-' + name).hidden = name !== btn.dataset.tab; });
+      ['users', 'licenses', 'config', 'audit', 'guide'].forEach(name => {
+        const el = document.getElementById('tab-' + name);
+        if (el) el.hidden = name !== btn.dataset.tab;
+      });
     }));
     ['searchUser', 'filterPlan', 'filterStatus'].forEach(id => document.getElementById(id).addEventListener('input', () => loadUsers().catch(() => {})));
     document.getElementById('refreshUsersBtn').addEventListener('click', () => Promise.all([loadOverview(), loadUsers()]));

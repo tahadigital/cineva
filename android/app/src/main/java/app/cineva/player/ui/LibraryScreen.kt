@@ -368,7 +368,15 @@ private fun CatalogContent(state: LibraryUiState, onMedia: (UiMedia) -> Unit, on
         if (state.error != null) item("error", span = { GridItemSpan(maxLineSpan) }) {
             MessagePanel("İçerikler yüklenemedi", state.error, action = "Yeniden dene", onAction = onRefresh)
         }
-        if (state.loading && state.items.isEmpty()) items(9, key = { "loading-$it" }) { LoadingPoster() }
+        if (state.loading && state.items.isEmpty()) {
+            item("loading-banner", span = { GridItemSpan(maxLineSpan) }) {
+                LoadingStageBanner(
+                    title = "${state.tab.title} Hazırlanıyor",
+                    subtitle = "Kütüphanendeki içerikler, kapaklar ve yayın bilgileri senkronize ediliyor…",
+                )
+            }
+            items(9, key = { "loading-$it" }) { LoadingPoster() }
+        }
         else gridItems(state.items, key = { it.id }, contentType = { "poster" }) { item -> PosterCard(item, { onMedia(item) }, { onFavorite(item) }) }
         if (!state.loading && state.items.isEmpty() && state.error == null) item("empty", span = { GridItemSpan(maxLineSpan) }) {
             MessagePanel(if (state.query.isNotBlank()) "Bir eşleşme bulamadık" else if (state.tab == LibraryTab.FAVORITES) "Sevdiklerini bir araya getir" else "Henüz burada içerik yok",

@@ -57,7 +57,7 @@
         </div>
         <span id="breadcrumb" hidden></span>
       </header>
-      <main id="main" tabindex="-1"><div class="initial-loading"><span class="spinner"></span><p>Cineva hazırlanıyor…</p></div></main>
+      <main id="main" tabindex="-1"><div class="initial-loading"><div class="loading-stage-card"><div class="cinema-eq" aria-hidden="true"><span></span><span></span><span></span><span></span></div><span class="spinner"></span><strong>Cineva hazırlanıyor…</strong><p>Kütüphanen, yayın akışları ve dil/altyazı motoru başlatılıyor</p><div class="loading-progress-bar" aria-hidden="true"><span></span></div></div></div></main>
       <footer class="workspace-footer">
         <div><span id="connectionLight" class="connection-light"></span><span id="connectionName">Kütüphanen hazırlanıyor</span><span id="connectionCaption" hidden></span></div>
         <nav aria-label="Kütüphane işlemleri"><a href="#favorites">Favoriler</a><a href="#playlists">Listelerim</a><a href="#settings">Ayarlar</a></nav>
@@ -78,7 +78,7 @@
     <div id="playerSurface" class="player-surface">
     <div class="video-stage">
       <video id="video" playsinline preload="metadata" disablepictureinpicture></video>
-      <div id="playerOverlay" class="player-overlay"><span class="spinner"></span><span id="playerMessage">Yayın açılıyor…</span></div>
+      <div id="playerOverlay" class="player-overlay"><div class="player-waiting-card"><div class="cinema-eq" aria-hidden="true"><span></span><span></span><span></span><span></span></div><span class="spinner"></span><span id="playerMessage">Yayın açılıyor…</span><small class="player-waiting-sub">Ses ve altyazı parçaları senkronize ediliyor</small></div></div>
     </div>
     <header class="player-heading player-chrome">
       <button type="button" id="closePlayer" class="player-icon" aria-label="Geri dön" title="Geri dön"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 5-7 7 7 7M5 12h15"/></svg></button>

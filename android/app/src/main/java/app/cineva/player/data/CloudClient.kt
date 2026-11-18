@@ -113,6 +113,19 @@ class CloudClient(context: Context) {
         current()
     }
 
+    suspend fun syncState(repository: AkisRepository) = withContext(Dispatchers.IO) {
+        val url = prefs.getString("cloud_url", "").orEmpty()
+        val token = prefs.getString("cloud_token", "").orEmpty()
+        if (url.isBlank() || token.isBlank()) throw IptvException("Önce Cineva hesabına giriş yap.")
+        val remoteRes = getJson("$url/api/v1/sync", token)
+        val remoteState = remoteRes.optJSONObject("state")
+        if (remoteState != null && remoteState.optInt("version", 0) == 1) {
+            repository.importState(remoteState.toString())
+        }
+        val merged = JSONObject(repository.exportState())
+        putJson("$url/api/v1/sync", token, JSONObject().put("state", merged))
+    }
+
     fun logout() {
         prefs.edit().remove("cloud_token").remove("user_email").remove("user_name").remove("user_plan").remove("user_status").apply()
     }
@@ -136,6 +149,12 @@ class CloudClient(context: Context) {
 
     private fun postJson(url: String, token: String?, body: JSONObject): JSONObject {
         val req = Request.Builder().url(url).post(body.toString().toRequestBody(jsonType))
+            .apply { if (!token.isNullOrBlank()) header("Authorization", "Bearer $token") }.build()
+        return executeJson(req)
+    }
+
+    private fun putJson(url: String, token: String?, body: JSONObject): JSONObject {
+        val req = Request.Builder().url(url).put(body.toString().toRequestBody(jsonType))
             .apply { if (!token.isNullOrBlank()) header("Authorization", "Bearer $token") }.build()
         return executeJson(req)
     }

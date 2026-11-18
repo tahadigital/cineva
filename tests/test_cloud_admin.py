@@ -241,6 +241,39 @@ class CloudAdminHTTPTests(unittest.TestCase):
                 redeem_res = srv.cloud_redeem({'code': lic['license']['code']})
                 self.assertEqual(redeem_res['user']['plan'], 'pro')
 
+                # Seed a favorite on cloud and sync it into desktop via cloud_sync()
+                st = srv._cloud_state()
+                self.req('PUT', '/api/v1/sync', {
+                    'state': {
+                        'version': 1,
+                        'items': [{'id': 'vod:777', 'providerId': '777', 'name': 'Test Film', 'kind': 'vod', 'extension': 'mp4'}],
+                        'favorites': [{'item_id': 'vod:777', 'created_at': '2026-11-18T12:00:00+00:00'}],
+                        'progress': [],
+                        'playlists': [],
+                        'playlistItems': [],
+                        'trackPreferences': [],
+                    }
+                }, token=st['token'])
+                sync_res = srv.cloud_sync()
+                self.assertTrue(sync_res['ok'])
+                self.assertEqual(sync_res['counts']['favorites'], 1)
+
+                # Verify track language inference from stream titles
+                import playback
+                parsed = playback.parse_tracks("""
+                Input #0, matroska,webm, from 'movie.mkv':
+                  Duration: 01:30:00.00, start: 0.000000
+                  Stream #0:0: Video: h264, yuv420p, 1920x1080
+                  Stream #0:1(und): Audio: aac, 48000 Hz, stereo (default)
+                    Metadata:
+                      title           : Türkçe Dublaj
+                  Stream #0:2: Subtitle: subrip
+                    Metadata:
+                      title           : English Subtitles
+                """)
+                self.assertEqual(parsed['audio'][0]['language'], 'tur')
+                self.assertEqual(parsed['subtitles'][0]['language'], 'eng')
+
                 # Admin suspends the desktop user -> desktop cloud_status drops invalid access cleanly
                 uid = res['user']['id']
                 self.req('PATCH', f'/api/v1/admin/users/{uid}', {'status': 'suspended'}, token=adm['token'])

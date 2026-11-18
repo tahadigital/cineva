@@ -318,8 +318,16 @@ fun PlayerScreen(
             )
         }
         if (showBuffering && playback.error == null) {
-            Box(Modifier.align(Alignment.Center).size(80.dp).clip(CircleShape).background(Color.Black.copy(alpha = .45f)), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = AkisRed, strokeWidth = 3.dp, modifier = Modifier.size(35.dp))
+            Column(
+                Modifier.align(Alignment.Center).clip(RoundedCornerShape(18.dp))
+                    .background(Color(0xFF10131B).copy(alpha = .84f))
+                    .padding(horizontal = 24.dp, vertical = 18.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CircularProgressIndicator(color = AkisRed, strokeWidth = 3.dp, modifier = Modifier.size(34.dp))
+                Text(if (isLive) "Canlı yayın hazırlanıyor…" else "Yayın açılıyor…", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text("Ses ve altyazı parçaları senkronize ediliyor", color = Color.White.copy(alpha = .68f), fontSize = 11.sp)
             }
         }
         gestureFeedback?.let { label ->
@@ -408,11 +416,13 @@ fun PlayerScreen(
                     Text("●  CANLI", color = AkisRed, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 10.dp))
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { trackDialog = "audio"; controlsVisible = true; interactionVersion++ }, enabled = playback.audioTracks.isNotEmpty()) {
-                        Text("Ses", color = if (playback.audioTracks.isEmpty()) Color.Gray else Color.White, fontSize = 12.sp)
+                    TextButton(onClick = { trackDialog = "audio"; controlsVisible = true; interactionVersion++ }) {
+                        val audioLabel = if (playback.audioTracks.isNotEmpty()) "Ses (${playback.audioTracks.size})" else "Ses"
+                        Text(audioLabel, color = Color.White, fontSize = 12.sp)
                     }
                     TextButton(onClick = { trackDialog = "subtitle"; controlsVisible = true; interactionVersion++ }) {
-                        Text("Altyazı", color = Color.White, fontSize = 12.sp)
+                        val subLabel = if (playback.subtitleTracks.isNotEmpty()) "Altyazı (${playback.subtitleTracks.size})" else "Altyazı"
+                        Text(subLabel, color = Color.White, fontSize = 12.sp)
                     }
                     if (!isLive) {
                         TextButton(onClick = {

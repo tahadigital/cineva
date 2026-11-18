@@ -206,6 +206,12 @@ class CloudService:
                     details TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS user_sync(
+                    user_id TEXT PRIMARY KEY,
+                    state_json TEXT NOT NULL DEFAULT '{}',
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+                );
             """)
             defaults = {
                 'announcement': json.dumps({
@@ -361,6 +367,41 @@ class CloudService:
             if include_devices:
                 devs = [dict(d) for d in c.execute('SELECT device_id AS id,device_name AS name,platform,last_seen_at AS lastSeenAt FROM devices WHERE user_id=? ORDER BY last_seen_at DESC', (user_id,))]
             return self._public_user(row, devs)
+
+    def get_sync_state(self, user_id: str) -> dict:
+        with self.connect() as c:
+            row = c.execute('SELECT state_json, updated_at FROM user_sync WHERE user_id=?', (user_id,)).fetchone()
+            if not row:
+                return {'state': None, 'updatedAt': ''}
+            try:
+                state = json.loads(row['state_json'])
+            except Exception:
+                state = None
+            return {'state': state, 'updatedAt': row['updated_at']}
+
+    def put_sync_state(self, user_id: str, raw: dict) -> dict:
+        if not isinstance(raw, dict):
+            raise ValueError('Eşitleme verisi geçerli bir JSON nesnesi olmalıdır.')
+        source = raw['state'] if isinstance(raw.get('state'), dict) else raw
+        clean = {
+            'version': int(source.get('version') or 1),
+            'exportedAt': str(source.get('exportedAt') or iso_now())[:64],
+            'items': list(source.get('items') or [])[:2000] if isinstance(source.get('items'), list) else [],
+            'favorites': list(source.get('favorites') or [])[:2000] if isinstance(source.get('favorites'), list) else [],
+            'progress': list(source.get('progress') or [])[:2000] if isinstance(source.get('progress'), list) else [],
+            'playlists': list(source.get('playlists') or [])[:200] if isinstance(source.get('playlists'), list) else [],
+            'playlistItems': list(source.get('playlistItems') or [])[:5000] if isinstance(source.get('playlistItems'), list) else [],
+            'trackPreferences': list(source.get('trackPreferences') or [])[:2000] if isinstance(source.get('trackPreferences'), list) else [],
+            'nativeTrackPreferences': list(source.get('nativeTrackPreferences') or [])[:2000] if isinstance(source.get('nativeTrackPreferences'), list) else [],
+        }
+        now = iso_now()
+        with self.connect() as c:
+            c.execute(
+                'INSERT OR REPLACE INTO user_sync(user_id, state_json, updated_at) VALUES(?,?,?)',
+                (user_id, json.dumps(clean, ensure_ascii=False), now),
+            )
+            c.execute('UPDATE users SET last_seen_at=? WHERE id=?', (now, user_id))
+        return {'ok': True, 'state': clean, 'updatedAt': now}
 
     def _audit(self, c: sqlite3.Connection, actor: dict, action: str, target_type: str, target_id: str, details: dict) -> None:
         c.execute(
@@ -753,6 +794,11 @@ def make_handler(service: CloudService, cors_origin: str = ''):
                     if not user:
                         return
                     return self._json({'user': service.get_user_by_id(user['id'], include_devices=True)})
+                if p == '/api/v1/sync':
+                    user = self._require_user()
+                    if not user:
+                        return
+                    return self._json(service.get_sync_state(user['id']))
                 if p.startswith('/api/v1/admin/'):
                     if not self._has_admin_gate():
                         return self._json({'error': 'Sayfa bulunamadı.'}, 404)
@@ -842,6 +888,11 @@ def make_handler(service: CloudService, cors_origin: str = ''):
                         return
                     devs = service.register_device(user, body.get('deviceId', ''), body.get('deviceName', ''), body.get('platform', 'web'))
                     return self._json({'devices': devs})
+                if p == '/api/v1/sync' and method in ('PUT', 'POST'):
+                    user = self._require_user()
+                    if not user:
+                        return
+                    return self._json(service.put_sync_state(user['id'], body))
                 if p == '/api/v1/licenses/redeem' and method == 'POST':
                     user = self._require_user()
                     if not user:

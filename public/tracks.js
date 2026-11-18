@@ -4,12 +4,36 @@
 window.AkisTracks = (() => {
   let current = null, busy = false;
   const el = id => document.getElementById(id);
-  const languageNames = {tur:'Türkçe',tr:'Türkçe',eng:'İngilizce',en:'İngilizce',deu:'Almanca',ger:'Almanca',de:'Almanca',fra:'Fransızca',fre:'Fransızca',fr:'Fransızca',ara:'Arapça',ar:'Arapça',spa:'İspanyolca',es:'İspanyolca',ita:'İtalyanca',it:'İtalyanca',rus:'Rusça',ru:'Rusça',jpn:'Japonca',ja:'Japonca',kor:'Korece',ko:'Korece',und:'Dil belirtilmemiş'};
+  const languageNames = {tur:'Türkçe',tr:'Türkçe',eng:'İngilizce',en:'İngilizce',deu:'Almanca',ger:'Almanca',de:'Almanca',fra:'Fransızca',fre:'Fransızca',fr:'Fransızca',ara:'Arapça',ar:'Arapça',spa:'İspanyolca',es:'İspanyolca',ita:'İtalyanca',it:'İtalyanca',rus:'Rusça',ru:'Rusça',jpn:'Japonca',ja:'Japonca',kor:'Korece',ko:'Korece',por:'Portekizce',pt:'Portekizce',nld:'Felemenkçe',dut:'Felemenkçe',nl:'Felemenkçe',pol:'Lehçe',pl:'Lehçe',zho:'Çince',chi:'Çince',zh:'Çince',aze:'Azerice',az:'Azerice',kur:'Kürtçe',ku:'Kürtçe',ell:'Yunanca',gre:'Yunanca',el:'Yunanca',fas:'Farsça',per:'Farsça',fa:'Farsça',hin:'Hintçe',hi:'Hintçe',ukr:'Ukraynaca',uk:'Ukraynaca',und:'Dil belirtilmemiş'};
+  const titleLangHints = [
+    [/\b(t[uü]rk[cç]e|turkish|\btr\b|dublaj)\b/i,'tur'],
+    [/\b(ingilizce|english|\beng?\b|original|orijinal)\b/i,'eng'],
+    [/\b(almanca|german|deutsch|\bdeu\b|\bger\b)\b/i,'deu'],
+    [/\b(frans[ıi]zca|french|fran[cç]ais|\bfra\b|\bfre\b)\b/i,'fra'],
+    [/\b(rus[cç]a|russian|\brus\b)\b/i,'rus'],
+    [/\b(arap[cç]a|arabic|\bara\b)\b/i,'ara'],
+    [/\b(ispanyolca|spanish|espa[nñ]ol|\bspa\b)\b/i,'spa'],
+    [/\b(italyanca|italian|italiano|\bita\b)\b/i,'ita'],
+    [/\b(japonca|japanese|\bjpn\b)\b/i,'jpn'],
+    [/\b(korece|korean|\bkor\b)\b/i,'kor'],
+    [/\b(portekizce|portuguese|\bpor\b)\b/i,'por'],
+    [/\b(azerice|azerbaijani|\baze\b)\b/i,'aze'],
+    [/\b(k[uü]rt[cç]e|kurdish|\bkur\b)\b/i,'kur'],
+  ];
+  function inferLangCode(rawCode, title) {
+    const clean = String(rawCode || 'und').trim().toLowerCase();
+    if (clean && !['und','unk','unknown','mul','zxx'].includes(clean)) return clean;
+    const text = String(title || '');
+    for (const [pattern, iso] of titleLangHints) {
+      if (pattern.test(text)) return iso;
+    }
+    return clean || 'und';
+  }
   function label(track,index,kind) {
-    const code=String(track.language||track.lang||'und').toLowerCase();
+    const title=track.title||track.name||track.label||'';
+    const code=inferLangCode(track.language||track.lang||'und', title);
     let language=languageNames[code];
     if(!language){try{language=new Intl.DisplayNames(['tr'],{type:'language'}).of(code);}catch{} }
-    const title=track.title||track.name||track.label||'';
     const parts=[language||code];
     if(title&&String(title).toLowerCase()!==String(parts[0]).toLowerCase())parts.push(title);
     if(track.channels)parts.push(track.channels);
@@ -120,8 +144,23 @@ window.AkisTracks = (() => {
       catch(error){player.selection[key]=old;applyNative(player);notify(error.message,true);}
     }else{await restart(player,{[kind==='audio'?'audioTrack':'subtitleTrack']:value});}
   }
-  function reset(player){current=player;player.tracks={audio:[],subtitles:[],scanned:false};player.selection={audio:'auto',subtitle:'off'};render(player);}
-  function ready(player,result){if(state.player!==player)return;current=player;player.tracks=result.tracks||{audio:[],subtitles:[],scanned:false};player.selection=result.selection||{audio:'auto',subtitle:'off'};render(player);}
+  function syncExternalSubtitles(externalList) {
+    const video=document.querySelector('#video');
+    if(!video?.querySelectorAll)return;
+    video.querySelectorAll('track[data-sidecar="1"]').forEach(el=>el.remove());
+    for(const sub of externalList||[]){
+      if(!sub?.url||!document.createElement)continue;
+      const tr=document.createElement('track');
+      tr.kind='subtitles';
+      tr.label=sub.title||'Harici Altyazı';
+      tr.srclang=sub.language||'tr';
+      tr.src=sub.url;
+      tr.dataset.sidecar='1';
+      video.appendChild(tr);
+    }
+  }
+  function reset(player){current=player;player.tracks={audio:[],subtitles:[],scanned:false};player.selection={audio:'auto',subtitle:'off'};syncExternalSubtitles([]);render(player);}
+  function ready(player,result){if(state.player!==player)return;current=player;player.tracks=result.tracks||{audio:[],subtitles:[],scanned:false};player.selection=result.selection||{audio:'auto',subtitle:'off'};syncExternalSubtitles(result.externalSubtitles||[]);render(player);}
   function bindHls(player,hls){
     for(const key of ['AUDIO_TRACKS_UPDATED','SUBTITLE_TRACKS_UPDATED','MANIFEST_PARSED']){
       const name=Hls.Events[key];if(name)hls.on(name,()=>{if(state.player===player)applyNative(player);});

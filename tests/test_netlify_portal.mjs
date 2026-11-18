@@ -7,11 +7,13 @@ import {
   verifyPassword,
   issueToken,
   verifyTokenClaims,
+  sanitizeSyncState,
   handleApiRequest,
 } from "../website/netlify/functions/cloud-core.mjs";
 
 function makeMemoryPool() {
   const users = new Map();
+  const userSync = new Map();
   const devices = [];
   const licenses = new Map();
   const redemptions = new Set();
@@ -119,6 +121,14 @@ function makeMemoryPool() {
       downloads.set(params[0], next);
       return { rows: [{ count: next }] };
     }
+    if (q.startsWith("SELECT state_json, updated_at FROM user_sync")) {
+      const row = userSync.get(params[0]);
+      return { rows: row ? [row] : [] };
+    }
+    if (q.startsWith("INSERT INTO user_sync")) {
+      userSync.set(params[0], { state_json: params[1], updated_at: params[2] });
+      return { rows: [] };
+    }
     if (q.startsWith("BEGIN") || q.startsWith("COMMIT") || q.startsWith("ROLLBACK")) return { rows: [] };
     throw new Error("Unhandled mock SQL: " + q);
   };
@@ -198,4 +208,35 @@ test("Netlify cloud core handles PBKDF2 passwords, HMAC tokens, role gating, and
 
   const selfDemote = await call("PATCH", `/api/v1/admin/users/${admJson.user.id}`, { role: "user" }, admJson.token);
   assert.equal(selfDemote.status, 400);
+
+  // Zero-Knowledge Cross-Device Sync (/api/v1/sync)
+  const initialSync = await call("GET", "/api/v1/sync", null, regJson.token);
+  assert.equal(initialSync.status, 200);
+  assert.equal((await initialSync.json()).state, null);
+
+  const putSync = await call(
+    "PUT",
+    "/api/v1/sync",
+    {
+      state: {
+        version: 1,
+        favorites: [{ itemId: "vod:101", addedAt: 1700000000 }],
+        progress: [{ itemId: "vod:101", positionSeconds: 120, durationSeconds: 3600, completed: false, updatedAt: 1700000050 }],
+        connection: { host: "http://secret-iptv.example.com", password: "secret" },
+      },
+    },
+    regJson.token,
+  );
+  assert.equal(putSync.status, 200);
+  const putSyncJson = await putSync.json();
+  assert.equal(putSyncJson.ok, true);
+  assert.equal(putSyncJson.state.favorites.length, 1);
+  assert.equal("connection" in putSyncJson.state, false);
+
+  const getSync = await call("GET", "/api/v1/sync", null, regJson.token);
+  assert.equal(getSync.status, 200);
+  const getSyncJson = await getSync.json();
+  assert.equal(getSyncJson.state.favorites[0].itemId, "vod:101");
+  assert.equal(getSyncJson.state.progress[0].positionSeconds, 120);
+  assert.equal("connection" in getSyncJson.state, false);
 });

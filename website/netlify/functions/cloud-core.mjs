@@ -4,6 +4,17 @@ export const PLANS = new Set(["free", "pro", "family", "lifetime"]);
 export const STATUSES = new Set(["active", "suspended"]);
 export const ROLES = new Set(["user", "admin"]);
 export const EMAIL_RE = /^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,24}$/;
+export const SAFE_SYNC_KEYS = [
+  "version",
+  "exportedAt",
+  "items",
+  "favorites",
+  "progress",
+  "playlists",
+  "playlistItems",
+  "trackPreferences",
+  "nativeTrackPreferences",
+];
 
 class HttpError extends Error {
   constructor(status, message) {
@@ -14,6 +25,30 @@ class HttpError extends Error {
 
 export function isoNow() {
   return new Date().toISOString();
+}
+
+export function sanitizeSyncState(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new HttpError(400, "Eşitleme verisi geçerli bir JSON nesnesi olmalıdır.");
+  }
+  const source =
+    raw.state && typeof raw.state === "object" && !Array.isArray(raw.state)
+      ? raw.state
+      : raw;
+  const clean = {
+    version: Number(source.version) || 1,
+    exportedAt: String(source.exportedAt || isoNow()).slice(0, 64),
+    items: Array.isArray(source.items) ? source.items.slice(0, 2000) : [],
+    favorites: Array.isArray(source.favorites) ? source.favorites.slice(0, 2000) : [],
+    progress: Array.isArray(source.progress) ? source.progress.slice(0, 2000) : [],
+    playlists: Array.isArray(source.playlists) ? source.playlists.slice(0, 200) : [],
+    playlistItems: Array.isArray(source.playlistItems) ? source.playlistItems.slice(0, 5000) : [],
+    trackPreferences: Array.isArray(source.trackPreferences) ? source.trackPreferences.slice(0, 2000) : [],
+    nativeTrackPreferences: Array.isArray(source.nativeTrackPreferences)
+      ? source.nativeTrackPreferences.slice(0, 2000)
+      : [],
+  };
+  return clean;
 }
 
 export function hashPassword(password) {
@@ -106,9 +141,9 @@ function jsonResp(payload, status = 200) {
   });
 }
 
-async function readJsonBody(req) {
+async function readJsonBody(req, maxBytes = 1536 * 1024) {
   const text = await req.text();
-  if (Buffer.byteLength(text, "utf8") > 512 * 1024) throw new HttpError(400, "İstek boyutu çok büyük.");
+  if (Buffer.byteLength(text, "utf8") > maxBytes) throw new HttpError(400, "İstek boyutu çok büyük.");
   if (!text.trim()) return {};
   let data;
   try {
@@ -178,9 +213,9 @@ async function addAudit(queryable, actor, action, targetType, targetId, details)
 async function getPublicConfig(pool) {
   const defaultAnn = { enabled: false, title: "", message: "", severity: "info" };
   const defaultVers = {
-    windowsLatest: "2.0.1",
+    windowsLatest: "2.0.2",
     windowsMin: "2.0.0",
-    androidLatest: "2.0.1",
+    androidLatest: "2.0.2",
     androidMin: "2.0.0",
     windowsInstallerUrl: "https://github.com/tahadigital/cineva/releases/latest/download/Cineva-Setup.exe",
     windowsPortableUrl: "https://github.com/tahadigital/cineva/releases/latest/download/Cineva.exe",
@@ -316,6 +351,34 @@ export async function handleApiRequest(req, { ip = "0.0.0.0", db, env }) {
     if (path === "/api/v1/me" && method === "GET") {
       const user = await requireUser();
       return jsonResp({ user: await getUserById(pool, user.id, true) });
+    }
+
+    if (path === "/api/v1/sync" && method === "GET") {
+      const user = await requireUser();
+      const res = await pool.query("SELECT state_json, updated_at FROM user_sync WHERE user_id = $1", [user.id]);
+      const row = res.rows[0];
+      if (!row) return jsonResp({ state: null, updatedAt: "" });
+      let state = null;
+      try {
+        state = JSON.parse(row.state_json);
+      } catch {
+        state = null;
+      }
+      return jsonResp({ state, updatedAt: row.updated_at });
+    }
+
+    if (path === "/api/v1/sync" && (method === "PUT" || method === "POST")) {
+      const user = await requireUser();
+      const body = await readJsonBody(req);
+      const cleanState = sanitizeSyncState(body);
+      const now = isoNow();
+      await pool.query(
+        `INSERT INTO user_sync (user_id, state_json, updated_at) VALUES ($1, $2, $3)
+         ON CONFLICT (user_id) DO UPDATE SET state_json = EXCLUDED.state_json, updated_at = EXCLUDED.updated_at`,
+        [user.id, JSON.stringify(cleanState), now],
+      );
+      await pool.query("UPDATE users SET last_seen_at = $1 WHERE id = $2", [now, user.id]);
+      return jsonResp({ ok: true, state: cleanState, updatedAt: now });
     }
 
     if (path === "/api/v1/devices/register" && method === "POST") {

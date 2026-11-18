@@ -518,3 +518,123 @@ input, select, .field input, .sort-select, .season-select { background-color: #2
 .multiview-bar strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .multiview-actions { display:flex; gap:6px; flex:none; }
 @media(max-width:780px) { .multiview-grid { grid-template-columns:1fr; } }
+
+/* Lively Loading Panels & Waiting Animations */
+@keyframes cinevaEqPulse {
+  0%, 100% { transform: scaleY(0.32); opacity: 0.55; }
+  50% { transform: scaleY(1); opacity: 1; }
+}
+@keyframes cinevaProgressSweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(220%); }
+}
+@keyframes cinevaCardPulse {
+  0%, 100% { opacity: 0.62; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-2px); }
+}
+
+.cinema-eq {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 22px;
+  padding: 2px 4px;
+}
+.cinema-eq.small { height: 16px; gap: 3px; }
+.cinema-eq span {
+  width: 4px;
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(180deg, #ff7b54, #ff4b45);
+  transform-origin: bottom;
+  animation: cinevaEqPulse 1.05s ease-in-out infinite;
+}
+.cinema-eq span:nth-child(2) { animation-delay: 0.16s; }
+.cinema-eq span:nth-child(3) { animation-delay: 0.32s; }
+.cinema-eq span:nth-child(4) { animation-delay: 0.48s; }
+
+.loading-stage-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 26px 32px;
+  border-radius: 16px;
+  background: radial-gradient(circle at top, rgba(255,75,69,.18), rgba(20,23,31,.94) 70%);
+  border: 1px solid rgba(255,255,255,.11);
+  box-shadow: 0 22px 48px rgba(0,0,0,.45);
+  max-width: 420px;
+  text-align: center;
+}
+.loading-stage-card strong { font-size: 16px; color: #fff; letter-spacing: .2px; }
+.loading-stage-card p { font-size: 12px; color: #aab1c1; margin: 0; }
+
+.loading-panel-banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  margin-bottom: 18px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(255,75,69,.14), rgba(24,28,38,.92) 55%);
+  border: 1px solid rgba(255,255,255,.09);
+  box-shadow: 0 12px 28px rgba(0,0,0,.28);
+}
+.loading-panel-copy { flex: 1; min-width: 0; }
+.loading-panel-copy strong { display: block; font-size: 14px; color: #fff; margin-bottom: 3px; }
+.loading-panel-copy p { margin: 0 0 8px; font-size: 12px; color: #b4bbc8; }
+
+.loading-progress-bar {
+  width: 100%;
+  max-width: 260px;
+  height: 4px;
+  border-radius: 99px;
+  background: rgba(255,255,255,.12);
+  overflow: hidden;
+  position: relative;
+}
+.loading-progress-bar span {
+  display: block;
+  width: 45%;
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, transparent, #ff4b45, #ff9933, transparent);
+  animation: cinevaProgressSweep 1.5s cubic-bezier(.4,0,.2,1) infinite;
+}
+
+.loading-grid .skeleton {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 12px;
+  gap: 6px;
+  border: 1px solid rgba(255,255,255,.06);
+  animation: shimmer 1.5s linear infinite, cinevaCardPulse 2.1s ease-in-out infinite;
+  animation-delay: var(--sk-delay, 0ms);
+}
+.skeleton-bar-title, .skeleton-bar-meta {
+  display: block;
+  border-radius: 4px;
+  background: rgba(255,255,255,.12);
+}
+.skeleton-bar-title { width: 78%; height: 10px; }
+.skeleton-bar-meta { width: 46%; height: 7px; opacity: .7; }
+
+.player-waiting-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 22px 28px;
+  border-radius: 16px;
+  background: rgba(14, 17, 24, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.55);
+}
+.player-waiting-sub {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.68);
+  letter-spacing: .2px;
+}

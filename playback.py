@@ -29,6 +29,33 @@ _MEDIA_FILE = re.compile(r"(?:(?:master|index|index_vtt)\.m3u8|index[0-9]+\.vtt|
 
 BITMAP_SUBTITLES = frozenset({'hdmv_pgs_subtitle', 'pgssub', 'dvd_subtitle', 'dvdsub', 'dvb_subtitle', 'dvbsub', 'xsub'})
 
+_TITLE_LANG_PATTERNS = (
+    (re.compile(r'\b(t[uü]rk[cç]e|turkish|\btr\b|dublaj)\b', re.I), 'tur'),
+    (re.compile(r'\b(ingilizce|english|\beng?\b|original|orijinal)\b', re.I), 'eng'),
+    (re.compile(r'\b(almanca|german|deutsch|\bdeu\b|\bger\b)\b', re.I), 'deu'),
+    (re.compile(r'\b(frans[ıi]zca|french|fran[cç]ais|\bfra\b|\bfre\b)\b', re.I), 'fra'),
+    (re.compile(r'\b(rus[cç]a|russian|\brus\b)\b', re.I), 'rus'),
+    (re.compile(r'\b(arap[cç]a|arabic|\bara\b)\b', re.I), 'ara'),
+    (re.compile(r'\b(ispanyolca|spanish|espa[nñ]ol|\bspa\b)\b', re.I), 'spa'),
+    (re.compile(r'\b(italyanca|italian|italiano|\bita\b)\b', re.I), 'ita'),
+    (re.compile(r'\b(japonca|japanese|\bjpn\b)\b', re.I), 'jpn'),
+    (re.compile(r'\b(korece|korean|\bkor\b)\b', re.I), 'kor'),
+    (re.compile(r'\b(portekizce|portuguese|\bpor\b)\b', re.I), 'por'),
+    (re.compile(r'\b(azerice|azerbaijani|\baze\b)\b', re.I), 'aze'),
+    (re.compile(r'\b(k[uü]rt[cç]e|kurdish|\bkur\b)\b', re.I), 'kur'),
+)
+
+
+def _infer_language(lang: str, title: str) -> str:
+    clean = (lang or 'und').strip().lower()
+    if clean not in ('', 'und', 'unk', 'unknown', 'mul', 'zxx') or not title:
+        return clean or 'und'
+    folded = title.replace('İ', 'i').replace('I', 'ı').lower()
+    for pattern, code in _TITLE_LANG_PATTERNS:
+        if pattern.search(folded) or pattern.search(title):
+            return code
+    return clean or 'und'
+
 
 def parse_tracks(diagnostic: str) -> dict:
     """Read input stream metadata from the bundled FFmpeg (no ffprobe needed)."""
@@ -67,6 +94,10 @@ def parse_tracks(diagnostic: str) -> dict:
             title = re.match(r'\s*title\s*:\s*(.*)', line, re.I)
             if title:
                 current['title'] = title[1].strip()[:180]
+                current['language'] = _infer_language(current['language'], current['title'])
+            lang_meta = re.match(r'\s*language\s*:\s*([A-Za-z]{2,3})\b', line, re.I)
+            if lang_meta and current['language'] in ('und', 'unk', ''):
+                current['language'] = lang_meta[1].strip().lower()
     # A valid video-only source still has a complete (empty) track list.
     if re.search(r'Stream #0:\d+.*: Video:', diagnostic):
         result['scanned'] = True

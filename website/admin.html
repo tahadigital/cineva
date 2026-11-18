@@ -60,6 +60,7 @@
         <button class="tab-btn" data-tab="licenses" type="button">Lisans & Kuponlar</button>
         <button class="tab-btn" data-tab="config" type="button">İndirme Linkleri & Duyuru</button>
         <button class="tab-btn" data-tab="audit" type="button">Denetim Kayıtları</button>
+        <button class="tab-btn" data-tab="guide" type="button">Yönetici Kılavuzu</button>
       </div>
 
       <!-- Hesaplar Sekmesi -->
@@ -144,6 +145,32 @@
             <thead><tr><th>Zaman</th><th>Yönetici</th><th>İşlem</th><th>Hedef</th><th>Detay</th></tr></thead>
             <tbody id="auditTbody"></tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- Yönetici Kılavuzu Sekmesi -->
+      <div id="tab-guide" hidden>
+        <div class="card" style="line-height:1.65;font-size:13.5px">
+          <h3 style="margin:0 0 10px;font-size:18px">Cineva Yönetici (Admin) Çalışma Kılavuzu</h3>
+          <p style="color:var(--muted);margin:0 0 16px">Bu panel gizli kapı anahtarı (Edge Gate) ve yönetici rolü ile korunur. Doğrudan <code>/admin</code> adresine gelen yetkisiz ziyaretçiler <strong>404 Bulunamadı</strong> yanıtı alır.</p>
+          <div style="display:grid;gap:14px">
+            <div style="padding:12px 14px;border-radius:10px;background:#ffffff08;border:1px solid #ffffff14">
+              <strong>1. Gizli Yönetim Paneline Erişim & Yeni Yönetici Ekleme</strong>
+              <p style="margin:4px 0 0;color:var(--muted)">Tarayıcıdan ilk girişte gizli erişim bağlantınızı (<code>/admin?access=GIZLI_KAPI_ANAHTARI</code>) açın; tarayıcınıza 12 saatlik güvenli <code>HttpOnly</code> çerez tanımlanır. Güvendiğiniz bir kişiye yönetici yetkisi vermek için önce portaldan normal hesap açmasını isteyin, ardından <strong>Hesaplar → Yönet → Yetki Rolü: Yetkili Yönetici (Admin)</strong> seçip kaydedin ve gizli erişim bağlantısını paylaşın.</p>
+            </div>
+            <div style="padding:12px 14px;border-radius:10px;background:#ffffff08;border:1px solid #ffffff14">
+              <strong>2. Lisans Anahtarı Üretme & Plan Yükseltme</strong>
+              <p style="margin:4px 0 0;color:var(--muted)"><strong>Lisans & Kuponlar</strong> sekmesinden <code>Cineva Pro</code>, <code>Aile Planı</code> veya <code>Ömür Boyu</code> lisans anahtarları (<code>CINEVA-XXXX-XXXX-XXXX</code>) üretebilirsiniz. Kullanıcılar bu kodu Web Portalı, Windows veya Android uygulamasındaki <em>Cineva Hesabı</em> bölümünden etkinleştirir.</p>
+            </div>
+            <div style="padding:12px 14px;border-radius:10px;background:#ffffff08;border:1px solid #ffffff14">
+              <strong>3. Hesaplar Arası Eşitleme (Zero-Knowledge Cloud Sync)</strong>
+              <p style="margin:4px 0 0;color:var(--muted)">Kullanıcılar Windows, macOS veya Android uygulamalarında Cineva hesaplarıyla giriş yaptığında <strong>Favoriler, İzleme Geçmişi (Kaldığı Yer), Oynatma Listeleri ve Ses/Altyazı Tercihleri</strong> <code>/api/v1/sync</code> üzerinden cihazlar arasında otomatik eşitlenir. Özel M3U/Xtream bilgileri asla buluta gönderilmez.</p>
+            </div>
+            <div style="padding:12px 14px;border-radius:10px;background:#ffffff08;border:1px solid #ffffff14">
+              <strong>4. Sürüm Yayınlama & Uzaktan Duyuru</strong>
+              <p style="margin:4px 0 0;color:var(--muted)">GitHub üzerinde yeni bir <code>vX.Y.Z</code> etiketi yayınladığınızda GitHub Actions otomatik olarak <code>Cineva-Setup.exe</code>, <code>Cineva.exe</code> ve <code>Cineva-Android.apk</code> dosyalarını derleyip Release sayfasına yükler. <strong>İndirme Linkleri & Duyuru</strong> sekmesinden güncel sürüm numarasını ve uygulama içi duyuru mesajını anında güncelleyebilirsiniz.</p>
+            </div>
+          </div>
         </div>
       </div>
     </section>

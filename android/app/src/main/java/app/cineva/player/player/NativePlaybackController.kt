@@ -437,9 +437,9 @@ internal class NativePlaybackController(
         }
         fun track(description: MediaPlayer.TrackDescription): PlaybackTrack {
             val meta = metadata[description.id]
-            val language = languageName(meta?.language.orEmpty())
             val rawTitle = description.name.orEmpty().trim()
             val title = meta?.description.orEmpty().ifBlank { rawTitle }
+            val language = languageName(meta?.language.orEmpty(), title)
             val pieces = mutableListOf<String>()
             if (language.isNotBlank()) pieces += language
             if (title.isNotBlank() && !title.equals(language, true)) pieces += title
@@ -650,10 +650,55 @@ internal class NativePlaybackController(
 
 }
 
-internal fun languageName(raw: String): String {
+private val TitleLanguageHints = listOf(
+    Regex("\\b(t[uü]rk[cç]e|turkish|\\btr\\b|dublaj)\\b", RegexOption.IGNORE_CASE) to "Türkçe",
+    Regex("\\b(ingilizce|english|\\beng?\\b|original|orijinal)\\b", RegexOption.IGNORE_CASE) to "İngilizce",
+    Regex("\\b(almanca|german|deutsch|\\bdeu\\b|\\bger\\b)\\b", RegexOption.IGNORE_CASE) to "Almanca",
+    Regex("\\b(frans[ıi]zca|french|fran[cç]ais|\\bfra\\b|\\bfre\\b)\\b", RegexOption.IGNORE_CASE) to "Fransızca",
+    Regex("\\b(rus[cç]a|russian|\\brus\\b)\\b", RegexOption.IGNORE_CASE) to "Rusça",
+    Regex("\\b(arap[cç]a|arabic|\\bara\\b)\\b", RegexOption.IGNORE_CASE) to "Arapça",
+    Regex("\\b(ispanyolca|spanish|espa[nñ]ol|\\bspa\\b)\\b", RegexOption.IGNORE_CASE) to "İspanyolca",
+    Regex("\\b(italyanca|italian|italiano|\\bita\\b)\\b", RegexOption.IGNORE_CASE) to "İtalyanca",
+    Regex("\\b(japonca|japanese|\\bjpn\\b)\\b", RegexOption.IGNORE_CASE) to "Japonca",
+    Regex("\\b(korece|korean|\\bkor\\b)\\b", RegexOption.IGNORE_CASE) to "Korece",
+    Regex("\\b(portekizce|portuguese|\\bpor\\b)\\b", RegexOption.IGNORE_CASE) to "Portekizce",
+    Regex("\\b(azerice|azerbaijani|\\baze\\b)\\b", RegexOption.IGNORE_CASE) to "Azerice",
+    Regex("\\b(k[uü]rt[cç]e|kurdish|\\bkur\\b)\\b", RegexOption.IGNORE_CASE) to "Kürtçe",
+)
+
+internal fun languageName(raw: String, titleHint: String = ""): String {
     val code = raw.trim().lowercase(Locale.ROOT)
-    if (code.isEmpty() || code == "und") return ""
-    val known = mapOf("tr" to "Türkçe", "tur" to "Türkçe", "en" to "İngilizce", "eng" to "İngilizce", "de" to "Almanca", "deu" to "Almanca", "ger" to "Almanca", "fr" to "Fransızca", "fra" to "Fransızca", "fre" to "Fransızca", "ar" to "Arapça", "ara" to "Arapça", "es" to "İspanyolca", "spa" to "İspanyolca", "ru" to "Rusça", "rus" to "Rusça")
+    if (code.isEmpty() || code in setOf("und", "unk", "unknown", "mul", "zxx")) {
+        if (titleHint.isNotBlank()) {
+            val folded = titleHint.replace('İ', 'i').replace('I', 'ı').lowercase(Locale.ROOT)
+            for ((pattern, label) in TitleLanguageHints) {
+                if (pattern.containsMatchIn(folded) || pattern.containsMatchIn(titleHint)) return label
+            }
+        }
+        return ""
+    }
+    val known = mapOf(
+        "tr" to "Türkçe", "tur" to "Türkçe",
+        "en" to "İngilizce", "eng" to "İngilizce",
+        "de" to "Almanca", "deu" to "Almanca", "ger" to "Almanca",
+        "fr" to "Fransızca", "fra" to "Fransızca", "fre" to "Fransızca",
+        "ar" to "Arapça", "ara" to "Arapça",
+        "es" to "İspanyolca", "spa" to "İspanyolca",
+        "ru" to "Rusça", "rus" to "Rusça",
+        "it" to "İtalyanca", "ita" to "İtalyanca",
+        "ja" to "Japonca", "jpn" to "Japonca",
+        "ko" to "Korece", "kor" to "Korece",
+        "pt" to "Portekizce", "por" to "Portekizce",
+        "nl" to "Felemenkçe", "nld" to "Felemenkçe", "dut" to "Felemenkçe",
+        "pl" to "Lehçe", "pol" to "Lehçe",
+        "zh" to "Çince", "zho" to "Çince", "chi" to "Çince",
+        "az" to "Azerice", "aze" to "Azerice",
+        "ku" to "Kürtçe", "kur" to "Kürtçe",
+        "el" to "Yunanca", "ell" to "Yunanca", "gre" to "Yunanca",
+        "fa" to "Farsça", "fas" to "Farsça", "per" to "Farsça",
+        "hi" to "Hintçe", "hin" to "Hintçe",
+        "uk" to "Ukraynaca", "ukr" to "Ukraynaca",
+    )
     return known[code] ?: runCatching { Locale.forLanguageTag(code).getDisplayLanguage(Locale.forLanguageTag("tr")) }.getOrDefault(code).ifBlank { code }
 }
 

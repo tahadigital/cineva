@@ -504,8 +504,8 @@ def _cloud_request(cloud_url, path, method='GET', payload=None, token=''):
         headers['Content-Type'] = 'application/json'
     req = urllib.request.Request(base + path, data=raw, method=method, headers=headers)
     try:
-        with CLOUD_OPENER.open(req, timeout=6) as r:
-            body = r.read(256 * 1024)
+        with CLOUD_OPENER.open(req, timeout=8) as r:
+            body = r.read(1536 * 1024)
             return json.loads(body.decode('utf-8')) if body else {}
     except urllib.error.HTTPError as err:
         raw_err = err.read(64 * 1024)
@@ -536,7 +536,7 @@ def cloud_status():
 
 
 def cloud_auth(action, d):
-    cloud_url = validate_host(d.get('cloudUrl') or _cloud_state().get('cloudUrl') or '')
+    cloud_url = validate_host(d.get('cloudUrl') or _cloud_state().get('cloudUrl') or 'https://cineva-app.netlify.app')
     endpoint = '/api/v1/auth/register' if action == 'register' else '/api/v1/auth/login'
     res = _cloud_request(cloud_url, endpoint, method='POST', payload={
         'email': str(d.get('email', '')).strip(),
@@ -552,7 +552,30 @@ def cloud_auth(action, d):
                 'deviceName': socket.gethostname() or 'Cineva Masaüstü',
                 'platform': 'desktop',
             }, token=token)
+        with contextlib.suppress(Exception):
+            cloud_sync()
     return cloud_status()
+
+
+def cloud_sync():
+    st = _cloud_state()
+    if not st['cloudUrl'] or not st['token']:
+        raise ValueError('Önce Cineva hesabınızla giriş yapın.')
+    remote_res = _cloud_request(st['cloudUrl'], '/api/v1/sync', token=st['token'])
+    remote_state = remote_res.get('state') if isinstance(remote_res, dict) else None
+    if isinstance(remote_state, dict) and remote_state.get('version') == 1:
+        merge_state_dict(remote_state)
+    merged = export_state_dict()
+    pushed = _cloud_request(st['cloudUrl'], '/api/v1/sync', method='PUT', payload={'state': merged}, token=st['token'])
+    return {
+        'ok': True,
+        'updatedAt': pushed.get('updatedAt') or merged['exportedAt'],
+        'counts': {
+            'favorites': len(merged['favorites']),
+            'progress': len(merged['progress']),
+            'playlists': len(merged['playlists']),
+        },
+    }
 
 
 def cloud_redeem(d):
@@ -895,9 +918,57 @@ def cached_tracks(iid, fresh=False):
     return None
 
 
-def tracks_response(iid):
-    get_row(iid)
-    return {'tracks': cached_tracks(iid) or {'audio': [], 'subtitles': [], 'scanned': False}, 'selection': track_preferences(iid)}
+def sidecar_subtitles(iid, r=None):
+    row = r or get_row(iid)
+    try:
+        extra = json.loads(row['extra'])
+    except (ValueError, TypeError):
+        extra = {}
+    subs = extra.get('subtitles')
+    if not isinstance(subs, list) or not subs:
+        return []
+    out = []
+    for idx, sub_path in enumerate(subs[:8]):
+        if not isinstance(sub_path, str) or not sub_path.strip():
+            continue
+        p = Path(sub_path)
+        lang = playback._infer_language('und', p.stem)
+        out.append({
+            'id': f'sidecar:{idx}',
+            'index': idx,
+            'language': lang,
+            'title': p.name,
+            'url': f'/api/subtitles/{urllib.parse.quote(iid, safe="")}/{idx}.vtt',
+        })
+    return out
+
+
+def tracks_response(iid, probe=False):
+    r = get_row(iid)
+    tracks = cached_tracks(iid, fresh=probe)
+    if probe and (not isinstance(tracks, dict) or not tracks.get('scanned')) and playback.available and r['kind'] != 'series':
+        token = secrets.token_urlsafe(32)
+        with resource_lock:
+            internal_sources[token] = {'url': provider.source(r, hls=False), 'touched': time.monotonic()}
+        try:
+            probed = playback.probe(f'http://127.0.0.1:{HTTP_PORT}/internal/source/{token}')
+            if isinstance(probed, dict) and probed.get('scanned'):
+                probed.setdefault('duration', None)
+                with connect() as c:
+                    c.execute('INSERT OR REPLACE INTO media_tracks VALUES(?,?,?)', (iid, json.dumps(probed, ensure_ascii=False), time.time()))
+                tracks = probed
+        except (RuntimeError, OSError):
+            pass
+        finally:
+            with resource_lock:
+                source = internal_sources.pop(token, None)
+            if source:
+                abort_connections(list(source.get('connections', ())))
+    return {
+        'tracks': tracks or {'audio': [], 'subtitles': [], 'scanned': False},
+        'selection': track_preferences(iid),
+        'externalSubtitles': sidecar_subtitles(iid, r),
+    }
 
 
 def register_play_request(options):
@@ -1028,7 +1099,7 @@ def play_item(iid, mode, start, options=None):
                 with resource_lock: media_sessions[sid] = {'resources': {}, 'reverse': {}, 'touched': time.monotonic(), 'sourceToken': token, 'owner': None, 'item': iid}
                 result['mode'] = mode
             save_track_preferences(iid, selection)
-            result.update(tracks=tracks, selection=selection)
+            result.update(tracks=tracks, selection=selection, externalSubtitles=sidecar_subtitles(iid, r))
             if next_episode:
                 result['nextEpisode'] = next_episode
             return result
@@ -1185,7 +1256,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(guide)
                 if p == '/api/catalog': return self.send_json(catalog(q))
                 if p.startswith('/api/items/'): return self.send_json(detail(p[len('/api/items/'):]))
-                if p.startswith('/api/tracks/'): return self.send_json(tracks_response(p[len('/api/tracks/'):]))
+                if p.startswith('/api/tracks/'): return self.send_json(tracks_response(p[len('/api/tracks/'):], probe=q.get('probe') == ['1']))
+                if p.startswith('/api/subtitles/'): return self.serve_sidecar_subtitle(p[len('/api/subtitles/'):])
                 if p == '/api/playlists': return self.send_json(playlists())
                 if p == '/api/favorites':
                     with connect() as c: rows = c.execute(ITEM_SELECT + ' WHERE f.item_id IS NOT NULL ORDER BY f.created_at DESC').fetchall()
@@ -1196,12 +1268,7 @@ class Handler(BaseHTTPRequestHandler):
                 if p.startswith('/api/image'): return self.image(q.get('url', [''])[0])
                 if p.startswith('/api/epg/'): return self.epg(p[len('/api/epg/'):])
                 if p == '/api/export':
-                    with connect() as c:
-                        data = {'version': 1, 'exportedAt': stamp(), 'favorites': [dict(r) for r in c.execute('SELECT * FROM favorites')],
-                                'progress': [dict(r) for r in c.execute('SELECT * FROM progress')], 'playlists': [dict(r) for r in c.execute('SELECT * FROM playlists')],
-                                'playlistItems': [dict(r) for r in c.execute('SELECT * FROM playlist_items')],
-                                'trackPreferences': [dict(r) for r in c.execute('SELECT * FROM track_preferences')], 'items': backup_items(c)}
-                    return self.send_json(data, extra={'Content-Disposition': 'attachment; filename="cineva-yedek.json"'})
+                    return self.send_json(export_state_dict(), extra={'Content-Disposition': 'attachment; filename="cineva-yedek.json"'})
                 if p.startswith('/media/'): return self.media(p)
                 return self.send_json({'error': 'Sayfa bulunamadı.'}, 404)
             return self.static(p)
@@ -1371,6 +1438,7 @@ class Handler(BaseHTTPRequestHandler):
             if p == '/api/cloud/login' and method == 'POST': return self.send_json(cloud_auth('login', d))
             if p == '/api/cloud/register' and method == 'POST': return self.send_json(cloud_auth('register', d))
             if p == '/api/cloud/redeem' and method == 'POST': return self.send_json(cloud_redeem(d))
+            if p == '/api/cloud/sync' and method == 'POST': return self.send_json(cloud_sync())
             if p == '/api/cloud/logout' and method == 'POST': return self.send_json(cloud_logout())
             if p == '/api/import' and method == 'POST': return self.import_state(d.get('data'))
             if p == '/api/devices/revoke' and method == 'POST':
@@ -1432,6 +1500,37 @@ class Handler(BaseHTTPRequestHandler):
             owner = media_sessions.get(sid) if sid else internal_sources.get(source_token)
             if owner is not None: owner['source_error'] = {'error': message, 'code': code}
         return PlaybackError(message, code=code)
+    def serve_sidecar_subtitle(self, tail):
+        if provider.mode != 'local':
+            return self.send_json({'error': 'Yerel altyazı yalnızca yerel klasör modunda kullanılabilir.'}, 403)
+        parts = tail.strip('/').split('/')
+        if len(parts) != 2 or not parts[1].endswith('.vtt'):
+            return self.send_json({'error': 'Altyazı adresi geçersiz.'}, 404)
+        iid = urllib.parse.unquote(parts[0])
+        try:
+            idx = int(parts[1][:-4])
+        except ValueError:
+            return self.send_json({'error': 'Altyazı dizini geçersiz.'}, 404)
+        r = get_row(iid)
+        subs = json.loads(r['extra']).get('subtitles') or []
+        if idx < 0 or idx >= len(subs):
+            return self.send_json({'error': 'Altyazı bulunamadı.'}, 404)
+        root = local_media.validate_local_dir(provider.config.get('localDir', ''))
+        target = Path(subs[idx]).resolve()
+        if not target.is_relative_to(root) or not target.is_file():
+            return self.send_json({'error': 'Altyazı dosyası bulunamadı.'}, 404)
+        raw_bytes = target.read_bytes()[:2 * 1024 * 1024]
+        try:
+            text = raw_bytes.decode('utf-8-sig')
+        except UnicodeDecodeError:
+            text = raw_bytes.decode('cp1254', errors='replace')
+        if not text.lstrip().startswith('WEBVTT'):
+            text = 'WEBVTT\n\n' + re.sub(r'(\d{2}:\d{2}:\d{2}),(\d{3})', r'\1.\2', text.replace('\r\n', '\n'))
+        out = text.encode('utf-8')
+        self.headers_out(200, 'text/vtt; charset=utf-8', len(out))
+        if self.command != 'HEAD':
+            self.wfile.write(out)
+
     def proxy_local(self, raw_path, sid=None):
         if provider.mode != 'local':
             return self.send_json({'error': 'Yerel dosya modu etkin değil.'}, 403)
@@ -1564,61 +1663,79 @@ class Handler(BaseHTTPRequestHandler):
         except FileNotFoundError:
             return self.send_json({'error': 'Yayın parçası hazırlanıyor veya oturum sona erdi.'}, 404)
     def import_state(self, data):
-        if not isinstance(data, dict) or data.get('version') != 1: raise ValueError('Geçerli bir Akış yedeği seçin.')
-        tables = ('favorites', 'progress', 'playlists', 'playlistItems', 'trackPreferences', 'items')
-        if any(not isinstance(data.get(t, []), list) or len(data.get(t, [])) > 100000 for t in tables): raise ValueError('Yedek biçimi veya boyutu geçersiz.')
-        metadata = [portable_item_row(r) for r in data.get('items', [])]
-        def parse_iso(value):
-            if value is None or value == '': return stamp()
-            if not isinstance(value, str) or len(value) > 64: raise ValueError('Yedek zaman bilgisi geçersiz.')
-            try:
-                parsed = dt.datetime.fromisoformat(value.replace('Z', '+00:00'))
-                if parsed.tzinfo is None: parsed = parsed.replace(tzinfo=dt.timezone.utc)
-                return parsed.astimezone(dt.timezone.utc).isoformat()
-            except ValueError: raise ValueError('Yedek zaman bilgisi geçersiz.') from None
-        def is_newer(c, table, item_id, incoming_iso):
-            row = c.execute(f'SELECT updated_at FROM {table} WHERE item_id=?', (item_id,)).fetchone()
-            if not row or not row[0]: return True
-            try:
-                existing = dt.datetime.fromisoformat(str(row[0]).replace('Z', '+00:00'))
-                if existing.tzinfo is None: existing = existing.replace(tzinfo=dt.timezone.utc)
-                incoming = dt.datetime.fromisoformat(incoming_iso.replace('Z', '+00:00'))
-                return incoming >= existing
-            except ValueError: return True
-        # Merge state; never run SQL or accept settings/credentials from an imported backup.
-        try:
-            with connect() as c:
-                c.executemany('INSERT OR IGNORE INTO items VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)', metadata)
-                for r in data.get('favorites', []):
-                    if ID_RE.fullmatch(str(r['item_id'])): c.execute('INSERT OR IGNORE INTO favorites VALUES(?,?)', (r['item_id'], parse_iso(r.get('created_at'))))
-                for r in data.get('progress', []):
-                    if ID_RE.fullmatch(str(r['item_id'])):
-                        updated = parse_iso(r.get('updated_at'))
-                        if is_newer(c, 'progress', r['item_id'], updated):
-                            pos = max(0, number(r.get('position'))); dur = max(0, number(r.get('duration')))
-                            c.execute('INSERT OR REPLACE INTO progress VALUES(?,?,?,?,?)', (r['item_id'], min(pos, dur) if dur else pos, dur, int(bool(r.get('completed'))), updated))
-                for r in data.get('playlists', []):
-                    if re.fullmatch(r'[A-Za-z0-9_-]{1,100}', str(r['id'])):
-                        c.execute('INSERT OR IGNORE INTO playlists VALUES(?,?,?)', (r['id'], string(r.get('name') or 'İçe aktarılan liste', 100), parse_iso(r.get('created_at'))))
-                for r in data.get('playlistItems', []):
-                    if ID_RE.fullmatch(str(r['item_id'])) and c.execute('SELECT 1 FROM playlists WHERE id=?', (r['playlist_id'],)).fetchone():
-                        c.execute('INSERT OR IGNORE INTO playlist_items VALUES(?,?,?)', (r['playlist_id'], r['item_id'], int(number(r.get('position')))))
-                for r in data.get('trackPreferences', []):
-                    if not isinstance(r, dict) or not ID_RE.fullmatch(str(r.get('item_id', ''))): raise ValueError('Yedekteki parça seçimi geçersiz.')
-                    updated = parse_iso(r.get('updated_at'))
-                    pref = r.get('data', '{}')
-                    if isinstance(pref, str): pref = json.loads(pref)
-                    if not isinstance(pref, dict): raise ValueError('Yedekteki parça seçimi geçersiz.')
-                    checks = {'audio': r'(?:auto|stream:[0-9]{1,5})', 'subtitle': r'(?:off|stream:[0-9]{1,5})',
-                              'clientAudio': r'(?:auto|hls:[0-9]{1,5}|native:[0-9]{1,5})', 'clientSubtitle': r'(?:off|hls:[0-9]{1,5}|native:[0-9]{1,5})'}
-                    if any(value is not None and (key not in checks or not isinstance(value, str) or not re.fullmatch(checks[key], value)) for key, value in pref.items()):
-                        raise ValueError('Yedekteki parça seçimi geçersiz.')
-                    if pref.get('audio', 'auto') is None or pref.get('subtitle', 'off') is None: raise ValueError('Parça seçimi boş olamaz.')
-                    if is_newer(c, 'track_preferences', r['item_id'], updated):
-                        c.execute('INSERT OR REPLACE INTO track_preferences VALUES(?,?,?)', (r['item_id'], json.dumps({key:value for key,value in pref.items() if key in checks}), updated))
-
-        except (KeyError, TypeError, sqlite3.IntegrityError): raise ValueError('Yedek verileri geçersiz. Hiçbir değişiklik kaydedilmedi.') from None
+        merge_state_dict(data)
         return self.send_json({'ok': True})
+
+
+def export_state_dict():
+    with connect() as c:
+        return {
+            'version': 1,
+            'exportedAt': stamp(),
+            'favorites': [dict(r) for r in c.execute('SELECT * FROM favorites')],
+            'progress': [dict(r) for r in c.execute('SELECT * FROM progress')],
+            'playlists': [dict(r) for r in c.execute('SELECT * FROM playlists')],
+            'playlistItems': [dict(r) for r in c.execute('SELECT * FROM playlist_items')],
+            'trackPreferences': [dict(r) for r in c.execute('SELECT * FROM track_preferences')],
+            'items': backup_items(c),
+        }
+
+
+def merge_state_dict(data):
+    if not isinstance(data, dict) or data.get('version') != 1: raise ValueError('Geçerli bir Akış yedeği seçin.')
+    tables = ('favorites', 'progress', 'playlists', 'playlistItems', 'trackPreferences', 'items')
+    if any(not isinstance(data.get(t, []), list) or len(data.get(t, [])) > 100000 for t in tables): raise ValueError('Yedek biçimi veya boyutu geçersiz.')
+    metadata = [portable_item_row(r) for r in data.get('items', [])]
+    def parse_iso(value):
+        if value is None or value == '': return stamp()
+        if not isinstance(value, str) or len(value) > 64: raise ValueError('Yedek zaman bilgisi geçersiz.')
+        try:
+            parsed = dt.datetime.fromisoformat(value.replace('Z', '+00:00'))
+            if parsed.tzinfo is None: parsed = parsed.replace(tzinfo=dt.timezone.utc)
+            return parsed.astimezone(dt.timezone.utc).isoformat()
+        except ValueError: raise ValueError('Yedek zaman bilgisi geçersiz.') from None
+    def is_newer(c, table, item_id, incoming_iso):
+        row = c.execute(f'SELECT updated_at FROM {table} WHERE item_id=?', (item_id,)).fetchone()
+        if not row or not row[0]: return True
+        try:
+            existing = dt.datetime.fromisoformat(str(row[0]).replace('Z', '+00:00'))
+            if existing.tzinfo is None: existing = existing.replace(tzinfo=dt.timezone.utc)
+            incoming = dt.datetime.fromisoformat(incoming_iso.replace('Z', '+00:00'))
+            return incoming >= existing
+        except ValueError: return True
+    # Merge state; never run SQL or accept settings/credentials from an imported backup.
+    try:
+        with connect() as c:
+            c.executemany('INSERT OR IGNORE INTO items VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)', metadata)
+            for r in data.get('favorites', []):
+                if ID_RE.fullmatch(str(r['item_id'])): c.execute('INSERT OR IGNORE INTO favorites VALUES(?,?)', (r['item_id'], parse_iso(r.get('created_at'))))
+            for r in data.get('progress', []):
+                if ID_RE.fullmatch(str(r['item_id'])):
+                    updated = parse_iso(r.get('updated_at'))
+                    if is_newer(c, 'progress', r['item_id'], updated):
+                        pos = max(0, number(r.get('position'))); dur = max(0, number(r.get('duration')))
+                        c.execute('INSERT OR REPLACE INTO progress VALUES(?,?,?,?,?)', (r['item_id'], min(pos, dur) if dur else pos, dur, int(bool(r.get('completed'))), updated))
+            for r in data.get('playlists', []):
+                if re.fullmatch(r'[A-Za-z0-9_-]{1,100}', str(r['id'])):
+                    c.execute('INSERT OR IGNORE INTO playlists VALUES(?,?,?)', (r['id'], string(r.get('name') or 'İçe aktarılan liste', 100), parse_iso(r.get('created_at'))))
+            for r in data.get('playlistItems', []):
+                if ID_RE.fullmatch(str(r['item_id'])) and c.execute('SELECT 1 FROM playlists WHERE id=?', (r['playlist_id'],)).fetchone():
+                    c.execute('INSERT OR IGNORE INTO playlist_items VALUES(?,?,?)', (r['playlist_id'], r['item_id'], int(number(r.get('position')))))
+            for r in data.get('trackPreferences', []):
+                if not isinstance(r, dict) or not ID_RE.fullmatch(str(r.get('item_id', ''))): raise ValueError('Yedekteki parça seçimi geçersiz.')
+                updated = parse_iso(r.get('updated_at'))
+                pref = r.get('data', '{}')
+                if isinstance(pref, str): pref = json.loads(pref)
+                if not isinstance(pref, dict): raise ValueError('Yedekteki parça seçimi geçersiz.')
+                checks = {'audio': r'(?:auto|stream:[0-9]{1,5})', 'subtitle': r'(?:off|stream:[0-9]{1,5})',
+                          'clientAudio': r'(?:auto|hls:[0-9]{1,5}|native:[0-9]{1,5})', 'clientSubtitle': r'(?:off|hls:[0-9]{1,5}|native:[0-9]{1,5})'}
+                if any(value is not None and (key not in checks or not isinstance(value, str) or not re.fullmatch(checks[key], value)) for key, value in pref.items()):
+                    raise ValueError('Yedekteki parça seçimi geçersiz.')
+                if pref.get('audio', 'auto') is None or pref.get('subtitle', 'off') is None: raise ValueError('Parça seçimi boş olamaz.')
+                if is_newer(c, 'track_preferences', r['item_id'], updated):
+                    c.execute('INSERT OR REPLACE INTO track_preferences VALUES(?,?,?)', (r['item_id'], json.dumps({key:value for key,value in pref.items() if key in checks}), updated))
+
+    except (KeyError, TypeError, sqlite3.IntegrityError): raise ValueError('Yedek verileri geçersiz. Hiçbir değişiklik kaydedilmedi.') from None
 
 
 def cleanup_loop(stop_event):
