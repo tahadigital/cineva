@@ -260,7 +260,7 @@ fun AkisSettingsScreen(
                 }
                 SettingsCard("Cineva Hesabı & Pro Lisans (İsteğe Bağlı)", "Yalnızca plan ve cihaz limiti senkronize edilir; M3U adresiniz cihazda kalır.") {
                     if (cloudState.announcementMessage.isNotBlank()) {
-                        Text("${cloudState.announcementTitle}: ${cloudState.announcementMessage}", color = CinevaRed, style = MaterialTheme.typography.bodySmall)
+                        Text("${cloudState.announcementTitle}: ${cloudState.announcementMessage}", color = AkisRed, style = MaterialTheme.typography.bodySmall)
                     }
                     if (cloudState.signedIn) {
                         var licenseInput by remember { mutableStateOf("") }
