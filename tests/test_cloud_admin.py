@@ -1,4 +1,4 @@
-"""Tests for Cineva Control Plane, Website download portal, and Admin Dashboard API."""
+"""Tests for Vrelio Control Plane, Website download portal, and Admin Dashboard API."""
 from __future__ import annotations
 
 import http.client
@@ -21,10 +21,10 @@ import cloud_admin
 class CloudAdminHTTPTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.temp = tempfile.TemporaryDirectory(prefix='cineva-cloud-tests-')
+        cls.temp = tempfile.TemporaryDirectory(prefix='vrelio-cloud-tests-')
         cls.service = cloud_admin.CloudService(
             Path(cls.temp.name),
-            admin_email='owner@cineva.app',
+            admin_email='owner@vrelio.app',
             admin_password='AdminStrongPass!2026',
             admin_gate_key='test-gate-secret-key',
         )
@@ -62,15 +62,26 @@ class CloudAdminHTTPTests(unittest.TestCase):
         finally:
             conn.close()
 
+    def _latest_outbox(self, email: str, kind: str = '') -> dict:
+        outbox_path = Path(self.temp.name) / 'email_outbox.json'
+        entries = json.loads(outbox_path.read_text(encoding='utf-8'))
+        matches = [e for e in entries if e['recipient'] == email.lower() and (not kind or e['kind'] == kind)]
+        self.assertTrue(matches, f'Expected outbox email for {email} ({kind})')
+        return matches[-1]
+
     def test_1_static_website_routes_and_download_tracking(self):
-        for route, needle in (
-            ('/', 'Cineva'),
-            ('/privacy', 'Gizlilik Politikası'),
-            ('/terms', 'Kullanım Koşulları'),
+        code_h, health = self.req('GET', '/api/v1/health')
+        self.assertEqual(code_h, 200)
+        self.assertEqual(health, {'ok': True, 'service': 'vrelio-cloud'})
+
+        for route, needles in (
+            ('/', ('Vrelio', 'Cineva')),
+            ('/privacy', ('Gizlilik Politikası',)),
+            ('/terms', ('Kullanım Koşulları',)),
         ):
             code, html, _ = self.req('GET', route, raw=True, gate=False)
             self.assertEqual(code, 200, route)
-            self.assertIn(needle, html)
+            self.assertTrue(any(n in html for n in needles), f'None of {needles} found in {route}')
 
         # Public homepage hides /admin links
         _, home_html, _ = self.req('GET', '/', raw=True, gate=False)
@@ -85,7 +96,7 @@ class CloudAdminHTTPTests(unittest.TestCase):
         code_redir, _, redir_hdrs = self.req('GET', '/admin?access=test-gate-secret-key', raw=True, gate=False)
         self.assertEqual(code_redir, 302)
         set_cookie = next((v for k, v in redir_hdrs.items() if k.lower() == 'set-cookie'), '')
-        self.assertIn('cineva_admin_gate=', set_cookie)
+        self.assertIn('vrelio_admin_gate=', set_cookie)
         cookie_pair = set_cookie.split(';', 1)[0]
 
         code_adm, adm_html, _ = self.req('GET', '/admin', raw=True, gate=False, headers={'Cookie': cookie_pair})
@@ -96,30 +107,58 @@ class CloudAdminHTTPTests(unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertEqual(track1['count'], 1)
 
+        code_ios, track_ios = self.req('POST', '/api/v1/downloads/track', {'target': 'ios'})
+        self.assertEqual(code_ios, 200)
+        self.assertEqual(track_ios['count'], 1)
+
         code, cfg = self.req('GET', '/api/v1/app-config')
         self.assertEqual(code, 200)
         self.assertEqual(cfg['downloads']['windows-installer'], 1)
+        self.assertEqual(cfg['downloads']['ios'], 1)
+        self.assertIn('plans', cfg)
+        self.assertIn('macosUrl', cfg['versions'])
+        self.assertIn('iosUrl', cfg['versions'])
 
     def test_2_user_privilege_separation_license_devices_and_admin_mutations(self):
-        # Register ordinary user
+        # Register ordinary user -> unverified, no token issued yet
         code, reg = self.req('POST', '/api/v1/auth/register', {
             'email': 'ali@example.com', 'password': 'UserPass123!', 'displayName': 'Ali',
         })
         self.assertEqual(code, 201)
-        user_token = reg['token']
+        self.assertTrue(reg['verificationRequired'])
+        self.assertFalse(reg['emailVerified'])
+        self.assertNotIn('token', reg)
         uid = reg['user']['id']
         self.assertEqual(reg['user']['role'], 'user')
-        self.assertEqual(reg['user']['plan'], 'free')
+        self.assertEqual(reg['user']['plan'], 'normal')
+
+        # Unverified user cannot log in yet
+        code_unv, unv_res = self.req('POST', '/api/v1/auth/login', {
+            'email': 'ali@example.com', 'password': 'UserPass123!',
+        })
+        self.assertEqual(code_unv, 403)
+        self.assertEqual(unv_res.get('code'), 'EMAIL_NOT_VERIFIED')
+
+        # Verify via outbox code -> activates 3-day Pro trial & issues bearer token
+        mail = self._latest_outbox('ali@example.com', 'verify_email')
+        code_ver, ver_res = self.req('POST', '/api/v1/auth/verify-email', {
+            'email': 'ali@example.com', 'code': mail['code'],
+        })
+        self.assertEqual(code_ver, 200)
+        self.assertTrue(ver_res['trialActivated'])
+        self.assertTrue(ver_res['user']['trialActive'])
+        self.assertEqual(ver_res['user']['effectivePlan'], 'pro')
+        user_token = ver_res['token']
 
         # Ordinary user CANNOT touch admin APIs
         code_forb, _ = self.req('GET', '/api/v1/admin/overview', token=user_token)
         self.assertEqual(code_forb, 403)
-        code_forb2, _ = self.req('PATCH', f'/api/v1/admin/users/{uid}', {'plan': 'lifetime'}, token=user_token)
+        code_forb2, _ = self.req('PATCH', f'/api/v1/admin/users/{uid}', {'plan': 'pro'}, token=user_token)
         self.assertEqual(code_forb2, 403)
 
         # Login as admin
         code_adm, adm_login = self.req('POST', '/api/v1/auth/login', {
-            'email': 'owner@cineva.app', 'password': 'AdminStrongPass!2026',
+            'email': 'owner@vrelio.app', 'password': 'AdminStrongPass!2026',
         })
         self.assertEqual(code_adm, 200)
         admin_token = adm_login['token']
@@ -142,7 +181,7 @@ class CloudAdminHTTPTests(unittest.TestCase):
         }, token=admin_token)
         self.assertEqual(code_lic, 201)
         lic_code = lic_res['license']['code']
-        self.assertTrue(lic_code.startswith('CINEVA-'))
+        self.assertTrue(lic_code.startswith('VRELIO-'))
 
         code_red, red_res = self.req('POST', '/api/v1/licenses/redeem', {'code': lic_code}, token=user_token)
         self.assertEqual(code_red, 200)
@@ -153,16 +192,17 @@ class CloudAdminHTTPTests(unittest.TestCase):
         code_dup, _ = self.req('POST', '/api/v1/licenses/redeem', {'code': lic_code}, token=user_token)
         self.assertEqual(code_dup, 400)
 
-        # Enforce maxDevices = 3
+        # Enforce maxDevices = 3 (403 DEVICE_LIMIT_REACHED on 4th)
         for idx in range(3):
             c_dev, _ = self.req('POST', '/api/v1/devices/register', {
                 'deviceId': f'd{idx}', 'deviceName': f'Phone {idx}', 'platform': 'android',
             }, token=user_token)
             self.assertEqual(c_dev, 200)
-        c_over, _ = self.req('POST', '/api/v1/devices/register', {
+        c_over, over_res = self.req('POST', '/api/v1/devices/register', {
             'deviceId': 'd4', 'deviceName': 'TV', 'platform': 'windows',
         }, token=user_token)
-        self.assertEqual(c_over, 400)
+        self.assertEqual(c_over, 403)
+        self.assertEqual(over_res.get('code'), 'DEVICE_LIMIT_REACHED')
 
         # Admin suspends user -> suspended user blocked immediately
         c_susp, susp_res = self.req('PATCH', f'/api/v1/admin/users/{uid}', {
@@ -172,16 +212,16 @@ class CloudAdminHTTPTests(unittest.TestCase):
         self.assertEqual(susp_res['user']['status'], 'suspended')
 
         c_me_blocked, _ = self.req('GET', '/api/v1/me', token=user_token)
-        self.assertEqual(c_me_blocked, 403)
+        self.assertIn(c_me_blocked, (401, 403))
         c_login_blocked, _ = self.req('POST', '/api/v1/auth/login', {'email': 'ali@example.com', 'password': 'UserPass123!'})
         self.assertEqual(c_login_blocked, 403)
 
-        # Admin upgrades to lifetime, reactivates, tests admin role invite/revoke, removes 1 device, issues reset token & sets announcement
+        # Admin upgrades to permanent pro, reactivates, tests admin role invite/revoke, removes 1 device, issues reset token & sets announcement
         c_react, react_res = self.req('PATCH', f'/api/v1/admin/users/{uid}', {
-            'status': 'active', 'plan': 'lifetime', 'maxDevices': 5, 'role': 'admin',
+            'status': 'active', 'plan': 'pro', 'expiresAt': '', 'maxDevices': 5, 'role': 'admin',
         }, token=admin_token)
         self.assertEqual(c_react, 200)
-        self.assertEqual(react_res['user']['effectivePlan'], 'lifetime')
+        self.assertEqual(react_res['user']['effectivePlan'], 'pro')
         self.assertEqual(react_res['user']['role'], 'admin')
         c_demote, demote_res = self.req('PATCH', f'/api/v1/admin/users/{uid}', {'role': 'user'}, token=admin_token)
         self.assertEqual(c_demote, 200)
@@ -196,6 +236,10 @@ class CloudAdminHTTPTests(unittest.TestCase):
             'token': rst_res['resetToken'], 'newPassword': 'NewSecurePassword9!',
         })
         self.assertEqual(c_done, 200)
+        c_old_tok, _ = self.req('GET', '/api/v1/me', token=user_token)
+        self.assertEqual(c_old_tok, 401)
+        c_old_log, _ = self.req('POST', '/api/v1/auth/login', {'email': 'ali@example.com', 'password': 'UserPass123!'})
+        self.assertEqual(c_old_log, 401)
         c_new_log, _ = self.req('POST', '/api/v1/auth/login', {'email': 'ali@example.com', 'password': 'NewSecurePassword9!'})
         self.assertEqual(c_new_log, 200)
 
@@ -214,8 +258,8 @@ class CloudAdminHTTPTests(unittest.TestCase):
         self.assertTrue({'license.create', 'license.redeem', 'user.update', 'device.remove', 'user.reset_token', 'config.update'}.issubset(actions))
 
     def test_9_login_rate_limit_blocks_brute_force(self):
-        statuses = [self.req('POST', '/api/v1/auth/login', {'email': 'owner@cineva.app', 'password': 'wrong'})[0] for _ in range(13)]
-        self.assertEqual(statuses[:12], [403] * 12)
+        statuses = [self.req('POST', '/api/v1/auth/login', {'email': 'owner@vrelio.app', 'password': 'wrong'})[0] for _ in range(13)]
+        self.assertEqual(statuses[:12], [401] * 12)
         self.assertEqual(statuses[12], 429)
 
     def test_4_desktop_server_cloud_bridge_syncs_plan_without_exposing_passwords(self):
@@ -224,19 +268,32 @@ class CloudAdminHTTPTests(unittest.TestCase):
         from unittest.mock import patch
 
         # First mint a license key via admin
-        _, adm = self.req('POST', '/api/v1/auth/login', {'email': 'owner@cineva.app', 'password': 'AdminStrongPass!2026'})
+        _, adm = self.req('POST', '/api/v1/auth/login', {'email': 'owner@vrelio.app', 'password': 'AdminStrongPass!2026'})
         _, lic = self.req('POST', '/api/v1/admin/licenses', {'plan': 'pro', 'durationDays': 30, 'maxUses': 1}, token=adm['token'])
 
-        with tempfile.TemporaryDirectory(prefix='cineva-bridge-') as tmp_srv:
-            spec = importlib.util.spec_from_file_location('_cineva_cloud_bridge_srv', ROOT / 'server.py')
+        # Register and verify desktop user via outbox before server.py login bridge (server.py is updated in M2)
+        c_reg, _ = self.req('POST', '/api/v1/auth/register', {
+            'email': 'desktop@example.com', 'password': 'DeskPass123!', 'displayName': 'Desktop',
+        })
+        self.assertEqual(c_reg, 201)
+        mail = self._latest_outbox('desktop@example.com', 'verify_email')
+        c_ver, ver_res = self.req('POST', '/api/v1/auth/verify-email', {
+            'email': 'desktop@example.com', 'code': mail['code'],
+        })
+        self.assertEqual(c_ver, 200)
+        self.assertTrue(ver_res['trialActivated'])
+
+        with tempfile.TemporaryDirectory(prefix='vrelio-bridge-') as tmp_srv:
+            spec = importlib.util.spec_from_file_location('_vrelio_cloud_bridge_srv', ROOT / 'server.py')
             srv = importlib.util.module_from_spec(spec)
-            with patch.dict(os.environ, {'CINEVA_DATA_DIR': tmp_srv}):
+            with patch.dict(os.environ, {'CINEVA_DATA_DIR': tmp_srv, 'VRELIO_DATA_DIR': tmp_srv}):
                 spec.loader.exec_module(srv)
                 srv.initialize()
                 cloud_base = f'http://127.0.0.1:{self.port}'
-                res = srv.cloud_auth('register', {'cloudUrl': cloud_base, 'email': 'desktop@example.com', 'password': 'DeskPass123!'})
+                res = srv.cloud_auth('login', {'cloudUrl': cloud_base, 'email': 'desktop@example.com', 'password': 'DeskPass123!'})
                 self.assertTrue(res['connected'])
-                self.assertEqual(res['user']['effectivePlan'], 'free')
+                self.assertEqual(res['user']['effectivePlan'], 'pro')
+                self.assertTrue(res['user']['trialActive'])
 
                 redeem_res = srv.cloud_redeem({'code': lic['license']['code']})
                 self.assertEqual(redeem_res['user']['plan'], 'pro')

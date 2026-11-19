@@ -57,6 +57,9 @@ def _infer_language(lang: str, title: str) -> str:
     return clean or 'und'
 
 
+infer_language = _infer_language
+
+
 def parse_tracks(diagnostic: str) -> dict:
     """Read input stream metadata from the bundled FFmpeg (no ffprobe needed)."""
     result = {'audio': [], 'subtitles': [], 'scanned': False}
@@ -127,6 +130,9 @@ def _executable(candidate: str | Path | None) -> str | None:
     found = shutil.which(value)
     if found and Path(found).is_file():
         return str(Path(found).resolve())
+    path = Path(value)
+    if path.is_file():
+        return str(path.resolve())
     return None
 
 
@@ -137,6 +143,11 @@ def find_ffmpeg(explicit: str | None = None) -> str | None:
         os.environ.get("FFMPEG_PATH"),
         os.environ.get("IMAGEIO_FFMPEG_EXE"),
     ]
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        mp = Path(meipass)
+        candidates.extend([mp / "ffmpeg.exe", mp / "ffmpeg"])
+        candidates.extend(sorted((mp / "imageio_ffmpeg" / "binaries").glob("ffmpeg-*")))
     try:
         spec = importlib.util.find_spec("imageio_ffmpeg")
         if spec and spec.submodule_search_locations:
@@ -263,6 +274,11 @@ class PlaybackManager:
                 # Only opaque localhost URLs enter FFmpeg. Keep a private
                 # per-session diagnostic so premature input endings can be
                 # distinguished from a completed title.
+                popen_kwargs = (
+                    {'creationflags': getattr(subprocess, 'CREATE_NO_WINDOW', 0)}
+                    if sys.platform.startswith('win')
+                    else {'start_new_session': True}
+                )
                 with (directory / 'ffmpeg.log').open('ab') as diagnostic:
                     process = subprocess.Popen(
                         command,
@@ -270,7 +286,7 @@ class PlaybackManager:
                         stdout=subprocess.DEVNULL,
                         stderr=diagnostic,
                         cwd=directory,
-                        start_new_session=True,
+                        **popen_kwargs,
                     )
             except (OSError, ValueError):
                 self._remove_directory(directory)
@@ -320,8 +336,13 @@ class PlaybackManager:
         command = [self._ffmpeg, '-hide_banner', '-nostdin', '-rw_timeout', '10000000',
                    '-analyzeduration', '4000000', '-probesize', '8000000', '-i', source_url]
         try:
+            run_kwargs = (
+                {'creationflags': getattr(subprocess, 'CREATE_NO_WINDOW', 0)}
+                if sys.platform.startswith('win')
+                else {}
+            )
             result = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                    stderr=subprocess.PIPE, timeout=16)
+                                    stderr=subprocess.PIPE, timeout=16, **run_kwargs)
             return parse_tracks(result.stderr.decode('utf-8', errors='replace')[:512000])
         except (OSError, subprocess.TimeoutExpired):
             return {'audio': [], 'subtitles': [], 'scanned': False}

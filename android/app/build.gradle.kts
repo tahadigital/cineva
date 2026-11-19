@@ -9,22 +9,23 @@ val signingProperties = Properties().apply {
     if (file.exists()) file.inputStream().use { load(it) }
 }
 android {
-    namespace = "app.cineva.player"
+    namespace = "app.vrelio.player"
     compileSdk = 36
     defaultConfig {
-        applicationId = "app.cineva.player"
+        applicationId = "app.vrelio.player"
         minSdk = 26
         targetSdk = 36
-        versionCode = 7
-        versionName = "2.0.0-alpha.1"
+        versionCode = 8
+        versionName = "2.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
     signingConfigs {
         if (signingProperties.isNotEmpty()) create("personal") {
-            storeFile = rootProject.file("signing/akis-release.jks")
+            val vrelioStore = rootProject.file("signing/vrelio-release.jks")
+            storeFile = if (vrelioStore.exists()) vrelioStore else rootProject.file("signing/akis-release.jks")
             storePassword = signingProperties.getProperty("storePassword")
-            keyAlias = "akis"
+            keyAlias = signingProperties.getProperty("keyAlias", "akis")
             keyPassword = signingProperties.getProperty("keyPassword")
         }
     }

@@ -6,11 +6,11 @@
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:networkSecurityConfig="@xml/network_security_config"
-        android:label="Cineva"
+        android:label="Vrelio"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Cineva">
+        android:theme="@style/Theme.Vrelio">
         <activity
             android:name=".MainActivity"
             android:exported="true"

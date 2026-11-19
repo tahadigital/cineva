@@ -1,0 +1,91 @@
+import Foundation
+
+public enum DemoCatalog {
+    public static let categories: [MediaCategory] = [
+        MediaCategory(id: "demo_anim", name: "Açık Sinema / Demo", kind: .vod),
+        MediaCategory(id: "demo_scifi", name: "Bilim Kurgu / Demo", kind: .vod),
+    ]
+
+    public static let items: [MediaItem] = [
+        MediaItem(
+            id: "vod:demo_bbb",
+            providerId: "demo_bbb",
+            name: "Big Buck Bunny (Demo · 1080p)",
+            kind: .vod,
+            categoryId: "demo_anim",
+            categoryName: "Açık Sinema / Demo",
+            poster: "https://peach.blender.org/wp-content/uploads/poster_bunny_small.jpg",
+            backdrop: "https://peach.blender.org/wp-content/uploads/poster_bunny_small.jpg",
+            year: "2008",
+            rating: 8.2,
+            extensionName: "mp4",
+            durationSeconds: 596,
+            plot: "Blender Vakfı tarafından Creative Commons Attribution 3.0 lisansıyla sunulan açık kaynaklı kısa animasyon filmi.",
+            addedAt: 4,
+            genres: "Animation, Comedy, Family",
+            sourceUrl: "https://distribution.bbb3d.renderfarming.net/video/mp4/bbb_sunflower_1080p_30fps_normal.mp4",
+            cast: "Blender Open Movie Project",
+            director: "Sacha Goedegebure"
+        ),
+        MediaItem(
+            id: "vod:demo_sintel",
+            providerId: "demo_sintel",
+            name: "Sintel (Demo · 1080p)",
+            kind: .vod,
+            categoryId: "demo_anim",
+            categoryName: "Açık Sinema / Demo",
+            poster: "https://archive.org/download/Sintel/Poster.jpg",
+            backdrop: "https://archive.org/download/Sintel/Poster.jpg",
+            year: "2010",
+            rating: 8.5,
+            extensionName: "mp4",
+            durationSeconds: 888,
+            plot: "Genç bir gezginin yavru ejderhasını arayışını konu alan Blender açık kaynak kısa filmi.",
+            addedAt: 3,
+            genres: "Animation, Fantasy, Adventure",
+            sourceUrl: "https://archive.org/download/Sintel/sintel-2048-stereo.mp4",
+            cast: "Halina Reijn, Thom Hoffman",
+            director: "Colin Levy"
+        ),
+        MediaItem(
+            id: "vod:demo_tears",
+            providerId: "demo_tears",
+            name: "Tears of Steel (Demo · Sci-Fi)",
+            kind: .vod,
+            categoryId: "demo_scifi",
+            categoryName: "Bilim Kurgu / Demo",
+            poster: "https://archive.org/download/Tears-of-Steel/tos-poster.jpg",
+            backdrop: "https://archive.org/download/Tears-of-Steel/tos-poster.jpg",
+            year: "2012",
+            rating: 7.9,
+            extensionName: "mp4",
+            durationSeconds: 734,
+            plot: "Amsterdam’da geçen, Creative Commons açık lisanslı bilim kurgu kısa filmi.",
+            addedAt: 2,
+            genres: "Sci-Fi, Action",
+            sourceUrl: "https://archive.org/download/Tears-of-Steel/tears_of_steel_720p.mp4",
+            cast: "Derek de Lint, Sergio Hasselbaink",
+            director: "Ian Hubert"
+        ),
+        MediaItem(
+            id: "vod:demo_elephants",
+            providerId: "demo_elephants",
+            name: "Elephants Dream (Demo · Open Movie)",
+            kind: .vod,
+            categoryId: "demo_anim",
+            categoryName: "Açık Sinema / Demo",
+            poster: "https://download.blender.org/ED/cover.jpg",
+            backdrop: "https://download.blender.org/ED/cover.jpg",
+            year: "2006",
+            rating: 7.5,
+            extensionName: "mp4",
+            durationSeconds: 653,
+            plot: "Dünyanın ilk açık kaynaklı 3D kısa animasyon filmi (Orange Open Movie Project).",
+            addedAt: 1,
+            genres: "Animation, Sci-Fi, Mystery",
+            sourceUrl: "https://archive.org/download/ElephantsDream/ed_1024_512kb.mp4",
+            cast: "Tygo Gernandt, Cas Jansen",
+            director: "Bassam Kurdali"
+        ),
+    ]
+}

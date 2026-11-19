@@ -1,4 +1,4 @@
-"""Standard M3U/M3U8 playlist parser and Open-License Demo catalog for Cineva."""
+"""Standard M3U/M3U8 playlist parser and Open-License Demo catalog for Vrelio."""
 from __future__ import annotations
 
 import hashlib
@@ -14,13 +14,13 @@ DEMO_CATALOG = [
         'provider_id': 'demo_bbb',
         'kind': 'vod',
         'name': 'Big Buck Bunny (Demo · 1080p)',
-        'poster': 'https://storage.googleapis.com/gtv-videos-bucket/sample/images/BigBuckBunny.jpg',
+        'poster': 'https://peach.blender.org/wp-content/uploads/poster_bunny_small.jpg',
         'category_id': 'demo_anim',
         'category_name': 'Açık Sinema / Demo',
         'year': '2008',
         'rating': 8.2,
         'extension': 'mp4',
-        'url': 'https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+        'url': 'https://distribution.bbb3d.renderfarming.net/video/mp4/bbb_sunflower_1080p_30fps_normal.mp4',
         'extra': {
             'duration': 596,
             'genre': 'Animation, Comedy, Family',
@@ -34,13 +34,13 @@ DEMO_CATALOG = [
         'provider_id': 'demo_sintel',
         'kind': 'vod',
         'name': 'Sintel (Demo · 1080p)',
-        'poster': 'https://storage.googleapis.com/gtv-videos-bucket/sample/images/Sintel.jpg',
+        'poster': 'https://archive.org/download/Sintel/Poster.jpg',
         'category_id': 'demo_anim',
         'category_name': 'Açık Sinema / Demo',
         'year': '2010',
         'rating': 8.5,
         'extension': 'mp4',
-        'url': 'https://storage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
+        'url': 'https://archive.org/download/Sintel/sintel-2048-stereo.mp4',
         'extra': {
             'duration': 888,
             'genre': 'Animation, Fantasy, Adventure',
@@ -54,13 +54,13 @@ DEMO_CATALOG = [
         'provider_id': 'demo_tears',
         'kind': 'vod',
         'name': 'Tears of Steel (Demo · Sci-Fi)',
-        'poster': 'https://storage.googleapis.com/gtv-videos-bucket/sample/images/TearsOfSteel.jpg',
+        'poster': 'https://archive.org/download/Tears-of-Steel/tos-poster.jpg',
         'category_id': 'demo_scifi',
         'category_name': 'Bilim Kurgu / Demo',
         'year': '2012',
         'rating': 7.9,
         'extension': 'mp4',
-        'url': 'https://storage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
+        'url': 'https://archive.org/download/Tears-of-Steel/tears_of_steel_720p.mp4',
         'extra': {
             'duration': 734,
             'genre': 'Sci-Fi, Action',
@@ -74,13 +74,13 @@ DEMO_CATALOG = [
         'provider_id': 'demo_elephants',
         'kind': 'vod',
         'name': 'Elephants Dream (Demo · Open Movie)',
-        'poster': 'https://storage.googleapis.com/gtv-videos-bucket/sample/images/ElephantsDream.jpg',
+        'poster': 'https://download.blender.org/ED/cover.jpg',
         'category_id': 'demo_anim',
         'category_name': 'Açık Sinema / Demo',
         'year': '2006',
         'rating': 7.5,
         'extension': 'mp4',
-        'url': 'https://storage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+        'url': 'https://archive.org/download/ElephantsDream/ed_1024_512kb.mp4',
         'extra': {
             'duration': 653,
             'genre': 'Animation, Sci-Fi, Mystery',

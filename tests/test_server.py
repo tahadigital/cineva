@@ -40,9 +40,9 @@ def _connect(path):
 class ServerHTTPTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.temp = tempfile.TemporaryDirectory(prefix='akis-api-tests-')
+        cls.temp = tempfile.TemporaryDirectory(prefix='vrelio-api-tests-')
         cls.data = Path(cls.temp.name)
-        cls.environment = {**os.environ, 'AKIS_DATA_DIR': str(cls.data)}
+        cls.environment = {**os.environ, 'VRELIO_DATA_DIR': str(cls.data)}
         # An empty host disables all provider calls, while sentinel credentials
         # still exercise secret exclusion from HTTP responses and backups.
         cls.config = {
@@ -76,7 +76,7 @@ class ServerHTTPTests(unittest.TestCase):
                     raise RuntimeError('Isolated test server exited before becoming ready.')
                 try:
                     code, _, payload = cls.request('GET', '/api/health', auth=False)
-                    if code == 200 and payload == {'app': 'cineva', 'ok': True}:
+                    if code == 200 and payload == {'app': 'vrelio', 'ok': True}:
                         break
                 except (OSError, http.client.HTTPException):
                     pass
@@ -249,7 +249,7 @@ class ServerHTTPTests(unittest.TestCase):
         self.assertEqual(before, self.saved_state())
 
     def test_unauthorized_api_does_not_expose_catalog_or_secrets(self):
-        self.assertEqual(self.api('GET', '/api/health', auth=False), {'app': 'cineva', 'ok': True})
+        self.assertEqual(self.api('GET', '/api/health', auth=False), {'app': 'vrelio', 'ok': True})
         status = self.api('GET', '/api/status', auth=False)
         self.assertEqual(status, {'authorized': False, 'pairingRequired': True})
         for route in ('/api/home', '/api/catalog', '/api/export', '/api/favorites', '/api/progress', '/api/playlists', '/media/fake/index.m3u8'):
@@ -294,11 +294,11 @@ class ServerHTTPTests(unittest.TestCase):
 
     def test_ipv6_loopback_host_is_valid_on_local_connection(self):
         payload = self.api('GET', '/api/health', auth=False, headers={'Host': f'[::1]:{self.port}'})
-        self.assertEqual(payload, {'app': 'cineva', 'ok': True})
+        self.assertEqual(payload, {'app': 'vrelio', 'ok': True})
         self.api('GET', '/api/health', auth=False, headers={'Host': '[::1'}, expected=403)
 
     def test_z_demo_endpoint_populates_open_library_and_legal_notice(self):
-        self.assertEqual(self.api('GET', '/api/legal')['app'], 'Cineva')
+        self.assertEqual(self.api('GET', '/api/legal')['app'], 'Vrelio')
         res = self.api('POST', '/api/demo', {})
         self.assertEqual(res, {'ok': True})
         status = self.api('GET', '/api/status')

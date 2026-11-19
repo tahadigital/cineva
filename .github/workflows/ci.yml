@@ -1,4 +1,4 @@
-name: Cineva Multi-Platform CI & Releases
+name: Vrelio Multi-Platform CI & Releases
 
 on:
   push:
@@ -6,6 +6,18 @@ on:
     tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: 'Publish GitHub Release assets for all 4 platforms'
+        required: false
+        type: boolean
+        default: false
+      release_tag:
+        description: 'Release tag to use when manually publishing from a branch (e.g. v2.1.0)'
+        required: false
+        type: string
+        default: 'v2.1.0'
 
 permissions:
   contents: write
@@ -25,12 +37,14 @@ jobs:
         run: pip install -r requirements.txt
       - name: Install native Ubuntu FFmpeg
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
-      - name: Run Python Backend, Cloud Admin & Security Tests
+      - name: Run Python Backend, Cloud Admin & E2E Tier 1 Tests
         env:
           FFMPEG_PATH: /usr/bin/ffmpeg
           IMAGEIO_FFMPEG_EXE: /usr/bin/ffmpeg
-        run: python -m unittest discover -s tests -v
-      - name: Run Web Frontend Unit Tests
+        run: |
+          python -m unittest discover -s tests -p "test_*.py" -v
+          python -m unittest discover -s tests/e2e -p "test_tier1*.py" -v
+      - name: Run Web Frontend & Portal Unit Tests
         run: node --test tests/test_*.mjs
 
   android-build-and-test:
@@ -42,13 +56,19 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Run Android Unit Tests & Build APK
+      - name: Run Android Unit Tests & Build Release APK + AAB
         working-directory: android
-        run: ./gradlew :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin :app:assembleRelease
+        run: ./gradlew :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin :app:assembleRelease :app:bundleRelease
+      - name: Verify Android Release Outputs
+        run: |
+          test -n "$(find android/app/build/outputs/apk/release -name '*.apk' | head -n 1)"
+          test -n "$(find android/app/build/outputs/bundle/release -name '*.aab' | head -n 1)"
       - uses: actions/upload-artifact@v4
         with:
-          name: Cineva-Android
-          path: android/app/build/outputs/apk/release/*.apk
+          name: Vrelio-Android
+          path: |
+            android/app/build/outputs/apk/release/*.apk
+            android/app/build/outputs/bundle/release/*.aab
 
   windows-desktop-package:
     runs-on: windows-latest
@@ -58,61 +78,217 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Build Standalone Portable Cineva.exe
+      - name: Build Standalone Portable Vrelio.exe
         run: |
           pip install pyinstaller imageio-ffmpeg tzdata
-          pyinstaller windows\cineva.spec
-      - name: Smoke Test Built Cineva.exe
+          pyinstaller windows\vrelio.spec
+      - name: Smoke Test Built Vrelio.exe (--serve and normal launcher)
         shell: pwsh
         run: |
-          $dataDir = Join-Path $env:RUNNER_TEMP "cineva-smoke"
-          New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
-          $env:CINEVA_DATA_DIR = $dataDir
-          $proc = Start-Process -FilePath "dist\Cineva.exe" -ArgumentList "--serve", "--host", "127.0.0.1", "--port", "18844" -PassThru
+          # 1. Verify headless --serve mode
+          $serveData = Join-Path $env:RUNNER_TEMP "vrelio-smoke-serve"
+          New-Item -ItemType Directory -Force -Path $serveData | Out-Null
+          $env:VRELIO_DATA_DIR = $serveData
+          $serveProc = Start-Process -FilePath "dist\Vrelio.exe" -ArgumentList "--serve", "--host", "127.0.0.1", "--port", "18844" -PassThru
           try {
             $ok = $false
             for ($i = 0; $i -lt 30; $i++) {
               Start-Sleep -Milliseconds 500
-              if ($proc.HasExited) { throw "Cineva.exe exited prematurely with code $($proc.ExitCode)" }
+              if ($serveProc.HasExited) { throw "Vrelio.exe --serve exited prematurely with code $($serveProc.ExitCode)" }
               try {
                 $resp = Invoke-RestMethod -Uri "http://127.0.0.1:18844/api/health" -TimeoutSec 2
-                if ($resp.app -eq "cineva" -and $resp.ok -eq $true) { $ok = $true; break }
+                if ($resp.app -eq "vrelio" -and $resp.ok -eq $true) { $ok = $true; break }
               } catch {}
             }
-            if (-not $ok) { throw "Cineva.exe health check did not pass in time" }
+            if (-not $ok) { throw "Vrelio.exe --serve health check did not pass in time" }
             $homeResp = Invoke-WebRequest -Uri "http://127.0.0.1:18844/" -UseBasicParsing -TimeoutSec 5
             if ($homeResp.StatusCode -ne 200) { throw "Unexpected status $($homeResp.StatusCode)" }
           } finally {
-            if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+            if (-not $serveProc.HasExited) {
+              & taskkill /PID $serveProc.Id /T /F 2>$null | Out-Null
+            }
           }
-      - name: Build Windows Setup Wizard (Cineva-Setup.exe)
+
+          # 2. Verify normal desktop launcher mode (>3s uptime, /api/health, clean desktop.log)
+          $launcherData = Join-Path $env:RUNNER_TEMP "vrelio-smoke-launcher"
+          New-Item -ItemType Directory -Force -Path $launcherData | Out-Null
+          $env:VRELIO_DATA_DIR = $launcherData
+          $env:VRELIO_PORT = "18845"
+          $launchProc = Start-Process -FilePath "dist\Vrelio.exe" -PassThru
+          try {
+            $ok = $false
+            for ($i = 0; $i -lt 30; $i++) {
+              Start-Sleep -Milliseconds 500
+              if ($launchProc.HasExited) { throw "Vrelio.exe launcher exited prematurely with code $($launchProc.ExitCode)" }
+              try {
+                $resp = Invoke-RestMethod -Uri "http://127.0.0.1:18845/api/health" -TimeoutSec 2
+                if ($resp.app -eq "vrelio" -and $resp.ok -eq $true) { $ok = $true; break }
+              } catch {}
+            }
+            if (-not $ok) { throw "Vrelio.exe launcher health check did not pass in time" }
+            Start-Sleep -Seconds 4
+            if ($launchProc.HasExited) { throw "Vrelio.exe launcher exited before 3s stability check (code $($launchProc.ExitCode))" }
+            $resp2 = Invoke-RestMethod -Uri "http://127.0.0.1:18845/api/health" -TimeoutSec 2
+            if ($resp2.app -ne "vrelio" -or $resp2.ok -ne $true) {
+              throw "Vrelio.exe launcher health check failed after 4s"
+            }
+            $logFile = Join-Path $launcherData "desktop.log"
+            if (-not (Test-Path $logFile)) { throw "Expected desktop.log at $logFile" }
+            $logText = Get-Content -Path $logFile -Raw
+            if ($logText -match "Traceback") {
+              throw "Traceback detected in desktop.log:`n$logText"
+            }
+          } finally {
+            Remove-Item Env:\VRELIO_PORT -ErrorAction SilentlyContinue
+            if (-not $launchProc.HasExited) {
+              & taskkill /PID $launchProc.Id /T /F 2>$null | Out-Null
+            }
+          }
+      - name: Build Windows Setup Wizard (Vrelio-Setup.exe)
         run: |
           choco install innosetup -y
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows\CinevaSetup.iss
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows\VrelioSetup.iss
+          if (-not (Test-Path "dist\Vrelio-Setup.exe")) { throw "dist\Vrelio-Setup.exe was not produced" }
       - uses: actions/upload-artifact@v4
         with:
-          name: Cineva-Windows
+          name: Vrelio-Windows
           path: |
-            dist/Cineva.exe
-            dist/Cineva-Setup.exe
+            dist/Vrelio.exe
+            dist/Vrelio-Setup.exe
+
+  apple-macos-and-ios:
+    runs-on: macos-latest
+    needs: backend-and-web-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Python Packaging Dependencies & XcodeGen
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install pyinstaller imageio-ffmpeg tzdata
+          brew install xcodegen
+      - name: Generate Xcode Project (apple/Vrelio.xcodeproj)
+        run: |
+          xcodegen generate --spec apple/project.yml --project apple
+          test -d apple/Vrelio.xcodeproj
+      - name: Build & Smoke-Test macOS Vrelio.app + DMG + ZIP
+        run: |
+          bash apple/macOS/build_macos.sh
+          test -s dist/Vrelio-macOS.dmg
+          test -s dist/Vrelio-macOS.zip
+      - name: Run iOS XCTest Suite on iOS Simulator
+        run: |
+          SIM_ID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)
+          devices = data.get("devices", {})
+          booted = []
+          iphones = []
+          for rt, devs in devices.items():
+              if "iOS" not in rt:
+                  continue
+              for d in devs:
+                  if not d.get("isAvailable"):
+                      continue
+                  if d.get("state") == "Booted":
+                      booted.append(d["udid"])
+                  if "iPhone" in d.get("name", ""):
+                      iphones.append((rt, d["name"], d["udid"]))
+          if booted:
+              print(booted[0])
+          elif iphones:
+              iphones.sort(reverse=True)
+              print(iphones[0][2])
+          ')
+          echo "Selected iOS Simulator ID: $SIM_ID"
+          test -n "$SIM_ID"
+          xcrun simctl boot "$SIM_ID" || true
+          xcodebuild test \
+            -project apple/Vrelio.xcodeproj \
+            -scheme VrelioIOS \
+            -destination "platform=iOS Simulator,id=$SIM_ID" \
+            -derivedDataPath build/ios-test-derived \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+      - name: Build Unsigned iOS App & Package Vrelio-iOS.ipa
+        run: |
+          xcodebuild \
+            -project apple/Vrelio.xcodeproj \
+            -scheme VrelioIOS \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build/ios-derived \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+          IOS_APP=$(find build/ios-derived/Build/Products -maxdepth 3 -type d -name "Vrelio.app" | head -n 1)
+          echo "Built iOS app bundle: $IOS_APP"
+          test -d "$IOS_APP"
+          test -f "$IOS_APP/Vrelio"
+          mkdir -p build/ipa/Payload dist
+          cp -R "$IOS_APP" build/ipa/Payload/Vrelio.app
+          (cd build/ipa && zip -qry ../../dist/Vrelio-iOS.ipa Payload)
+          test -s dist/Vrelio-iOS.ipa
+          unzip -l dist/Vrelio-iOS.ipa | grep -q "Payload/Vrelio.app/Vrelio"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Vrelio-macOS
+          path: |
+            dist/Vrelio-macOS.dmg
+            dist/Vrelio-macOS.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Vrelio-iOS
+          path: dist/Vrelio-iOS.ipa
 
   publish-release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release == true)
     runs-on: ubuntu-latest
-    needs: [android-build-and-test, windows-desktop-package]
+    needs: [android-build-and-test, windows-desktop-package, apple-macos-and-ios]
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: release-assets
-      - name: Rename Universal Android APK
+      - name: Normalize & Verify All 4-Platform Release Assets
         run: |
           APK_FILE=$(find release-assets -name 'app-universal-release*.apk' | head -n 1)
-          if [ -n "$APK_FILE" ]; then cp "$APK_FILE" release-assets/Cineva-Android.apk; fi
+          if [ -z "$APK_FILE" ]; then
+            APK_FILE=$(find release-assets -name '*.apk' | head -n 1)
+          fi
+          test -n "$APK_FILE"
+          cp "$APK_FILE" release-assets/Vrelio-Android.apk
+
+          AAB_FILE=$(find release-assets -name '*.aab' | head -n 1)
+          test -n "$AAB_FILE"
+          cp "$AAB_FILE" release-assets/Vrelio-Android.aab
+
+          for asset in \
+            release-assets/Vrelio-Windows/Vrelio-Setup.exe \
+            release-assets/Vrelio-Windows/Vrelio.exe \
+            release-assets/Vrelio-Android.apk \
+            release-assets/Vrelio-Android.aab \
+            release-assets/Vrelio-macOS/Vrelio-macOS.dmg \
+            release-assets/Vrelio-macOS/Vrelio-macOS.zip \
+            release-assets/Vrelio-iOS/Vrelio-iOS.ipa; do
+            test -s "$asset" || { echo "Missing or empty release asset: $asset" >&2; exit 1; }
+          done
+          ls -lh release-assets/Vrelio-Windows/ release-assets/Vrelio-macOS/ release-assets/Vrelio-iOS/ release-assets/Vrelio-Android.*
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.release_tag }}
+          name: Vrelio ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.release_tag }}
+          generate_release_notes: true
           files: |
-            release-assets/Cineva-Windows/Cineva-Setup.exe
-            release-assets/Cineva-Windows/Cineva.exe
-            release-assets/Cineva-Android.apk
+            release-assets/Vrelio-Windows/Vrelio-Setup.exe
+            release-assets/Vrelio-Windows/Vrelio.exe
+            release-assets/Vrelio-Android.apk
+            release-assets/Vrelio-Android.aab
+            release-assets/Vrelio-macOS/Vrelio-macOS.dmg
+            release-assets/Vrelio-macOS/Vrelio-macOS.zip
+            release-assets/Vrelio-iOS/Vrelio-iOS.ipa

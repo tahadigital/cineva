@@ -1,0 +1,209 @@
+import SwiftUI
+
+public enum VrelioTheme {
+    public static let coral = Color(red: 1.0, green: 75.0 / 255.0, blue: 69.0 / 255.0)
+    public static let amber = Color(red: 1.0, green: 153.0 / 255.0, blue: 51.0 / 255.0)
+    public static let bg = Color(red: 14.0 / 255.0, green: 16.0 / 255.0, blue: 21.0 / 255.0)
+    public static let bgDeep = Color(red: 10.0 / 255.0, green: 12.0 / 255.0, blue: 17.0 / 255.0)
+    public static let panel = Color(red: 22.0 / 255.0, green: 25.0 / 255.0, blue: 34.0 / 255.0)
+    public static let panelElevated = Color(red: 30.0 / 255.0, green: 34.0 / 255.0, blue: 46.0 / 255.0)
+    public static let border = Color.white.opacity(0.10)
+    public static let muted = Color(red: 179.0 / 255.0, green: 182.0 / 255.0, blue: 194.0 / 255.0)
+    public static let success = Color(red: 52.0 / 255.0, green: 211.0 / 255.0, blue: 153.0 / 255.0)
+    public static let warning = Color(red: 251.0 / 255.0, green: 191.0 / 255.0, blue: 36.0 / 255.0)
+    public static let danger = Color(red: 248.0 / 255.0, green: 113.0 / 255.0, blue: 113.0 / 255.0)
+
+    public static let brandGradient = LinearGradient(
+        colors: [coral, amber],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
+    public static let cinemaBackdrop = RadialGradient(
+        colors: [
+            coral.opacity(0.22),
+            amber.opacity(0.08),
+            bgDeep
+        ],
+        center: .top,
+        startRadius: 20,
+        endRadius: 520
+    )
+}
+
+public struct VrelioLogoMark: View {
+    public var size: CGFloat
+    public var animateSweep: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var rotationDegrees: Double = 0
+
+    public init(size: CGFloat = 44, animateSweep: Bool = false) {
+        self.size = size
+        self.animateSweep = animateSweep
+    }
+
+    public var body: some View {
+        let corner = size * 0.24
+        let ringWidth = max(2.5, size * 0.08)
+
+        ZStack {
+            RoundedRectangle(cornerRadius: corner, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 23.0 / 255.0, green: 27.0 / 255.0, blue: 36.0 / 255.0),
+                            Color(red: 11.0 / 255.0, green: 13.0 / 255.0, blue: 18.0 / 255.0)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: corner, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                )
+
+            Circle()
+                .stroke(
+                    AngularGradient(
+                        gradient: Gradient(colors: [
+                            VrelioTheme.coral,
+                            VrelioTheme.amber,
+                            VrelioTheme.coral.opacity(0.35),
+                            VrelioTheme.coral
+                        ]),
+                        center: .center
+                    ),
+                    style: StrokeStyle(lineWidth: ringWidth, lineCap: .round)
+                )
+                .padding(size * 0.19)
+                .rotationEffect(.degrees(rotationDegrees))
+
+            Image(systemName: "play.fill")
+                .font(.system(size: size * 0.30, weight: .bold))
+                .foregroundStyle(.white)
+                .offset(x: size * 0.03)
+        }
+        .frame(width: size, height: size)
+        .shadow(color: VrelioTheme.coral.opacity(0.28), radius: size * 0.22, y: size * 0.08)
+        .accessibilityHidden(true)
+        .onAppear {
+            guard animateSweep && !reduceMotion else { return }
+            withAnimation(.linear(duration: 4.5).repeatForever(autoreverses: false)) {
+                rotationDegrees = 360
+            }
+        }
+    }
+}
+
+public struct VrelioWordmark: View {
+    public var subtitle: String?
+    public var markSize: CGFloat
+
+    public init(subtitle: String? = nil, markSize: CGFloat = 34) {
+        self.subtitle = subtitle
+        self.markSize = markSize
+    }
+
+    public var body: some View {
+        HStack(spacing: 10) {
+            VrelioLogoMark(size: markSize)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Vrelio")
+                    .font(.system(size: markSize * 0.62, weight: .bold, design: .rounded))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [.white, VrelioTheme.amber.opacity(0.95)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(VrelioTheme.muted)
+                }
+            }
+        }
+    }
+}
+
+public struct VrelioPrimaryButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    public var compact: Bool
+
+    public init(compact: Bool = false) {
+        self.compact = compact
+    }
+
+    public func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(compact ? .subheadline.weight(.semibold) : .body.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, compact ? 14 : 18)
+            .padding(.vertical, compact ? 10 : 12)
+            .frame(minWidth: 44, minHeight: 44)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(VrelioTheme.brandGradient)
+            )
+            .shadow(color: VrelioTheme.coral.opacity(configuration.isPressed ? 0.15 : 0.35), radius: 10, y: 4)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1.0)
+            .opacity(configuration.isPressed ? 0.92 : 1.0)
+            .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.72), value: configuration.isPressed)
+    }
+}
+
+public struct VrelioGhostButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    public var compact: Bool
+
+    public init(compact: Bool = false) {
+        self.compact = compact
+    }
+
+    public func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(compact ? .subheadline.weight(.medium) : .body.weight(.medium))
+            .foregroundStyle(.white)
+            .padding(.horizontal, compact ? 12 : 16)
+            .padding(.vertical, compact ? 9 : 11)
+            .frame(minWidth: 44, minHeight: 44)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(VrelioTheme.panelElevated.opacity(configuration.isPressed ? 0.95 : 0.75))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(VrelioTheme.border, lineWidth: 1)
+                    )
+            )
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1.0)
+            .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.75), value: configuration.isPressed)
+    }
+}
+
+public struct VrelioCardModifier: ViewModifier {
+    public var cornerRadius: CGFloat
+    public init(cornerRadius: CGFloat = 16) {
+        self.cornerRadius = cornerRadius
+    }
+
+    public func body(content: Content) -> some View {
+        content
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(VrelioTheme.panel)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .strokeBorder(VrelioTheme.border, lineWidth: 1)
+                    )
+            )
+    }
+}
+
+public extension View {
+    func vrelioCard(cornerRadius: CGFloat = 16) -> some View {
+        modifier(VrelioCardModifier(cornerRadius: cornerRadius))
+    }
+}

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0e1015">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="description" content="Cineva · Kişisel medya, canlı yayınlar, filmler ve diziler için evrensel oynatıcı.">
+  <meta name="description" content="Vrelio · Kişisel medya, canlı yayınlar, filmler ve diziler için evrensel oynatıcı.">
   <link rel="icon" type="image/svg+xml" href="/icon.svg">
   <link rel="apple-touch-icon" href="/icon.svg">
   <link rel="manifest" href="/manifest.webmanifest">
@@ -14,20 +14,21 @@
   <link rel="stylesheet" href="/cinema.css">
   <link rel="stylesheet" href="/sports.css">
   <link rel="stylesheet" href="/player.css">
-  <title>Cineva · Kişisel Medya Merkezi</title>
+  <title>Vrelio · Kişisel Medya Merkezi</title>
 </head>
 <body>
-  <div id="cinevaLaunch" class="cineva-launch" aria-hidden="true" hidden>
+  <div id="vrelioLaunch" class="vrelio-launch" aria-hidden="true" hidden>
     <div class="launch-emblem">
       <svg class="launch-mark" viewBox="0 0 120 120" aria-hidden="true">
         <defs>
-          <linearGradient id="launchCinevaGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <linearGradient id="launchVrelioGrad" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stop-color="#ff4b45"/>
             <stop offset="100%" stop-color="#ff9933"/>
           </linearGradient>
         </defs>
-        <path class="launch-ring" d="M 90 36 A 38 38 0 1 0 90 84" fill="none" stroke="url(#launchCinevaGrad)" stroke-width="17" stroke-linecap="round"/>
-        <path class="launch-play" d="M 52 44 L 82 60 L 52 76 Z" fill="#ffffff" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
+        <circle class="launch-ring" cx="60" cy="60" r="46" fill="none" stroke="url(#launchVrelioGrad)" stroke-width="11" stroke-dasharray="224 66" stroke-linecap="round" transform="rotate(-35 60 60)"/>
+        <path class="launch-play" d="M 42 36 L 60 80 L 78 36" fill="none" stroke="#ffffff" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="88" cy="34" r="6" fill="#ff9933"/>
       </svg>
     </div>
   </div>
@@ -35,7 +36,7 @@
   <div class="app-shell">
     <div class="workspace">
       <header class="topbar">
-        <a class="brand topbar-brand" href="#home" aria-label="Cineva ana sayfa"><img src="/cineva-mark.svg" alt="Cineva logosu" width="32" height="32"></a>
+        <a class="brand topbar-brand" href="#home" aria-label="Vrelio ana sayfa"><img src="/vrelio-mark.svg" alt="Vrelio logosu" width="32" height="32"></a>
         <nav class="main-nav topbar-nav" aria-label="Ana menü">
           <a href="#home" data-route="home">Ana Sayfa</a>
           <a href="#series" data-route="series">Diziler</a>
@@ -48,20 +49,20 @@
         </nav>
         <div class="topbar-actions">
           <form id="searchForm" class="search-form" role="search" aria-label="Kütüphanede ara"><label for="searchInput" class="search-label" data-icon="search"><span class="visually-hidden">Arama</span></label><input id="searchInput" type="search" placeholder="Dizi, film veya kanal" aria-label="Dizi, film veya kanal ara" autocomplete="off"></form>
-          <button id="surpriseButton" type="button" class="icon-button" data-action="surprise" title="Bana Bir Şey Seç" aria-label="Bana Bir Şey Seç"><span data-icon="star"></span></button>
-          <button id="localFileButton" type="button" class="icon-button" data-action="open-local-file" title="Bilgisayardan Video Aç" aria-label="Bilgisayardan Video Aç"><span data-icon="upload"></span></button>
+          <button id="surpriseButton" type="button" class="icon-button topbar-pill" data-action="surprise" title="Bana Bir Şey Seç" aria-label="Bana Bir Şey Seç"><span data-icon="star"></span><span class="action-pill-label">Öner</span></button>
+          <button id="localFileButton" type="button" class="icon-button topbar-pill" data-action="open-local-file" title="Bilgisayardan Video Aç" aria-label="Bilgisayardan Video Aç"><span data-icon="upload"></span><span class="action-pill-label">Dosya</span></button>
           <input type="file" id="localFilePicker" accept="video/*,.mkv,.avi,.mov,.m4v,.webm,.ts" hidden>
-          <button id="syncButton" class="icon-button" title="Kütüphaneyi eşitle" aria-label="Kütüphaneyi eşitle"><span data-icon="refresh"></span></button>
-          <a href="#settings" class="icon-button" data-route="settings" title="Ayarlar" aria-label="Ayarlar"><span data-icon="settings"></span></a>
+          <button id="syncButton" class="icon-button topbar-pill" title="Kütüphaneyi eşitle" aria-label="Kütüphaneyi eşitle"><span data-icon="refresh"></span><span class="action-pill-label">Eşitle</span></button>
+          <a href="#settings" class="icon-button topbar-pill" data-route="settings" title="Ayarlar" aria-label="Ayarlar"><span data-icon="settings"></span><span class="action-pill-label">Ayarlar</span></a>
           <button type="button" id="profileAvatarBtn" class="avatar" data-action="open-profiles" title="Profiller" aria-label="Profiller"><span id="profileInitial" aria-hidden="true">A</span><svg class="profile-caret" viewBox="0 0 12 8" aria-hidden="true"><path d="m1 1 5 5 5-5"/></svg></button>
         </div>
         <span id="breadcrumb" hidden></span>
       </header>
-      <main id="main" tabindex="-1"><div class="initial-loading"><div class="loading-stage-card"><div class="cinema-eq" aria-hidden="true"><span></span><span></span><span></span><span></span></div><span class="spinner"></span><strong>Cineva hazırlanıyor…</strong><p>Kütüphanen, yayın akışları ve dil/altyazı motoru başlatılıyor</p><div class="loading-progress-bar" aria-hidden="true"><span></span></div></div></div></main>
+      <main id="main" tabindex="-1"><div class="initial-loading"><div class="loading-stage-card"><div class="cinema-eq" aria-hidden="true"><span></span><span></span><span></span><span></span></div><span class="spinner"></span><strong>Vrelio hazırlanıyor…</strong><p>Kütüphanen, yayın akışları ve dil/altyazı motoru başlatılıyor</p><div class="loading-progress-bar" aria-hidden="true"><span></span></div></div></div></main>
       <footer class="workspace-footer">
         <div><span id="connectionLight" class="connection-light"></span><span id="connectionName">Kütüphanen hazırlanıyor</span><span id="connectionCaption" hidden></span></div>
         <nav aria-label="Kütüphane işlemleri"><a href="#favorites">Favoriler</a><a href="#playlists">Listelerim</a><a href="#settings">Ayarlar</a></nav>
-        <span id="footerStatus">Bu bilgisayarda çalışıyor</span>
+        <span id="footerStatus">Bu cihazda çalışıyor</span>
       </footer>
     </div>
   </div>
@@ -69,11 +70,11 @@
     <a href="#home" data-route="home"><span data-icon="home"></span><span>Ana Sayfa</span></a>
     <a href="#live" data-route="live"><span data-icon="live"></span><span>Canlı</span></a>
     <a href="#sports" data-route="sports"><span data-icon="sports"></span><span>Rehber</span></a>
-    <button type="button" data-focus-search><span data-icon="search"></span><span>Ara</span></button>
+    <button type="button" data-focus-search aria-label="Ara"><span data-icon="search"></span><span>Ara</span></button>
     <a href="#playlists" data-route="playlists"><span data-icon="list"></span><span>Listem</span></a>
   </nav>
-  <dialog id="detailDialog" class="detail-dialog"><button class="dialog-close icon-button" data-close="detailDialog" aria-label="Kapat"><span data-icon="close"></span></button><div id="detailContent"></div></dialog>
-  <dialog id="listDialog" class="small-dialog"><button class="dialog-close icon-button" data-close="listDialog" aria-label="Kapat"><span data-icon="close"></span></button><div id="listContent"></div></dialog>
+  <dialog id="detailDialog" class="detail-dialog"><button class="dialog-close icon-button" data-close="detailDialog" aria-label="Kapat" title="Kapat"><span data-icon="close"></span></button><div id="detailContent"></div></dialog>
+  <dialog id="listDialog" class="small-dialog"><button class="dialog-close icon-button" data-close="listDialog" aria-label="Kapat" title="Kapat"><span data-icon="close"></span></button><div id="listContent"></div></dialog>
   <dialog id="playerDialog" class="player-dialog" aria-labelledby="playerTitle">
     <div id="playerSurface" class="player-surface">
     <div class="video-stage">
@@ -163,7 +164,7 @@
     </div>
     </div>
   </dialog>
-  <div id="dropOverlay" class="drop-overlay" hidden><div><strong>Videoyu buraya bırak</strong><p>Doğrudan Cineva oynatıcısında açılır</p></div></div>
+  <div id="dropOverlay" class="drop-overlay" hidden><div><strong>Videoyu buraya bırak</strong><p>Doğrudan Vrelio oynatıcısında açılır</p></div></div>
   <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
   <script src="/vendor/hls.min.js" defer></script>
   <script src="/tracks.js" defer></script>

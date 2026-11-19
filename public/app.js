@@ -1,13 +1,13 @@
 'use strict';
-const icons={sports:'<path d="M8 21h8m-4-4v4M7 4h10v7a5 5 0 0 1-10 0V4ZM7 6H3v2a4 4 0 0 0 4 4m10-6h4v2a4 4 0 0 1-4 4"/>',home:'<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/>',live:'<rect x="3" y="5" width="18" height="14" rx="3"/><path d="m8 2 4 3 4-3M8 22h8"/><path d="m10 9 5 3-5 3z"/>',film:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M17 3v18M3 8h4M3 16h4M17 8h4M17 16h4M7 12h10"/>',series:'<rect x="3" y="8" width="18" height="13" rx="2"/><path d="M6 4h12M9 1h6m-4 11 5 3-5 3z"/>',heart:'<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0l-1 1-1-1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/>',list:'<path d="M8 6h13M8 12h13M8 18h9M3 6h.01M3 12h.01M3 18h.01"/>',settings:'<path d="m9.5 3-.7 2-2 .9-2-.5-2 3.4 1.4 1.5v2.4L3 14.2l2 3.4 2-.5 2 .9.7 2h4.1l.7-2 2-.9 2 .5 2-3.4-1.4-1.5v-2.4L21 8.8l-2-3.4-2 .5-2-.9-.7-2z"/><circle cx="12" cy="11.5" r="3"/>',search:'<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',refresh:'<path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 6.1A8 8 0 0 1 20 12M4 12a8 8 0 0 0 13.9 5.9"/>',chevronRight:'<path d="m9 5 7 7-7 7"/>',chevronLeft:'<path d="m15 5-7 7 7 7"/>',close:'<path d="m6 6 12 12M6 18 18 6"/>',play:'<path d="m8 4 12 8-12 8z"/>',plus:'<path d="M12 5v14M5 12h14"/>',more:'<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',star:'<path d="m12 2 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z"/>',arrowUp:'<path d="m6 12 6-6 6 6M12 6v14"/>',arrowDown:'<path d="m6 12 6 6 6-6M12 4v14"/>',trash:'<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/>',edit:'<path d="m15 4 5 5M3 21l5-1L21 7a3.5 3.5 0 0 0-5-5L3 15z"/>',download:'<path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/>',upload:'<path d="M12 16V4m-5 5 5-5 5 5M4 16v5h16v-5"/>',check:'<path d="m5 12 4 4L19 6"/>',alert:'<path d="m12 3 10 18H2zM12 9v5M12 17h.01"/>',clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/>',expand:'<path d="M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5"/>',link:'<path d="m10 13 4-4M8 16l-1 1a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0M16 8l1-1a4 4 0 0 1 6 6l-5 5a4 4 0 0 1-6 0"/>',shield:'<path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6z"/><path d="m8 12 3 3 5-6"/>',copy:'<rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V3H3v13h5"/>',logout:'<path d="M9 3H4v18h5M13 8l5 4-5 4M8 12h10"/>'};
+const icons={sports:'<path d="M8 21h8m-4-4v4M7 4h10v7a5 5 0 0 1-10 0V4ZM7 6H3v2a4 4 0 0 0 4 4m10-6h4v2a4 4 0 0 1-4 4"/>',home:'<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/>',live:'<rect x="3" y="5" width="18" height="14" rx="3"/><path d="m8 2 4 3 4-3M8 22h8"/><path d="m10 9 5 3-5 3z"/>',film:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M17 3v18M3 8h4M3 16h4M17 8h4M17 16h4M7 12h10"/>',series:'<rect x="3" y="8" width="18" height="13" rx="2"/><path d="M6 4h12M9 1h6m-4 11 5 3-5 3z"/>',heart:'<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0l-1 1-1-1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/>',list:'<path d="M8 6h13M8 12h13M8 18h9M3 6h.01M3 12h.01M3 18h.01"/>',settings:'<path d="m9.5 3-.7 2-2 .9-2-.5-2 3.4 1.4 1.5v2.4L3 14.2l2 3.4 2-.5 2 .9.7 2h4.1l.7-2 2-.9 2 .5 2-3.4-1.4-1.5v-2.4L21 8.8l-2-3.4-2 .5-2-.9-.7-2z"/><circle cx="12" cy="11.5" r="3"/>',search:'<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',refresh:'<path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 6.1A8 8 0 0 1 20 12M4 12a8 8 0 0 0 13.9 5.9"/>',chevronRight:'<path d="m9 5 7 7-7 7"/>',chevronLeft:'<path d="m15 5-7 7 7 7"/>',close:'<path d="m6 6 12 12M6 18 18 6"/>',play:'<path d="m8 4 12 8-12 8z"/>',plus:'<path d="M12 5v14M5 12h14"/>',more:'<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',star:'<path d="m12 2 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z"/>',arrowUp:'<path d="m6 12 6-6 6 6M12 6v14"/>',arrowDown:'<path d="m6 12 6 6 6-6M12 4v14"/>',trash:'<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/>',edit:'<path d="m15 4 5 5M3 21l5-1L21 7a3.5 3.5 0 0 0-5-5L3 15z"/>',download:'<path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/>',upload:'<path d="M12 16V4m-5 5 5-5 5 5M4 16v5h16v-5"/>',check:'<path d="m5 12 4 4L19 6"/>',alert:'<path d="m12 3 10 18H2zM12 9v5M12 17h.01"/>',clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/>',expand:'<path d="M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5"/>',link:'<path d="m10 13 4-4M8 16l-1 1a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0M16 8l1-1a4 4 0 0 1 6 6l-5 5a4 4 0 0 1-6 0"/>',shield:'<path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6z"/><path d="m8 12 3 3 5-6"/>',copy:'<rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V3H3v13h5"/>',logout:'<path d="M9 3H4v18h5M13 8l5 4-5 4M8 12h10"/>',volumeOn:'<path d="M3 9v6h4l5 4V5L7 9H3m13 0a4 4 0 0 1 0 6m3-9a8 8 0 0 1 0 12"/>',volumeOff:'<path d="M3 9v6h4l5 4V5L7 9H3m13 1 5 5m0-5-5 5"/>'};
 const icon=name=>`<svg viewBox="0 0 24 24" aria-hidden="true">${icons[name]||icons.film}</svg>`;
 const $=selector=>document.querySelector(selector);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=new Intl.NumberFormat('tr-TR');
 const kindNames={live:'Canlı TV',vod:'Film',series:'Dizi',episode:'Bölüm'};
-const state={status:null,route:'home',params:new URLSearchParams(),renderId:0,items:new Map(),detail:null,playlists:[],player:null,hls:null,progressTimer:null,pingTimer:null,syncTimer:null,searchTimer:null,playGeneration:0,playClient:Date.now().toString(36)+Math.random().toString(36).slice(2),seekTimer:null,waitingTimer:null,playbackRate:1,videoCover:false,sleepTimer:null,sleepUntil:0,osdTimer:null,multiHls:[]};
+const state={status:null,cloudStatus:null,route:'home',params:new URLSearchParams(),renderId:0,items:new Map(),detail:null,playlists:[],player:null,hls:null,progressTimer:null,pingTimer:null,syncTimer:null,searchTimer:null,playGeneration:0,playClient:Date.now().toString(36)+Math.random().toString(36).slice(2),seekTimer:null,waitingTimer:null,playbackRate:1,videoCover:false,sleepTimer:null,sleepUntil:0,osdTimer:null,multiHls:[],multiSids:[]};
 function hydrateIcons(root=document){root.querySelectorAll('[data-icon]').forEach(el=>{el.innerHTML=icon(el.dataset.icon);});}
-async function api(path,options={}){const init={...options,headers:{...(options.body?{'Content-Type':'application/json'}:{}),...(options.headers||{})}};if(init.body&&typeof init.body!=='string')init.body=JSON.stringify(init.body);const response=await fetch(path,init);let data;try{data=await response.json();}catch{throw new Error('Sunucudan geçerli bir yanıt alınamadı. Cineva uygulamasının açık olduğundan emin ol.');}if(!response.ok){if(response.status===401&&state.status?.authorized){state.status.authorized=false;render();}const error=new Error(data.error||`İşlem tamamlanamadı (${response.status}).`);error.status=response.status;error.mode=data.mode;error.code=data.code;throw error;}return data;}
+async function api(path,options={}){const init={...options,headers:{...(options.body?{'Content-Type':'application/json'}:{}),...(options.headers||{})}};if(init.body&&typeof init.body!=='string')init.body=JSON.stringify(init.body);const response=await fetch(path,init);let data;try{data=await response.json();}catch{throw new Error('Sunucudan geçerli bir yanıt alınamadı. Vrelio uygulamasının açık olduğundan emin ol.');}if(!response.ok){if(response.status===401&&state.status?.authorized){state.status.authorized=false;render();}const error=new Error(data.error||`İşlem tamamlanamadı (${response.status}).`);error.status=response.status;error.mode=data.mode;error.code=data.code;error.verificationRequired=data.verificationRequired;error.upgradeRequired=data.upgradeRequired;error.email=data.email;throw error;}return data;}
 function remember(items){for(const item of items||[])if(item?.id){if(state.items.has(item.id))state.items.delete(item.id);else if(state.items.size>=5000)state.items.delete(state.items.keys().next().value);state.items.set(item.id,item);}return items||[];}
 function itemFor(id){return state.items.get(id);}
 function notify(message,error=false){const toast=document.createElement('div');toast.className=`toast${error?' error':''}`;toast.innerHTML=icon(error?'alert':'check')+`<span>${esc(message)}</span>`;$('#toastRegion').append(toast);setTimeout(()=>toast.remove(),6000);}
@@ -19,7 +19,7 @@ function time(seconds){seconds=Math.max(0,Math.floor(Number(seconds)||0));const 
 function minutes(seconds){return `${Math.max(1,Math.round((Number(seconds)||0)/60))} dk`;}
 function date(value){if(!value)return 'Bilinmiyor';const d=new Date(/^\d+$/.test(String(value))?Number(value)*(Number(value)<1e12?1000:1):value);return Number.isNaN(d.getTime())?String(value):new Intl.DateTimeFormat('tr-TR',{day:'numeric',month:'long',year:'numeric'}).format(d);}
 function imageUrl(url){if(!url||!/^https?:\/\//i.test(url))return '';return `/api/image?url=${encodeURIComponent(url)}`;}
-function fallback(item){const hue=[...String(item.name||'')].reduce((n,c)=>n+c.charCodeAt(0),0)%360;return `<div class="poster-fallback" style="--hue:${hue}">${icon(item.kind==='live'?'live':item.kind==='series'?'series':'film')}<span>${esc(item.name||'İsimsiz içerik')}</span><small>${esc(kindNames[item.kind]||'CINEVA')}</small></div>`;}
+function fallback(item){const hue=[...String(item.name||'')].reduce((n,c)=>n+c.charCodeAt(0),0)%360;return `<div class="poster-fallback" style="--hue:${hue}">${icon(item.kind==='live'?'live':item.kind==='series'?'series':'film')}<span>${esc(item.name||'İsimsiz içerik')}</span><small>${esc(kindNames[item.kind]||'VRELIO')}</small></div>`;}
 function art(item,extra=''){const url=imageUrl(item.poster);return fallback(item)+(url?`<img src="${esc(url)}" alt="" loading="lazy" decoding="async" ${extra} data-poster>`:'');}
 function progressPercent(item){const p=item.progress;return p?.duration?Math.max(0,Math.min(100,p.position/p.duration*100)):0;}
 function card(item){remember([item]);if(item.kind==='live')return liveCard(item);const year=item.year?String(item.year):'';return `<article class="media-card"><button class="poster-button" data-action="detail" data-id="${esc(item.id)}" aria-label="${esc(item.name)} ayrıntıları">${art(item)}<span class="poster-shade"></span><span class="poster-play">${icon(item.kind==='series'?'series':'play')}</span><span class="card-badges">${Number(item.rating)>0?`<span class="badge rating">${icon('star')}${esc(Number(item.rating).toFixed(1))}</span>`:''}${item.progress?.completed?'<span class="badge">İZLENDİ</span>':''}</span>${item.progress?.position?`<span class="progress-track"><span style="width:${progressPercent(item)}%"></span></span>`:''}</button><button class="card-favorite ${item.favorite?'active':''}" data-action="favorite" data-id="${esc(item.id)}" title="${item.favorite?'Favorilerden kaldır':'Favorilere ekle'}" aria-label="${item.favorite?'Favorilerden kaldır':'Favorilere ekle'}">${icon('heart')}</button><div class="card-title-row"><button class="card-title" data-action="detail" data-id="${esc(item.id)}">${esc(item.name)}</button><button class="card-more" data-action="item-menu" data-id="${esc(item.id)}" aria-label="${esc(item.name)} seçenekleri">${icon('more')}</button></div><div class="card-meta">${year?`<span>${esc(year)}</span><span class="meta-dot"></span>`:''}<span class="meta-category">${esc(item.categoryName||kindNames[item.kind]||'Kütüphane')}</span></div></article>`;}
@@ -37,8 +37,8 @@ function pageHeading(title,subtitle,eyebrow='',actions=''){return `<div class="p
 function section(title,items,kind,link,subtitle=''){return `<section class="section"><div class="section-heading"><div><h2>${esc(title)}</h2>${subtitle?`<p class="discovery-subtitle">${esc(subtitle)}</p>`:''}</div>${link?`<a class="text-button" href="#${link}">Tümünü gör ${icon('chevronRight')}</a>`:''}</div>${grid(items,kind)}</section>`;}
 function syncBanner(){const catalog=state.status?.catalog;if(catalog?.syncing)return `<div class="sync-banner"><div class="cinema-eq small" aria-hidden="true"><span></span><span></span><span></span><span></span></div><span class="spinner"></span><span>Kütüphanen eşitleniyor · Kanal, film, dizi ve ses/altyazı bilgileri güncelleniyor…</span></div>`;if(catalog?.error)return `<div class="sync-banner error">${icon('alert')}<span>${esc(catalog.error)}</span><button class="text-button" data-action="sync">Tekrar dene</button></div>`;return '';}
 function routeTo(route,params={}){const query=new URLSearchParams(Object.entries(params).filter(([,v])=>v!==''&&v!=null));location.hash=route+(query.size?'?'+query.toString():'');}
-function updateShell(){const status=state.status;const route=state.route;if(route!=='multiview'&&typeof clearMultiView==='function')clearMultiView();document.querySelectorAll('[data-route]').forEach(el=>el.classList.toggle('active',el.dataset.route===route||(route.startsWith('playlists/')&&el.dataset.route==='playlists')));const names={home:'Cineva Kütüphanesi',live:'Kütüphane / Canlı TV',multiview:'Cineva / Çoklu Ekran',sports:'Canlı Yayın & EPG Rehberi',vod:'Kütüphane / Filmler',series:'Kütüphane / Diziler',favorites:'Kütüphanem / Favoriler',playlists:'Kütüphanem / Listelerim',settings:'Cineva / Ayarlar',search:'Kütüphane / Arama'};$('#breadcrumb').textContent=names[route]||'Kütüphanem / Listelerim';const prof=status?.profile;if(prof){const initEl=$('#profileInitial');if(initEl)initEl.textContent=(prof.name||'A').trim().charAt(0).toUpperCase();const av=$('#profileAvatarBtn');if(av){if(av.style)av.style.background=prof.avatarColor||'#FF4B45';av.title=`Profil: ${prof.name}${prof.isKids?' (Çocuk)':''}`;}};$('#connectionName').textContent=status?.configured?(status.connection?.name||'Medya Kaynağı'):'Bağlantı bekleniyor';$('#connectionCaption').textContent=status?.catalog?.syncing?'Kütüphane eşitleniyor':status?.catalog?.error?'Bağlantıyı kontrol et':status?.configured?'Kişisel sunucun bağlı':'Ayarlarla başlayalım';$('#connectionLight').className=`connection-light ${status?.configured&&!status?.catalog?.error?'ready':status?.catalog?.error?'error':''}`;$('#footerStatus').textContent=status?.catalog?.updatedAt?`Son eşitleme · ${date(status.catalog.updatedAt)}`:'Bu bilgisayarda çalışıyor';$('#syncButton').classList.toggle('syncing-icon',!!status?.catalog?.syncing);$('#syncButton').disabled=!status?.authorized||!status?.configured||!!status?.catalog?.syncing;const query=state.params.get('q')||'';if(document.activeElement!==$('#searchInput'))$('#searchInput').value=query;document.title=`${route==='home'?'Kütüphane':({live:'Canlı TV',multiview:'Çoklu Ekran',sports:'Yayın Rehberi',vod:'Filmler',series:'Diziler',favorites:'Favoriler',playlists:'Listelerim',settings:'Ayarlar',search:'Arama'}[route]||'Listem')} · Cineva`;}
-async function render(){const token=++state.renderId;const hash=location.hash.slice(1)||'home';const split=hash.indexOf('?');state.route=split<0?hash:hash.slice(0,split);state.params=new URLSearchParams(split<0?'':hash.slice(split+1));updateShell();if(!state.status?.authorized){renderPairing();return;}if(!state.status.configured&&!['settings','sports'].includes(state.route)){renderSetup();return;}const main=$('#main');try{if(state.route==='sports'){await window.AkisSports.render(main,state.params,()=>token===state.renderId);return;}if(state.route==='multiview'){await renderMultiView(token);return;}if(state.route==='settings'){renderSettings();return;}if(state.route==='home'){main.innerHTML=loading();const data=await api('/api/home');if(token!==state.renderId)return;renderHome(data);return;}if(['live','vod','series'].includes(state.route)){main.innerHTML=pageHeading({live:'Canlı TV',vod:'Filmler',series:'Diziler'}[state.route],'Kütüphanen yükleniyor…','KENDİ EKRANIN')+loading();const data=await api(`/api/catalog?${new URLSearchParams({kind:state.route,q:state.params.get('q')||'',category:state.params.get('category')||'',sort:state.params.get('sort')||'recent',page:state.params.get('page')||'1',limit:'48'})}`);if(token!==state.renderId)return;renderCatalog(data);return;}if(state.route==='favorites'){main.innerHTML=loading();const data=await api('/api/favorites');if(token!==state.renderId)return;renderFavorites(data.items||[]);return;}if(state.route==='playlists'||state.route.startsWith('playlists/')){main.innerHTML=loading();const data=await api('/api/playlists');if(token!==state.renderId)return;state.playlists=data.playlists||[];renderPlaylists();return;}if(state.route==='search'){main.innerHTML=loading();const q=state.params.get('q')||'';const results=await Promise.all(['vod','series','live'].map(kind=>api(`/api/catalog?${new URLSearchParams({kind,q,limit:'18',page:'1'})}`).then(data=>({...data,kind}))));if(token!==state.renderId)return;renderSearch(q,results);return;}routeTo('home');}catch(error){if(token===state.renderId)main.innerHTML=empty('Bağlantı kurulamadı',error.message,'alert',button('Yeniden dene','reload'));}}
+function updateShell(){const status=state.status;const route=state.route;if(route!=='multiview'&&typeof clearMultiView==='function')clearMultiView();document.querySelectorAll('[data-route]').forEach(el=>el.classList.toggle('active',el.dataset.route===route||(route.startsWith('playlists/')&&el.dataset.route==='playlists')));const names={home:'Vrelio Kütüphanesi',live:'Kütüphane / Canlı TV',multiview:'Vrelio / Çoklu Ekran',sports:'Canlı Yayın & EPG Rehberi',vod:'Kütüphane / Filmler',series:'Kütüphane / Diziler',favorites:'Kütüphanem / Favoriler',playlists:'Kütüphanem / Listelerim',settings:'Vrelio / Ayarlar',search:'Kütüphane / Arama'};$('#breadcrumb').textContent=names[route]||'Kütüphanem / Listelerim';const prof=status?.profile;if(prof){const initEl=$('#profileInitial');if(initEl){initEl.textContent=(prof.name||'A').trim().charAt(0).toUpperCase();if(initEl.style)initEl.style.background=prof.avatarColor||'#FF4B45';}const av=$('#profileAvatarBtn');if(av){av.title=`Profil: ${prof.name}${prof.isKids?' (Çocuk)':''}`;}};$('#connectionName').textContent=status?.configured?(status.connection?.name||'Medya Kaynağı'):'Bağlantı bekleniyor';$('#connectionCaption').textContent=status?.catalog?.syncing?'Kütüphane eşitleniyor':status?.catalog?.error?'Bağlantıyı kontrol et':status?.configured?'Kişisel sunucun bağlı':'Ayarlarla başlayalım';$('#connectionLight').className=`connection-light ${status?.configured&&!status?.catalog?.error?'ready':status?.catalog?.error?'error':''}`;$('#footerStatus').textContent=status?.catalog?.updatedAt?`Son eşitleme · ${date(status.catalog.updatedAt)}`:'Bu cihazda çalışıyor';$('#syncButton').classList.toggle('syncing-icon',!!status?.catalog?.syncing);$('#syncButton').disabled=!status?.authorized||!status?.configured||!!status?.catalog?.syncing;const query=state.params.get('q')||'';if(document.activeElement!==$('#searchInput'))$('#searchInput').value=query;document.title=`${route==='home'?'Kütüphane':({live:'Canlı TV',multiview:'Çoklu Ekran',sports:'Yayın Rehberi',vod:'Filmler',series:'Diziler',favorites:'Favoriler',playlists:'Listelerim',settings:'Ayarlar',search:'Arama'}[route]||'Listem')} · Vrelio`;}
+async function render(){const token=++state.renderId;const hash=location.hash.slice(1)||'home';const split=hash.indexOf('?');state.route=split<0?hash:hash.slice(0,split);state.params=new URLSearchParams(split<0?'':hash.slice(split+1));updateShell();if(!state.status?.authorized){renderPairing();return;}if(!state.status.configured&&!['settings','sports'].includes(state.route)){renderSetup();return;}const main=$('#main');try{if(state.route==='sports'){await window.VrelioSports.render(main,state.params,()=>token===state.renderId);return;}if(state.route==='multiview'){await renderMultiView(token);return;}if(state.route==='settings'){renderSettings();return;}if(state.route==='home'){main.innerHTML=loading();const data=await api('/api/home');if(token!==state.renderId)return;renderHome(data);return;}if(['live','vod','series'].includes(state.route)){main.innerHTML=pageHeading({live:'Canlı TV',vod:'Filmler',series:'Diziler'}[state.route],'Kütüphanen yükleniyor…','KENDİ EKRANIN')+loading();const data=await api(`/api/catalog?${new URLSearchParams({kind:state.route,q:state.params.get('q')||'',category:state.params.get('category')||'',sort:state.params.get('sort')||'recent',page:state.params.get('page')||'1',limit:'48'})}`);if(token!==state.renderId)return;renderCatalog(data);return;}if(state.route==='favorites'){main.innerHTML=loading();const data=await api('/api/favorites');if(token!==state.renderId)return;renderFavorites(data.items||[]);return;}if(state.route==='playlists'||state.route.startsWith('playlists/')){main.innerHTML=loading();const data=await api('/api/playlists');if(token!==state.renderId)return;state.playlists=data.playlists||[];renderPlaylists();return;}if(state.route==='search'){main.innerHTML=loading();const q=state.params.get('q')||'';const results=await Promise.all(['vod','series','live'].map(kind=>api(`/api/catalog?${new URLSearchParams({kind,q,limit:'18',page:'1'})}`).then(data=>({...data,kind}))));if(token!==state.renderId)return;renderSearch(q,results);return;}routeTo('home');}catch(error){if(token===state.renderId)main.innerHTML=empty('Bağlantı kurulamadı',error.message,'alert',button('Yeniden dene','reload'));}}
 const featuredDetails = new Map();
 function homeRail(title, items, renderer, link = '', subtitle = '') {
   if (!items.length) return '';
@@ -81,7 +81,7 @@ function featuredHero(item) {
   return `<section class="hero cinema-hero" data-featured="${esc(item.id)}">
     <div class="cinema-art" aria-hidden="true">${featuredArt(item)}</div>
     <div class="hero-copy">
-      <div class="cinema-kicker"><img src="/cineva-mark.svg" alt="" aria-hidden="true">${label}</div>
+      <div class="cinema-kicker"><img src="/vrelio-mark.svg" alt="" aria-hidden="true">${label}</div>
       <h1>${esc(featuredTitle(item))}</h1>
       <div class="cinema-meta">${[item.year, item.genre, item.duration > 0 ? minutes(item.duration) : ''].filter(Boolean).map(esc).join('  ·  ')}</div>
       <p>${esc(featuredDescription(item))}</p>
@@ -141,7 +141,7 @@ function renderHome(data) {
   main.innerHTML = banner + (showcase.length?discoveryShowcase(showcase):heroItem ? featuredHero({...heroItem, ...featuredDetails.get(heroItem.id)?.info}) : `
     <section class="hero cinema-hero cinema-hero-empty">
       <div class="cinema-art" aria-hidden="true"></div>
-      <div class="hero-copy"><div class="cinema-kicker"><img src="/cineva-mark.svg" alt="" aria-hidden="true">CINEVA</div>
+      <div class="hero-copy"><div class="cinema-kicker"><img src="/vrelio-mark.svg" alt="" aria-hidden="true">VRELIO</div>
         <h1>Ne izlemek istersin?</h1>
         <p>Kendi arşivlerin, filmler, diziler ve canlı yayınlar.</p>
         <div class="hero-actions">
@@ -155,7 +155,7 @@ function renderHome(data) {
     + homeRail('Kütüphanene Yeni Eklenen Filmler', films, card, 'vod')
     + homeRail('Kütüphanene Yeni Eklenen Diziler', series, card, 'series')
     + homeRail('Favorilerim', favorites.slice(0, 12), card, 'favorites')
-    + '<p class="discovery-credit">Keşif: Yalnızca kütüphanendeki kayıtlar ve yerel izleme geçmişin üzerinden hazırlanır. Cineva medya içeriği barındırmaz.</p>';
+    + '<p class="discovery-credit">Keşif: Yalnızca kütüphanendeki kayıtlar ve yerel izleme geçmişin üzerinden hazırlanır. Vrelio medya içeriği barındırmaz.</p>';
   main.querySelectorAll('[data-showcase]').forEach(button=>button.addEventListener('click',()=>{
     main.querySelectorAll('[data-slide]').forEach(slide=>{slide.hidden=slide.dataset.slide!==button.dataset.showcase;});
     main.querySelectorAll('[data-showcase]').forEach(tab=>tab.setAttribute('aria-pressed',String(tab===button)));
@@ -171,27 +171,204 @@ function libraryTabs(active){return `<nav class="mobile-library-tabs" aria-label
 function renderFavorites(items){$('#main').dataset.favSignature=JSON.stringify(items);remember(items);const kind=state.params.get('kind')||'';const filtered=kind?items.filter(item=>item.kind===kind):items;$('#main').innerHTML=libraryTabs('favorites')+pageHeading('İyi şeyler biriktir.','Sevdiğin kanallar, tekrar izleyeceğin filmler ve aklındaki diziler.','FAVORİLERİN')+`<div class="catalog-toolbar"><div class="category-tabs">${[['','Tümü'],['vod','Filmler'],['series','Diziler'],['live','Canlı TV']].map(([k,label])=>`<button class="category-tab ${kind===k?'active':''}" data-action="favorite-filter" data-kind="${k}">${label}</button>`).join('')}</div><span class="result-count">${count(filtered.length)} favori</span></div>${filtered.length?grid(filtered,kind==='live'?'live':'vod'):empty('Kalbini kazananlar burada','İçeriklerin üzerindeki kalbe dokun. Favorilerin bu sunucuya bağlı tüm cihazlarında görünür.','heart','<a href="#vod" class="button">'+icon('film')+'Keşfetmeye başla</a>')}`;}
 function renderSearch(q,results){$('#main').innerHTML=pageHeading('Aradığın hikâyeyi bul.',`“${q}” için kütüphanendeki sonuçlar.`,'ARAMA')+results.map(result=>result.items?.length?section(`${result.kind==='vod'?'Filmler':result.kind==='series'?'Diziler':'Canlı TV'} · ${count(result.total)}`,remember(result.items),result.kind,`${result.kind}?q=${encodeURIComponent(q)}`):'').join('')+(results.every(r=>!r.items?.length)?empty('Bir eşleşme bulamadık','Farklı bir kelimeyle aramayı dene. Sağlayıcının kullandığı başlıklar farklı olabilir.','search'):'');}
 function renderPlaylists(){$('#main').dataset.listSignature=JSON.stringify(state.playlists);if(state.route.includes('/')){const id=decodeURIComponent(state.route.split('/').slice(1).join('/'));const list=state.playlists.find(l=>String(l.id)===id);if(!list){$('#main').innerHTML=empty('Bu liste bulunamadı','Liste silinmiş olabilir.','list','<a class="button secondary" href="#playlists">Listelerime dön</a>');return;}const items=remember(list.items||[]);$('#main').innerHTML=`<a class="text-button" href="#playlists" style="margin-bottom:20px">${icon('chevronLeft')}Tüm listelerim</a>`+pageHeading(list.name,`${count(items.length)} içerik · Sıralamayı oklarla değiştirebilirsin.`,'SENİN SEÇKİN',`<div class="playlist-tools">${button(icon('edit')+'Yeniden adlandır','rename-list',`data-list="${esc(id)}"`)}${button(icon('trash')+'Sil','delete-list',`data-list="${esc(id)}"`,'danger small')}</div>`)+(items.length?`<div class="playlist-rows">${items.map((item,index)=>`<div class="playlist-row"><span class="row-number">${index+1}</span>${imageUrl(item.poster)?`<img src="${esc(imageUrl(item.poster))}" alt="" class="row-art" data-poster>`:`<span class="row-art row-art-fallback">${icon(item.kind==='live'?'live':item.kind==='series'?'series':'film')}</span>`}<button class="row-info" style="text-align:left;background:none;border:0;padding:0" data-action="detail" data-id="${esc(item.id)}"><strong>${esc(item.name)}</strong><small>${esc(kindNames[item.kind])}${item.categoryName?' · '+esc(item.categoryName):''}</small></button><div class="row-actions"><button class="icon-button row-play" data-action="${item.kind==='series'?'detail':'play'}" data-id="${esc(item.id)}" aria-label="${esc(item.name)} aç">${icon('play')}</button><button class="icon-button" data-action="reorder" data-list="${esc(id)}" data-id="${esc(item.id)}" data-direction="-1" ${index===0?'disabled':''} aria-label="Yukarı taşı">${icon('arrowUp')}</button><button class="icon-button" data-action="reorder" data-list="${esc(id)}" data-id="${esc(item.id)}" data-direction="1" ${index===items.length-1?'disabled':''} aria-label="Aşağı taşı">${icon('arrowDown')}</button><button class="icon-button" data-action="remove-from-list" data-list="${esc(id)}" data-id="${esc(item.id)}" aria-label="Listeden kaldır">${icon('close')}</button></div></div>`).join('')}</div>`:empty('Bu liste sana bakıyor','Bir içerik seç, seçenekler menüsünden “Listeye ekle”ye dokun ve kendi seçkini oluştur.','list','<a href="#vod" class="button">'+icon('plus')+'İçerikleri keşfet</a>'));return;}$('#main').innerHTML=libraryTabs('playlists')+pageHeading('Kendi seçkini oluştur.','Hafta sonu filmleri, takip ettiğin diziler veya favori kanalların.','LİSTELERİM',button(icon('plus')+'Yeni liste','create-list','',''))+(state.playlists.length?`<div class="list-grid">${state.playlists.map(list=>`<button class="playlist-card" data-action="open-list" data-list="${esc(list.id)}"><div class="playlist-art">${(list.items||[]).filter(i=>imageUrl(i.poster)).slice(0,4).map(item=>`<img src="${esc(imageUrl(item.poster))}" alt="" loading="lazy">`).join('')}<span class="playlist-symbol">${icon('list')}</span></div><div class="playlist-info"><div><h3>${esc(list.name)}</h3><span>${count(list.count??list.items?.length)} içerik</span></div>${icon('chevronRight')}</div></button>`).join('')}</div>`:empty('İlk listenin bir adı olsun.','İçerikleri istediğin gibi gruplandır. Listelerin ve izleme konumun aynı sunucuya bağlanan cihazlarında senkronize olur.','list',button(icon('plus')+'Bir liste oluştur','create-list','','')));}
-function renderPairing(){const main=$('#main');main.innerHTML=`<section class="pairing-screen"><div class="brand"><img src="/cineva-mark.svg" alt="" width="34" height="34"><span>cineva<span class="brand-dot">.</span></span></div><span class="eyebrow">AYNI KÜTÜPHANE. YENİ BİR EKRAN.</span><h1>Cihazını Cineva’ya bağla.</h1><p>Ana cihazındaki Cineva ayarlarında görünen eşleştirme kodunu gir. Favorilerin, listelerin ve kaldığın yer bu ekranda da yanında olsun.</p><form id="pairForm"><div class="field"><label for="pairCode" class="muted">Eşleştirme kodu</label><input id="pairCode" name="code" type="text" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code" minlength="6" maxlength="6" placeholder="000000" required><span class="field-hint">Cihazlar aynı yerel ağa bağlı olmalı.</span></div><button class="button" type="submit">${icon('link')}Cihazı bağla</button><div id="pairError" class="inline-error" role="alert"></div></form></section>`;$('#pairForm').addEventListener('submit',async event=>{event.preventDefault();const submit=event.currentTarget.querySelector('button');submit.disabled=true;try{await api('/api/pair',{method:'POST',body:{code:$('#pairCode').value.trim()}});state.status=await api('/api/status');render();}catch(error){$('#pairError').textContent=error.message;}finally{submit.disabled=false;}});}
+function renderPairing(){const main=$('#main');main.innerHTML=`<section class="pairing-screen"><div class="brand"><img src="/vrelio-mark.svg" alt="" width="34" height="34"><span>vrelio<span class="brand-dot">.</span></span></div><span class="eyebrow">AYNI KÜTÜPHANE. YENİ BİR EKRAN.</span><h1>Cihazını Vrelio’ya bağla.</h1><p>Ana cihazındaki Vrelio ayarlarında görünen eşleştirme kodunu gir. Favorilerin, listelerin ve kaldığın yer bu ekranda da yanında olsun.</p><form id="pairForm"><div class="field"><label for="pairCode" class="muted">Eşleştirme kodu</label><input id="pairCode" name="code" type="text" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code" minlength="6" maxlength="6" placeholder="000000" required><span class="field-hint">Cihazlar aynı yerel ağa bağlı olmalı.</span></div><button class="button" type="submit">${icon('link')}Cihazı bağla</button><div id="pairError" class="inline-error" role="alert"></div></form></section>`;$('#pairForm').addEventListener('submit',async event=>{event.preventDefault();const submit=event.currentTarget.querySelector('button');submit.disabled=true;try{await api('/api/pair',{method:'POST',body:{code:$('#pairCode').value.trim()}});state.status=await api('/api/status');render();}catch(error){$('#pairError').textContent=error.message;}finally{submit.disabled=false;}});}
 function connectionForm(setup=false){const c=state.status?.connection||{};const mode=['m3u','local','xtream'].includes(c.type)?c.type:'xtream';return `<form id="connectionForm"><div class="field"><label for="connectionType">Kaynak türü</label><select id="connectionType" name="type"><option value="m3u" ${mode==='m3u'?'selected':''}>M3U / M3U8 Oynatma Listesi</option><option value="local" ${mode==='local'?'selected':''}>Bilgisayardaki Yerel Klasör</option><option value="xtream" ${mode==='xtream'?'selected':''}>Xtream API Sunucusu</option></select></div><div class="field"><label for="connectionLabel">Bağlantı adı</label><input id="connectionLabel" name="name" value="${esc(c.name||'Kişisel Kütüphane')}" maxlength="80" required autocomplete="off"></div><div id="m3uFields" ${mode==='m3u'?'':'hidden'}><div class="field"><label for="connectionM3u">M3U / M3U8 liste adresi</label><input id="connectionM3u" name="m3uUrl" type="url" value="${esc(c.m3uUrl||'')}" placeholder="https://example.com/playlist.m3u8" spellcheck="false" autocomplete="url"></div></div><div id="localFields" ${mode==='local'?'':'hidden'}><div class="field"><label for="connectionLocalDir">Bilgisayardaki video klasörü yolu</label><input id="connectionLocalDir" name="localDir" value="${esc(c.localDir||'')}" placeholder="/Users/isim/Movies veya C:\\Users\\isim\\Videos" spellcheck="false" autocomplete="off"><span class="field-hint">Klasördeki MP4, MKV, AVI, MOV dosyalarını ve aynı isimli SRT/VTT altyazıları otomatik tarar.</span></div></div><div id="xtreamFields" ${mode==='xtream'?'':'hidden'}><div class="field"><label for="connectionHost">Sunucu adresi</label><input id="connectionHost" name="host" type="url" value="${esc(c.host||'')}" placeholder="https://sunucu-adresi:8080" spellcheck="false" autocomplete="url"><span class="field-hint">Sağlayıcının http:// veya https:// adresini port numarasıyla gir.</span></div><div class="field-row"><div class="field"><label for="connectionUsername">Kullanıcı adı</label><input id="connectionUsername" name="username" placeholder="${setup?'Kullanıcı adın':'Değiştirmek için gir'}" autocomplete="off" spellcheck="false"></div><div class="field"><label for="connectionPassword">Şifre</label><input id="connectionPassword" name="password" type="password" placeholder="${setup?'Parolan':'Kayıtlı şifre korunur'}" autocomplete="new-password"></div></div>${!setup?'<span class="field-hint">Kullanıcı adı ve şifreyi boş bırakırsan mevcut bilgiler korunur.</span>':''}</div><div class="field"><label for="connectionEpg">XMLTV EPG rehber adresi (İsteğe bağlı)</label><input id="connectionEpg" name="epgUrl" type="url" value="${esc(c.epgUrl||'')}" placeholder="https://example.com/guide.xml" spellcheck="false" autocomplete="url"></div><div class="settings-actions"><button class="button" type="submit">${icon('link')}${setup?'Bağlan ve kütüphaneyi getir':'Bağlantıyı kaydet'}</button></div><div id="settingsError" class="inline-error" role="alert"></div></form>`;}
 function bindConnectionForm(){const form=$('#connectionForm');const toggle=()=>$('#connectionType')&&( $('#m3uFields').hidden=$('#connectionType').value!=='m3u', $('#localFields').hidden=$('#connectionType').value!=='local', $('#xtreamFields').hidden=$('#connectionType').value!=='xtream');$('#connectionType')?.addEventListener('change',toggle);toggle();form?.addEventListener('submit',async event=>{event.preventDefault();const submit=form.querySelector('[type=submit]');submit.disabled=true;$('#settingsError').textContent='';try{const body=Object.fromEntries(new FormData(form));await api('/api/settings',{method:'POST',body});state.status=await api('/api/status');notify('Bağlantı kaydedildi. Kütüphanen eşitleniyor.');await syncCatalog(false);routeTo('home');if(state.route==='home')render();}catch(error){$('#settingsError').textContent=error.message;}finally{submit.disabled=false;}});}
-function renderSetup(){$('#main').innerHTML=`<div class="setup-intro"><span class="eyebrow">KENDİ EKRANINA HOŞ GELDİN</span><h1>Kütüphaneni bağla veya hemen dene.</h1><p>Cineva telifli içerik barındırmaz. Kendi M3U / medya kaynağını bağlayabilir ya da açık lisanslı örnek filmlerle uygulamayı anında test edebilirsin.</p><div style="margin-top:16px">${button(icon('play')+'Açık Sinema ile Hemen Dene (Demo)','demo','','')}</div></div><section class="panel setup-panel"><div class="panel-heading"><span>${icon('link')}</span><div><h2>Medya kaynağı bağla</h2><p>M3U listesi, XMLTV EPG veya Xtream API</p></div></div>${connectionForm(true)}</section>`;bindConnectionForm();}
-function renderSettings(){const s=state.status;const a=s.account||{};const network=s.network||{};const lan=network.lanUrls||[];const active=['active','demo'].includes(String(a.status||'').toLowerCase());$('#main').innerHTML=pageHeading('Her şey yerli yerinde.','Bağlantını yönet, diğer ekranlarını bağla ve kütüphaneni koru.','AYARLAR')+syncBanner()+`<div class="settings-grid"><div><section class="panel"><div class="panel-heading"><span>${icon('link')}</span><div><h2>Medya bağlantısı</h2><p>Bilgilerin yalnızca bu cihazda saklanır</p></div></div>${connectionForm(!s.configured)}${s.configured?'<div class="notice">Farklı bir kaynağa geçersen eski kaynağın favorileri, izleme geçmişi ve listelerdeki içerikleri temizlenir.</div>':''}</section><section class="panel"><div class="panel-heading"><span>${icon('shield')}</span><div><h2>Cineva Hesabı & Lisans (İsteğe Bağlı)</h2><p>Özel M3U adresleriniz asla sunucuya gönderilmez</p></div></div><div id="cloudAccountBox"><p class="settings-note">Pro durumu ve lisans anahtarları yükleniyor…</p></div></section><section class="panel"><div class="panel-heading"><span>${icon('shield')}</span><div><h2>Kütüphane yedeği</h2><p>Listeler, favoriler ve izleme geçmişi</p></div></div><p class="settings-note">Başka bir kurulumda kaldığın yerden devam etmek için kişisel kütüphaneni dışa aktar. İçe aktarma, yedekteki listeleri ve favorileri mevcut kütüphanenle birleştirir; aynı içeriğin izleme konumunu günceller.</p><div class="backup-actions">${button(icon('download')+'Yedeği indir','export')}${button(icon('upload')+'Yedeği içe aktar','import')}${button(icon('play')+'Demo Modu','demo','','ghost')}<input type="file" id="importFile" accept="application/json,.json" hidden></div></section></div><div><section class="panel"><div class="panel-heading"><span>${icon('live')}</span><div><h2>Kaynak durumu</h2><p>Bağlantı ve oynatma motoru</p></div></div><dl class="account-list"><div><dt>Durum</dt><dd><span class="status-pill ${!active?'warning':''}">${esc(active?(a.status==='Demo'?'Açık Demo':'Aktif'):a.status||'Henüz sorgulanmadı')}</span></dd></div><div><dt>Bitiş tarihi</dt><dd>${esc(date(a.expires))}</dd></div><div><dt>Eşzamanlı bağlantı</dt><dd>${esc(a.activeConnections??'—')} / ${esc(a.maxConnections??'—')}</dd></div><div><dt>Son eşitleme</dt><dd>${esc(date(s.catalog?.updatedAt))}</dd></div><div><dt>Oynatma desteği</dt><dd>${s.ffmpeg?'Doğrudan + FFmpeg':'Doğrudan oynatma'}</dd></div></dl><div class="settings-section-spacer">${button(icon('refresh')+'Kütüphaneyi eşitle','sync','','secondary small')}</div></section><section class="panel"><div class="panel-heading"><span>${icon('link')}</span><div><h2>Diğer ekranların</h2><p>Android ve aynı ağdaki cihazların</p></div></div><p class="settings-note">Bu bilgisayar açıkken telefonunda veya tabletinde şu adresi aç. Tüm cihazlar aynı kütüphaneyi kullanır.</p>${lan.length?lan.map(url=>`<div class="network-address"><code>${esc(url)}</code><button class="text-button" data-action="copy" data-value="${esc(url)}" aria-label="Adresi kopyala">${icon('copy')}</button></div>`).join(''):'<div class="notice">Yerel ağ adresi bulunamadı. Wi-Fi bağlantını kontrol et.</div>'}${s.pairingCode?`<div class="pairing-code"><span>CİHAZ EŞLEŞTİRME KODU</span><strong>${esc(s.pairingCode)}</strong></div>`:'<div class="notice">Eşleştirme kodu yalnızca ana cihaz ekranında gösterilir.</div>'}<p class="install-note">Tarayıcı menüsünden “Ana ekrana ekle” ile uygulama gibi kurabilirsin.</p><a href="#favorites" class="text-button">${icon('heart')}Favorilerime git</a></section><section class="panel"><div class="panel-heading"><span>${icon('shield')}</span><div><h2>Yasal Bilgiler & Lisanslar</h2><p>Cineva medya oynatıcı politikası</p></div></div><p class="settings-note">Cineva hiçbir televizyon kanalı veya telifli video dağıtmaz; yalnızca kullanıcının eklediği açık veya yasal kaynakları oynatır. Açık kaynak bileşenler: <strong>hls.js (Apache-2.0)</strong>, <strong>LibVLC (LGPL-2.1+)</strong>.</p></section></div></div>`;bindConnectionForm();loadCloudBox();$('#importFile').addEventListener('change',importBackup);}
-async function loadCloudBox(){
+function renderSetup(){$('#main').innerHTML=`<div class="setup-intro"><span class="eyebrow">KENDİ EKRANINA HOŞ GELDİN</span><h1>Kütüphaneni bağla veya hemen dene.</h1><p>Vrelio telifli içerik barındırmaz. Kendi M3U / medya kaynağını bağlayabilir ya da açık lisanslı örnek filmlerle uygulamayı anında test edebilirsin.</p><div style="margin-top:16px">${button(icon('play')+'Açık Sinema ile Hemen Dene (Demo)','demo','','')}</div></div><section class="panel setup-panel"><div class="panel-heading"><span>${icon('link')}</span><div><h2>Medya kaynağı bağla</h2><p>M3U listesi, XMLTV EPG veya Xtream API</p></div></div>${connectionForm(true)}</section>`;bindConnectionForm();}
+function renderSettings(){const s=state.status;const a=s.account||{};const network=s.network||{};const lan=network.lanUrls||[];const active=['active','demo'].includes(String(a.status||'').toLowerCase());$('#main').innerHTML=pageHeading('Her şey yerli yerinde.','Bağlantını yönet, diğer ekranlarını bağla ve kütüphaneni koru.','AYARLAR')+syncBanner()+`<div class="settings-grid"><div><section class="panel"><div class="panel-heading"><span>${icon('link')}</span><div><h2>Medya bağlantısı</h2><p>Bilgilerin yalnızca bu cihazda saklanır</p></div></div>${connectionForm(!s.configured)}${s.configured?'<div class="notice">Farklı bir kaynağa geçersen eski kaynağın favorileri, izleme geçmişi ve listelerdeki içerikleri temizlenir.</div>':''}</section><section class="panel"><div class="panel-heading"><span>${icon('shield')}</span><div><h2>Vrelio Hesabı & Lisans (İsteğe Bağlı)</h2><p>Özel M3U adresleriniz asla sunucuya gönderilmez</p></div></div><div id="cloudAccountBox"><p class="settings-note">Pro durumu ve lisans anahtarları yükleniyor…</p></div></section><section class="panel"><div class="panel-heading"><span>${icon('shield')}</span><div><h2>Kütüphane yedeği</h2><p>Listeler, favoriler ve izleme geçmişi</p></div></div><p class="settings-note">Başka bir kurulumda kaldığın yerden devam etmek için kişisel kütüphaneni dışa aktar. İçe aktarma, yedekteki listeleri ve favorileri mevcut kütüphanenle birleştirir; aynı içeriğin izleme konumunu günceller.</p><div class="backup-actions">${button(icon('download')+'Yedeği indir','export')}${button(icon('upload')+'Yedeği içe aktar','import')}${button(icon('play')+'Demo Modu','demo','','ghost')}<input type="file" id="importFile" accept="application/json,.json" hidden></div></section></div><div><section class="panel"><div class="panel-heading"><span>${icon('live')}</span><div><h2>Kaynak durumu</h2><p>Bağlantı ve oynatma motoru</p></div></div><dl class="account-list"><div><dt>Durum</dt><dd><span class="status-pill ${!active?'warning':''}">${esc(active?(a.status==='Demo'?'Açık Demo':'Aktif'):a.status||'Henüz sorgulanmadı')}</span></dd></div><div><dt>Bitiş tarihi</dt><dd>${esc(date(a.expires))}</dd></div><div><dt>Eşzamanlı bağlantı</dt><dd>${esc(a.activeConnections??'—')} / ${esc(a.maxConnections??'—')}</dd></div><div><dt>Son eşitleme</dt><dd>${esc(date(s.catalog?.updatedAt))}</dd></div><div><dt>Oynatma desteği</dt><dd>${s.ffmpeg?'Doğrudan + FFmpeg':'Doğrudan oynatma'}</dd></div></dl><div class="settings-section-spacer">${button(icon('refresh')+'Kütüphaneyi eşitle','sync','','secondary small')}</div></section><section class="panel"><div class="panel-heading"><span>${icon('link')}</span><div><h2>Diğer ekranların</h2><p>Android ve aynı ağdaki cihazların</p></div></div><p class="settings-note">Bu bilgisayar açıkken telefonunda veya tabletinde şu adresi aç. Tüm cihazlar aynı kütüphaneyi kullanır.</p>${lan.length?lan.map(url=>`<div class="network-address"><code>${esc(url)}</code><button class="text-button" data-action="copy" data-value="${esc(url)}" aria-label="Adresi kopyala">${icon('copy')}</button></div>`).join(''):'<div class="notice">Yerel ağ adresi bulunamadı. Wi-Fi bağlantını kontrol et.</div>'}${s.pairingCode?`<div class="pairing-code"><span>CİHAZ EŞLEŞTİRME KODU</span><strong>${esc(s.pairingCode)}</strong></div>`:'<div class="notice">Eşleştirme kodu yalnızca ana cihaz ekranında gösterilir.</div>'}<p class="install-note">Tarayıcı menüsünden “Ana ekrana ekle” ile uygulama gibi kurabilirsin.</p><a href="#favorites" class="text-button">${icon('heart')}Favorilerime git</a></section><section class="panel"><div class="panel-heading"><span>${icon('shield')}</span><div><h2>Yasal Bilgiler & Lisanslar</h2><p>Vrelio medya oynatıcı politikası</p></div></div><p class="settings-note">Vrelio hiçbir televizyon kanalı veya telifli video dağıtmaz; yalnızca kullanıcının eklediği açık veya yasal kaynakları oynatır. Açık kaynak bileşenler: <strong>hls.js (Apache-2.0)</strong>, <strong>LibVLC (LGPL-2.1+)</strong>.</p></section></div></div>`;bindConnectionForm();loadCloudBox();$('#importFile').addEventListener('change',importBackup);}
+function trialCountdownText(endsAt){
+  if(!endsAt)return '3 günlük Pro deneme etkin';
+  const ms=new Date(endsAt).getTime()-Date.now();
+  if(!Number.isFinite(ms)||ms<=0)return 'Deneme süresi sona eriyor';
+  const totalHours=Math.max(1,Math.ceil(ms/3600000));
+  const days=Math.floor(totalHours/24),hours=totalHours%24;
+  return days>0?`${days} gün ${hours} saat kaldı (${date(endsAt)})`:`${totalHours} saat kaldı (${date(endsAt)})`;
+}
+async function loadCloudBox(tab='login',prefillEmail=''){
   const box=$('#cloudAccountBox');
   if(!box)return;
   try{
     const res=await api('/api/cloud/status');
+    state.cloudStatus=res;
     const u=res.user;
     if(u){
-      box.innerHTML=`<dl class="account-list"><div><dt>Hesap</dt><dd>${esc(u.displayName)} (${esc(u.email)})</dd></div><div><dt>Plan</dt><dd><span class="status-pill">${esc(u.effectivePlan||u.plan)}</span></dd></div><div><dt>Durum</dt><dd>${esc(u.status)}</dd></div></dl><div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button id="cloudSyncBtn" type="button" class="button small secondary">${icon('refresh')}Hesap Verilerini Şimdi Eşitle</button></div><form id="cloudRedeemForm" style="margin-top:12px;display:flex;gap:8px"><input id="cloudCode" placeholder="Lisans kodu: CINEVA-..." required style="flex:1"><button class="button small" type="submit">Etkinleştir</button></form><div style="margin-top:10px"><button id="cloudLogoutBtn" type="button" class="text-button">Hesaptan Çıkış Yap</button></div>`;
-      $('#cloudSyncBtn')?.addEventListener('click',async e=>{const btn=e.currentTarget;btn.disabled=true;try{const s=await api('/api/cloud/sync',{method:'POST',body:{}});notify(`Bulut eşitlemesi tamamlandı (${s.counts?.favorites||0} favori, ${s.counts?.progress||0} izleme kaydı, ${s.counts?.playlists||0} liste).`);}catch(err){notify(err.message,true);}finally{btn.disabled=false;}});
-      $('#cloudRedeemForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/cloud/redeem',{method:'POST',body:{code:$('#cloudCode').value.trim()}});notify('Lisans anahtarı etkinleştirildi.');loadCloudBox();}catch(err){notify(err.message,true);}});
-      $('#cloudLogoutBtn')?.addEventListener('click',async()=>{await api('/api/cloud/logout',{method:'POST',body:{}});loadCloudBox();});
+      const isPro=Boolean(u.isPro||res.isPro||u.effectivePlan==='pro');
+      const devices=Array.isArray(u.devices)?u.devices:[];
+      box.innerHTML=`
+        <dl class="account-list">
+          <div><dt>Hesap</dt><dd>${esc(u.displayName||'Kullanıcı')} (${esc(u.email)})</dd></div>
+          <div><dt>E-posta Durumu</dt><dd><span class="status-pill ${u.emailVerified?'':'warning'}">${u.emailVerified?'E-posta Doğrulandı':'Doğrulama Bekleniyor'}</span></dd></div>
+          <div><dt>Aktif Plan</dt><dd><span class="status-pill ${isPro?'':'warning'}">${isPro?'Pro':'Normal'}</span></dd></div>
+          <div><dt>Durum</dt><dd>${esc(u.status||'active')}</dd></div>
+        </dl>
+        ${u.trialActive?`<div class="cloud-trial-banner"><div><strong>3 Günlük Pro Deneme Aktif</strong><small>${esc(trialCountdownText(u.trialEndsAt))}</small></div><span class="status-pill">Pro Özellikler Açık</span></div>`:''}
+        <div class="cloud-plan-grid">
+          <div class="cloud-plan-card ${!isPro?'current':''}">
+            <h3><span>Normal Plan</span><small>${!isPro?'Mevcut':''}</small></h3>
+            <ul><li>1 cihaz sınırı</li><li>Temel yerel medya &amp; M3U oynatma</li><li>Tek profil</li></ul>
+          </div>
+          <div class="cloud-plan-card ${isPro?'current':''}">
+            <h3><span>Pro Plan</span><small>${isPro?'Mevcut':'3 gün ücretsiz dene'}</small></h3>
+            <ul><li>5 cihaza kadar kullanım</li><li>Bulut eşitleme &amp; yedek</li><li>Çoklu profil + PIN kilidi + Çoklu Ekran</li></ul>
+          </div>
+        </div>
+        ${!isPro?`<div id="cloudUpgradeCallout" class="cloud-upgrade-callout"><span>Normal plandasınız. Bulut eşitleme, 5 cihaz ve PIN’li profiller için Pro lisans anahtarı girin.</span><button type="button" id="focusLicenseBtn" class="button small">Pro’ya Yükselt</button></div>`:''}
+        <div id="cloudActionError" class="inline-error" role="alert" hidden></div>
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+          <button id="cloudSyncBtn" type="button" class="button small secondary">${icon('refresh')}Hesap Verilerini Şimdi Eşitle</button>
+        </div>
+        <form id="cloudRedeemForm" style="margin-top:12px;display:flex;gap:8px">
+          <input id="cloudCode" placeholder="Lisans kodu: VRELIO-XXXX-XXXX-XXXX" required style="flex:1">
+          <button class="button small" type="submit">Etkinleştir</button>
+        </form>
+        <div style="margin-top:14px">
+          <strong style="font-size:12px">Kayıtlı Cihazlar (${devices.length} / ${esc(u.maxDevices||(isPro?5:1))})</strong>
+          <div class="cloud-device-list">${devices.length?devices.map(d=>`<div class="cloud-device-row"><div><strong>${esc(d.name||'Cihaz')}</strong><small>${esc(d.platform||'desktop')} · ${esc(d.lastSeenAt?date(d.lastSeenAt):d.id)}</small></div><button type="button" class="button small danger" data-remove-device="${esc(d.id)}" aria-label="${esc(d.name||'Cihaz')} kaldır">${icon('trash')}Kaldır</button></div>`).join(''):'<p class="settings-note" style="margin:6px 0">Henüz kayıtlı cihaz yok.</p>'}</div>
+        </div>
+        <div style="margin-top:12px"><button id="cloudLogoutBtn" type="button" class="text-button">${icon('logout')}Hesaptan Çıkış Yap</button></div>`;
+      $('#focusLicenseBtn')?.addEventListener('click',()=>$('#cloudCode')?.focus());
+      $('#cloudSyncBtn')?.addEventListener('click',async e=>{
+        const btn=e.currentTarget;btn.disabled=true;$('#cloudActionError').hidden=true;
+        try{
+          const s=await api('/api/cloud/sync',{method:'POST',body:{}});
+          notify(`Bulut eşitlemesi tamamlandı (${s.counts?.favorites||0} favori, ${s.counts?.progress||0} izleme kaydı, ${s.counts?.playlists||0} liste).`);
+        }catch(err){
+          const errEl=$('#cloudActionError');
+          errEl.textContent=err.message;errEl.hidden=false;
+          notify(err.message,true);
+          if(err.code==='PRO_REQUIRED')$('#cloudCode')?.focus();
+        }finally{btn.disabled=false;}
+      });
+      $('#cloudRedeemForm')?.addEventListener('submit',async e=>{
+        e.preventDefault();
+        try{await api('/api/cloud/redeem',{method:'POST',body:{code:$('#cloudCode').value.trim()}});notify('Lisans anahtarı etkinleştirildi.');loadCloudBox();}
+        catch(err){notify(err.message,true);}
+      });
+      box.querySelectorAll('[data-remove-device]').forEach(btn=>btn.addEventListener('click',async()=>{
+        btn.disabled=true;
+        try{
+          await api(`/api/cloud/devices/${encodeURIComponent(btn.dataset.removeDevice)}`,{method:'DELETE'});
+          notify('Cihaz hesaptan kaldırıldı.');
+          loadCloudBox();
+        }catch(err){notify(err.message,true);btn.disabled=false;}
+      }));
+      $('#cloudLogoutBtn')?.addEventListener('click',async()=>{try{await api('/api/cloud/logout',{method:'POST',body:{}});loadCloudBox();}catch(err){notify(err.message,true);}});
     }else{
-      box.innerHTML=`<form id="cloudAuthForm"><div class="field"><label for="clUrl">Cineva Portal Sunucusu</label><input id="clUrl" value="${esc(res.cloudUrl||'https://cineva-app.netlify.app')}" required></div><div class="field-row"><div class="field"><label for="clEmail">E-posta</label><input id="clEmail" type="email" required></div><div class="field"><label for="clPass">Parola</label><input id="clPass" type="password" required minlength="8"></div></div><div class="settings-actions"><button class="button small" type="submit" data-cl-mode="login">Giriş Yap</button><button class="button small secondary" type="button" id="clRegBtn">Hesap Oluştur</button></div></form>`;
-      const submitAuth=async mode=>{await api('/api/cloud/'+(mode==='register'?'register':'login'),{method:'POST',body:{cloudUrl:$('#clUrl').value.trim(),email:$('#clEmail').value.trim(),password:$('#clPass').value}});notify('Cineva hesabına bağlanıldı ve veriler eşitlendi.');loadCloudBox();};
-      $('#cloudAuthForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await submitAuth('login');}catch(err){notify(err.message,true);}});
-      $('#clRegBtn')?.addEventListener('click',async()=>{try{await submitAuth('register');}catch(err){notify(err.message,true);}});
+      const portalUrl=res.cloudUrl||'https://cineva-app.netlify.app';
+      const activeTab=['login','register','verify','forgot'].includes(tab)?tab:'login';
+      box.innerHTML=`
+        <div class="cloud-tabs" role="tablist" aria-label="Vrelio Hesap İşlemleri">
+          <button type="button" class="cloud-tab ${activeTab==='login'?'active':''}" data-cloud-tab="login">Giriş Yap</button>
+          <button type="button" class="cloud-tab ${activeTab==='register'?'active':''}" data-cloud-tab="register">Kayıt Ol</button>
+          <button type="button" class="cloud-tab ${activeTab==='verify'?'active':''}" data-cloud-tab="verify">E-posta Doğrula</button>
+          <button type="button" class="cloud-tab ${activeTab==='forgot'?'active':''}" data-cloud-tab="forgot">Şifremi Unuttum</button>
+        </div>
+        <div class="field"><label for="clUrl">Vrelio Portal Sunucusu</label><input id="clUrl" value="${esc(portalUrl)}" required></div>
+        <div id="cloudMsgBox" class="inline-error" role="alert" hidden></div>
+        <form id="cloudLoginForm" class="cloud-panel-pane" ${activeTab==='login'?'':'hidden'}>
+          <div class="field-row">
+            <div class="field"><label for="clLoginEmail">E-posta</label><input id="clLoginEmail" type="email" value="${esc(prefillEmail)}" required></div>
+            <div class="field"><label for="clLoginPass">Parola</label><input id="clLoginPass" type="password" required minlength="8"></div>
+          </div>
+          <div class="settings-actions" style="margin-top:8px"><button class="button small" type="submit">Giriş Yap</button></div>
+        </form>
+        <form id="cloudRegForm" class="cloud-panel-pane" ${activeTab==='register'?'':'hidden'}>
+          <div class="field"><label for="clRegName">Ad Soyad</label><input id="clRegName" placeholder="Örneğin: Ada Yılmaz" maxlength="60"></div>
+          <div class="field-row">
+            <div class="field"><label for="clRegEmail">E-posta</label><input id="clRegEmail" type="email" value="${esc(prefillEmail)}" required></div>
+            <div class="field"><label for="clRegPass">Parola (en az 8 karakter)</label><input id="clRegPass" type="password" required minlength="8"></div>
+          </div>
+          <p class="field-hint">Doğrulama sonrası 3 günlük Pro deneme otomatik olarak başlar.</p>
+          <div class="settings-actions" style="margin-top:8px"><button class="button small" type="submit">Hesap Oluştur</button></div>
+        </form>
+        <form id="cloudVerifyForm" class="cloud-panel-pane" ${activeTab==='verify'?'':'hidden'}>
+          <div class="field-row">
+            <div class="field"><label for="clVerEmail">E-posta</label><input id="clVerEmail" type="email" value="${esc(prefillEmail)}" required></div>
+            <div class="field"><label for="clVerCode">6 Haneli Doğrulama Kodu</label><input id="clVerCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="123456" required></div>
+          </div>
+          <div class="settings-actions" style="margin-top:8px;flex-wrap:wrap">
+            <button class="button small" type="submit">Doğrula ve 3 Günlük Pro Denemeyi Başlat</button>
+            <button class="button small secondary" type="button" id="clResendBtn">Kodu Tekrar Gönder</button>
+          </div>
+        </form>
+        <form id="cloudForgotForm" class="cloud-panel-pane" ${activeTab==='forgot'?'':'hidden'}>
+          <div class="field-row">
+            <div class="field"><label for="clForgotEmail">E-posta</label><input id="clForgotEmail" type="email" value="${esc(prefillEmail)}" required></div>
+            <div class="field" style="justify-content:flex-end"><button class="button small secondary" type="button" id="clSendResetBtn">Sıfırlama Kodu Gönder</button></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label for="clResetCode">Sıfırlama Kodu</label><input id="clResetCode" inputmode="numeric" maxlength="12" placeholder="6 haneli kod"></div>
+            <div class="field"><label for="clResetPass">Yeni Parola</label><input id="clResetPass" type="password" minlength="8" placeholder="En az 8 karakter"></div>
+          </div>
+          <div class="settings-actions" style="margin-top:8px"><button class="button small" type="submit">Parolayı Güncelle</button></div>
+        </form>`;
+      const showMsg=(msg)=>{const m=$('#cloudMsgBox');if(m){m.textContent=msg;m.hidden=!msg;}};
+      box.querySelectorAll('[data-cloud-tab]').forEach(btn=>btn.addEventListener('click',()=>{
+        const target=btn.dataset.cloudTab;
+        const currentEmail=$('#clLoginEmail')?.value||$('#clRegEmail')?.value||$('#clVerEmail')?.value||$('#clForgotEmail')?.value||'';
+        loadCloudBox(target,currentEmail.trim());
+      }));
+      $('#cloudLoginForm')?.addEventListener('submit',async e=>{
+        e.preventDefault();showMsg('');
+        const email=$('#clLoginEmail').value.trim();
+        try{
+          await api('/api/cloud/login',{method:'POST',body:{cloudUrl:$('#clUrl').value.trim(),email,password:$('#clLoginPass').value}});
+          notify('Vrelio hesabına bağlanıldı.');
+          loadCloudBox();
+        }catch(err){
+          if(err.code==='EMAIL_NOT_VERIFIED'||err.verificationRequired){
+            notify('E-posta doğrulaması gerekiyor. Doğrulama kodunu girin.',true);
+            await loadCloudBox('verify',err.email||email);
+            const m=$('#cloudMsgBox');if(m){m.textContent='E-posta adresiniz henüz doğrulanmamış. Lütfen kodunuzu girin veya yeni kod isteyin.';m.hidden=false;}
+          }else{showMsg(err.message);notify(err.message,true);}
+        }
+      });
+      $('#cloudRegForm')?.addEventListener('submit',async e=>{
+        e.preventDefault();showMsg('');
+        const email=$('#clRegEmail').value.trim();
+        try{
+          const reg=await api('/api/cloud/register',{method:'POST',body:{cloudUrl:$('#clUrl').value.trim(),displayName:$('#clRegName').value.trim(),email,password:$('#clRegPass').value}});
+          if(reg.verificationRequired){
+            notify('Hesap oluşturuldu! Doğrulama kodunuz gönderildi.');
+            await loadCloudBox('verify',email);
+            const m=$('#cloudMsgBox');if(m){m.textContent='E-posta adresinize gönderilen 6 haneli kodu girerek hesabınızı ve 3 günlük Pro denemenizi başlatın.';m.hidden=false;}
+          }else{notify('Vrelio hesabına bağlanıldı.');loadCloudBox();}
+        }catch(err){showMsg(err.message);notify(err.message,true);}
+      });
+      $('#cloudVerifyForm')?.addEventListener('submit',async e=>{
+        e.preventDefault();showMsg('');
+        try{
+          const v=await api('/api/cloud/verify-email',{method:'POST',body:{cloudUrl:$('#clUrl').value.trim(),email:$('#clVerEmail').value.trim(),code:$('#clVerCode').value.trim()}});
+          notify(v.trialActivated?'E-posta doğrulandı ve 3 günlük Pro denemeniz başladı!':'E-posta doğrulandı.');
+          loadCloudBox();
+        }catch(err){showMsg(err.message);notify(err.message,true);}
+      });
+      $('#clResendBtn')?.addEventListener('click',async()=>{
+        showMsg('');
+        try{
+          await api('/api/cloud/resend-verification',{method:'POST',body:{cloudUrl:$('#clUrl').value.trim(),email:$('#clVerEmail').value.trim()}});
+          notify('Doğrulama kodu tekrar gönderildi.');
+        }catch(err){showMsg(err.message);notify(err.message,true);}
+      });
+      $('#clSendResetBtn')?.addEventListener('click',async()=>{
+        showMsg('');
+        try{
+          await api('/api/cloud/forgot-password',{method:'POST',body:{cloudUrl:$('#clUrl').value.trim(),email:$('#clForgotEmail').value.trim()}});
+          notify('Eğer hesap varsa sıfırlama kodu gönderildi.');
+        }catch(err){showMsg(err.message);notify(err.message,true);}
+      });
+      $('#cloudForgotForm')?.addEventListener('submit',async e=>{
+        e.preventDefault();showMsg('');
+        const email=$('#clForgotEmail').value.trim();
+        const code=$('#clResetCode').value.trim();
+        const newPassword=$('#clResetPass').value;
+        try{
+          await api('/api/cloud/verify-reset-code',{method:'POST',body:{cloudUrl:$('#clUrl').value.trim(),email,code}});
+          await api('/api/cloud/reset-password',{method:'POST',body:{cloudUrl:$('#clUrl').value.trim(),email,code,newPassword}});
+          notify('Parolanız güncellendi. Yeni parolanızla giriş yapabilirsiniz.');
+          loadCloudBox('login',email);
+        }catch(err){showMsg(err.message);notify(err.message,true);}
+      });
     }
   }catch{box.innerHTML='<p class="settings-note">İsteğe bağlı bulut bağlantısı şu anda çevrimdışı.</p>';}
 }
@@ -210,8 +387,8 @@ function listNameDialog(listId='',itemId=''){const list=state.playlists.find(l=>
 function confirmDialog(title,description,onConfirm,label='Onayla'){const content=$('#listContent');content.innerHTML=`<h2>${esc(title)}</h2><p>${esc(description)}</p><div class="small-dialog-actions"><button class="button ghost" data-close="listDialog">Vazgeç</button><button class="button danger" id="confirmAction">${esc(label)}</button></div>`;openDialog('listDialog');$('#confirmAction').addEventListener('click',async e=>{e.target.disabled=true;try{await onConfirm();closeDialog('listDialog');}catch(error){notify(error.message,true);e.target.disabled=false;}});}
 async function clearProgress(id){await api(`/api/progress/${encodeURIComponent(id)}`,{method:'DELETE'});const item=itemFor(id);if(item)item.progress=null;closeDialog('listDialog');notify('İzleme kaydı sıfırlandı.');if(state.detail?.item?.id===id&&$('#detailDialog').open)renderDetail(state.detail);render();}
 async function importBackup(e){const file=e.target.files?.[0];if(!file)return;try{if(file.size>25*1024*1024)throw new Error('Yedek dosyası 25 MB’tan küçük olmalı.');const data=JSON.parse(await file.text());confirmDialog('Yedeği geri yükle?',`${file.name} dosyasındaki favoriler ve listeler kütüphanenle birleştirilecek. Aynı içeriklerin izleme konumu yedekteki konumla güncellenecek.`,async()=>{await api('/api/import',{method:'POST',body:{data}});notify('Kütüphanen geri yüklendi.');render();},'Geri yükle');}catch(error){notify('Yedek okunamadı: '+error.message,true);}finally{e.target.value='';}}
-async function exportBackup(){const response=await fetch('/api/export');if(!response.ok)throw new Error('Yedek indirilemedi.');const blob=await response.blob();const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=`cineva-yedek-${new Date().toISOString().slice(0,10)}.json`;anchor.click();setTimeout(()=>URL.revokeObjectURL(url),10000);notify('Kütüphane yedeğin indirildi.');}
-function playbackHint(mode){return mode==='direct'?'Doğrudan oynatma · Görüntü veya ses gelmezse uyumlu oynatmayı dene.':mode==='remux'?'Uyumlu oynatma · Video değiştirilmeden paketlenir. Ses sorunu varsa dönüştürmeyi dene.':'Dönüştürülerek oynatılıyor · Mac’in işlemcisi kullanılıyor.';}
+async function exportBackup(){const response=await fetch('/api/export');if(!response.ok)throw new Error('Yedek indirilemedi.');const blob=await response.blob();const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=`vrelio-yedek-${new Date().toISOString().slice(0,10)}.json`;anchor.click();setTimeout(()=>URL.revokeObjectURL(url),10000);notify('Kütüphane yedeğin indirildi.');}
+function playbackHint(mode){return mode==='direct'?'Doğrudan oynatma · Görüntü veya ses gelmezse uyumlu oynatmayı dene.':mode==='remux'?'Uyumlu oynatma · Video değiştirilmeden paketlenir. Ses sorunu varsa dönüştürmeyi dene.':'Dönüştürülerek oynatılıyor · Bu cihazın işlemcisi kullanılıyor.';}
 function updatePlaybackMode(player){document.querySelectorAll('[data-mode]').forEach(button=>{button.classList.toggle('active',button.dataset.mode===player.mode);button.disabled=button.dataset.mode!=='direct'&&!state.status?.ffmpeg;});$('#playerHint').textContent=playbackHint(player.mode);}
 const playerPanels = [['#trackPanel', '#toggleTracks'], ['#modePanel', '#toggleModes'], ['#sleepPanel', '#toggleSleep'], ['#episodeDrawerPanel', '#toggleEpisodesDrawer']];
 function setPlayerPanel(open = '') {
@@ -369,7 +546,7 @@ function playerEnded(player) {
   // the next episode once playback reaches the title's actual end.
   if (player.mode !== 'direct' && player.duration - position > 8) {
     if (player.endRetries < 2) {
-      const options = window.AkisTracks?.options(player) || player.trackOptions;
+      const options = window.VrelioTracks?.options(player) || player.trackOptions;
       playItem(player.id, player.mode, position, player.fallbackUsed, options, player.endRetries + 1)
         .catch(error => playerError(error.message));
     } else {
@@ -405,7 +582,7 @@ async function playItem(id,mode,startOverride,fallbackUsed=false,trackOptions=nu
   if(item.kind==='series'){openDetail(id);return;}
   if(!mode)mode=state.status?.ffmpeg&&item.kind!=='live'&&!['mp4','m4v','webm'].includes(String(item.extension||'').toLowerCase())?'remux':'direct';
   if(state.player){
-    if(state.player.id===id&&!trackOptions)trackOptions=window.AkisTracks?.options(state.player)||state.player.trackOptions;
+    if(state.player.id===id&&!trackOptions)trackOptions=window.VrelioTracks?.options(state.player)||state.player.trackOptions;
     await stopPlayer(false);
   }
   if(generation!==state.playGeneration)return;
@@ -414,7 +591,7 @@ async function playItem(id,mode,startOverride,fallbackUsed=false,trackOptions=nu
   const player={id,item,mode,start,offset:0,duration:0,sessionId:null,ready:false,recoveries:0,fallbackUsed,retrying:false,mediaBound:true,endRetries};
   state.player=player;
   player.trackOptions=trackOptions;player.restorePaused=trackOptions?.paused===true;
-  window.AkisTracks?.reset(player);
+  window.VrelioTracks?.reset(player);
   $('#playerTitle').textContent=item.name;
   $('#playerEyebrow').textContent=item.kind==='live'?'CANLI YAYIN':item.seriesName||'ŞİMDİ OYNATILIYOR';
   $('#playerOverlay').hidden=false;$('#playerOverlay').classList.remove('error');
@@ -429,9 +606,9 @@ async function playItem(id,mode,startOverride,fallbackUsed=false,trackOptions=nu
     const result=await api('/api/play',{method:'POST',body:{id,mode,start,...(trackOptions||{}),clientId:state.playClient,generation}});
     if(state.player!==player){if(result.sessionId)fetch(`/api/play/${encodeURIComponent(result.sessionId)}`,{method:'DELETE',keepalive:true}).catch(()=>{});return;}
     player.sessionId=result.sessionId;
-    window.AkisTracks?.ready(player,result);
+    window.VrelioTracks?.ready(player,result);
     if(['direct','remux','transcode'].includes(result.mode))player.mode=result.mode;
-    window.AkisTracks?.render(player);
+    window.VrelioTracks?.render(player);
     player.offset=Number(result.startOffset)||0;
     if(player.mode!=='direct')player.start=player.offset;
     player.duration=Number(result.duration)||Number(item.duration)||Number(item.progress?.duration)||0;
@@ -448,7 +625,7 @@ async function playItem(id,mode,startOverride,fallbackUsed=false,trackOptions=nu
       // edge. Keep the requested beginning and retain useful seek history.
       const hls=new Hls({enableWorker:true,lowLatencyMode:false,backBufferLength:120,maxBufferLength:60,maxMaxBufferLength:90,maxBufferSize:64*1024*1024,...(generatedVod?{startPosition:0,liveSyncDuration:Math.max(86400,player.duration+120),liveMaxLatencyDuration:Infinity,maxLiveSyncPlaybackRate:1}: {})});
       state.hls=hls;
-      window.AkisTracks?.bindHls(player,hls);
+      window.VrelioTracks?.bindHls(player,hls);
       hls.loadSource(result.url);hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED,()=>{if(state.player!==player||state.hls!==hls||player.retrying)return;player.ready=true;if(player.mode==='direct'&&start>0&&player.offset===0)video.currentTime=start;playVideo(player);});
       hls.on(Hls.Events.ERROR,(_event,data)=>{
@@ -528,7 +705,7 @@ async function seekTo(position){
       if(player.mode==='direct'&&!state.status?.ffmpeg)throw new Error('Bu yayın istenen konuma sarılamadı.');
     }
   }
-  const options={...(window.AkisTracks?.options(player)||player.trackOptions||{}),paused:player.ready&&video.paused===true&&!$('#playerOverlay').classList.contains('error')};
+  const options={...(window.VrelioTracks?.options(player)||player.trackOptions||{}),paused:player.ready&&video.paused===true&&!$('#playerOverlay').classList.contains('error')};
   const mode=player.mode==='direct'&&player.ready&&state.status?.ffmpeg?'remux':player.mode;
   await playItem(player.id,mode,target,player.fallbackUsed,options);
 }
@@ -718,45 +895,67 @@ function bindPlayer(){
   };
   document.addEventListener('fullscreenchange',updateFullscreen);
   document.addEventListener('webkitfullscreenchange',updateFullscreen);
-  window.addEventListener('pagehide',()=>{saveProgress(true);const p=state.player;if(p?.sessionId)fetch(`/api/play/${encodeURIComponent(p.sessionId)}`,{method:'DELETE',keepalive:true}).catch(()=>{});});
+  window.addEventListener('pagehide',()=>{saveProgress(true);const p=state.player;if(p?.sessionId)fetch(`/api/play/${encodeURIComponent(p.sessionId)}`,{method:'DELETE',keepalive:true}).catch(()=>{});clearMultiView();});
 }
 function clearMultiView(){
   for(const h of state.multiHls||[]){try{h.destroy();}catch{}}
   state.multiHls=[];
+  for(const sid of state.multiSids||[]){
+    fetch(`/api/play/${encodeURIComponent(sid)}`,{method:'DELETE',keepalive:true}).catch(()=>{});
+  }
+  state.multiSids=[];
+  document.querySelectorAll('.multiview-tile video').forEach(v=>{
+    try{v.pause();v.removeAttribute('src');v.load();}catch{}
+  });
 }
 async function renderMultiView(token){
   clearMultiView();
   const main=$('#main');
   main.innerHTML=pageHeading('Çoklu Ekran (2×2)','Aynı anda dört canlı kanalı izle; istediğin birinin sesini aç.','CANLI MOZAİK')+loading();
+  if(!state.cloudStatus){
+    try{state.cloudStatus=await api('/api/cloud/status');}catch{}
+  }
   const data=await api('/api/catalog?kind=live&limit=100&page=1');
   if(token!==state.renderId)return;
   const channels=remember(data.items||[]);
+  const isLinkedNormal=Boolean((state.cloudStatus?.user||state.cloudStatus?.signedIn)&&!state.cloudStatus?.isPro&&state.cloudStatus?.effectivePlan!=='pro');
+  const proCallout=isLinkedNormal?`<div class="cloud-upgrade-callout" role="status"><span><strong>Pro Özellik:</strong> Çoklu Ekran (2×2) yalnızca Pro planda kullanılabilir. Normal planda tek kanal oynatma açıktır.</span><a class="button small" href="#settings">Pro’ya Yükselt</a></div>`:'';
   if(!channels.length){
-    main.innerHTML=pageHeading('Çoklu Ekran (2×2)','Aynı anda dört canlı kanalı izle.','CANLI MOZAİK')+empty('Canlı kanal bulunamadı','Çoklu ekran için canlı TV kanalı içeren bir M3U veya Xtream kaynağı bağla.','live');
+    main.innerHTML=pageHeading('Çoklu Ekran (2×2)','Aynı anda dört canlı kanalı izle.','CANLI MOZAİK')+proCallout+empty('Canlı kanal bulunamadı','Çoklu ekran için canlı TV kanalı içeren bir M3U veya Xtream kaynağı bağla.','live');
     return;
   }
   const initial=[0,1,2,3].map(i=>channels[i%channels.length]);
   const optionsHtml=(selId)=>channels.map(ch=>`<option value="${esc(ch.id)}" ${ch.id===selId?'selected':''}>${esc(ch.name)}</option>`).join('');
   main.innerHTML=pageHeading('Çoklu Ekran (2×2)','Otomatik oynatma kuralları gereği başlangıçta sessiz açılır; ses simgesiyle tek kanalı dinleyebilirsin.','CANLI MOZAİK')
-    +`<div class="multiview-grid">${initial.map((ch,idx)=>`<article class="multiview-tile" data-mv-idx="${idx}"><div class="multiview-video-wrap"><video id="mvVideo${idx}" muted playsinline autoplay></video></div><div class="multiview-bar"><select class="sort-select" data-mv-select="${idx}" aria-label="Kanal ${idx+1}">${optionsHtml(ch.id)}</select><div class="multiview-actions"><button type="button" class="icon-button" data-mv-mute="${idx}" title="Sesi aç/kapat" aria-label="Sesi aç/kapat">🔇</button><button type="button" class="icon-button" data-mv-full="${idx}" title="Tam oynatıcıda aç" aria-label="Tam oynatıcıda aç">${icon('expand')}</button></div></div></article>`).join('')}</div>`;
+    +proCallout
+    +`<div class="multiview-grid">${initial.map((ch,idx)=>`<article class="multiview-tile" data-mv-idx="${idx}"><div class="multiview-video-wrap"><video id="mvVideo${idx}" muted playsinline autoplay></video></div><div class="multiview-bar"><select class="sort-select" data-mv-select="${idx}" aria-label="Kanal ${idx+1}">${optionsHtml(ch.id)}</select><div class="multiview-actions"><button type="button" class="icon-button" data-mv-mute="${idx}" title="Sesi aç" aria-label="Sesi aç" aria-pressed="false">${icon('volumeOff')}</button><button type="button" class="icon-button" data-mv-full="${idx}" title="Tam oynatıcıda aç" aria-label="Tam oynatıcıda aç">${icon('expand')}</button></div></div></article>`).join('')}</div>`;
   const slots=initial.map(ch=>({id:ch.id,sid:null,hls:null}));
+  let proToastShown=false;
   const loadSlot=async(idx,itemId)=>{
     const slot=slots[idx];
     if(slot.hls){try{slot.hls.destroy();}catch{}slot.hls=null;}
-    if(slot.sid){fetch(`/api/play/${encodeURIComponent(slot.sid)}`,{method:'DELETE',keepalive:true}).catch(()=>{});slot.sid=null;}
+    if(slot.sid){
+      state.multiSids=(state.multiSids||[]).filter(id=>id!==slot.sid);
+      fetch(`/api/play/${encodeURIComponent(slot.sid)}`,{method:'DELETE',keepalive:true}).catch(()=>{});
+      slot.sid=null;
+    }
     const vid=$(`#mvVideo${idx}`);
     if(!vid||token!==state.renderId)return;
     try{
-      const res=await api('/api/play',{method:'POST',body:{id:itemId,mode:'direct',start:0}});
+      const res=await api('/api/play',{method:'POST',body:{id:itemId,mode:'direct',start:0,multiview:true,multiviewSlot:idx}});
       if(token!==state.renderId){if(res.sessionId)fetch(`/api/play/${encodeURIComponent(res.sessionId)}`,{method:'DELETE',keepalive:true}).catch(()=>{});return;}
       slot.id=itemId;slot.sid=res.sessionId;
+      if(res.sessionId){state.multiSids=state.multiSids||[];state.multiSids.push(res.sessionId);}
       if(res.type==='hls'&&typeof Hls!=='undefined'&&Hls.isSupported()&&!vid.canPlayType('application/vnd.apple.mpegurl')){
         const h=new Hls({lowLatencyMode:true});h.loadSource(res.url);h.attachMedia(vid);slot.hls=h;state.multiHls.push(h);
       }else{
         vid.src=res.url;
       }
       vid.play().catch(()=>{});
-    }catch(err){notify(`${itemFor(itemId)?.name||'Kanal'}: ${err.message}`,true);}
+    }catch(err){
+      if(err.code==='PRO_REQUIRED'){if(!proToastShown){proToastShown=true;notify(err.message,true);}return;}
+      notify(`${itemFor(itemId)?.name||'Kanal'}: ${err.message}`,true);
+    }
   };
   slots.forEach((_,idx)=>loadSlot(idx,slots[idx].id));
   main.querySelectorAll('[data-mv-select]').forEach(sel=>sel.addEventListener('change',()=>loadSlot(Number(sel.dataset.mvSelect),sel.value)));
@@ -767,7 +966,13 @@ async function renderMultiView(token){
     slots.forEach((_,i)=>{
       const v=$(`#mvVideo${i}`),b=main.querySelector(`[data-mv-mute="${i}"]`);
       if(v){v.muted=i!==targetIdx||!unmute;}
-      if(b){b.textContent=(v&&!v.muted)?'🔊':'🔇';}
+      if(b){
+        const isUnmuted=Boolean(v&&!v.muted);
+        b.innerHTML=icon(isUnmuted?'volumeOn':'volumeOff');
+        b.setAttribute('aria-pressed',String(isUnmuted));
+        b.setAttribute('aria-label',isUnmuted?'Sesi kapat':'Sesi aç');
+        b.title=isUnmuted?'Sesi kapat':'Sesi aç';
+      }
     });
   }));
   main.querySelectorAll('[data-mv-full]').forEach(btn=>btn.addEventListener('click',()=>{
@@ -811,8 +1016,8 @@ async function openProfilesDialog(){
       <div class="profile-tile-avatar" style="background:${esc(p.avatarColor)}">${esc((p.name||'P').charAt(0).toUpperCase())}</div>
       <strong>${esc(p.name)}</strong>
       ${p.isKids?'<span class="profile-badge-kid">Çocuk Modu</span>':''}
-      ${p.hasPin?'<span class="profile-pin-tag">🔒 PIN Korumalı</span>':''}
-      ${p.id!=='default'?`<span class="profile-delete-btn" data-del-profile="${esc(p.id)}" title="Profili sil">✕</span>`:''}
+      ${p.hasPin?`<span class="profile-pin-tag">${icon('shield')} PIN Korumalı</span>`:''}
+      ${p.id!=='default'?`<span class="profile-delete-btn" data-del-profile="${esc(p.id)}" title="Profili sil" aria-label="Profili sil">${icon('close')}</span>`:''}
     </button>`).join('')}</div>
     <div id="pinPromptBox" class="field" hidden><label for="switchPinInput">Profil PIN kodu</label><div style="display:flex;gap:8px"><input id="switchPinInput" type="password" inputmode="numeric" maxlength="8" placeholder="PIN"><button type="button" class="button" id="confirmPinBtn">Geç</button></div><div id="profileError" class="inline-error" role="alert"></div></div>
     <form id="createProfileForm" class="profile-form">
@@ -840,8 +1045,10 @@ async function openProfilesDialog(){
   $('#listContent').querySelectorAll('[data-del-profile]').forEach(el=>el.addEventListener('click',async e=>{
     e.stopPropagation();
     const id=el.dataset.delProfile;
-    await api(`/api/profiles/${encodeURIComponent(id)}`,{method:'DELETE'});
-    openProfilesDialog();
+    try{
+      await api(`/api/profiles/${encodeURIComponent(id)}`,{method:'DELETE'});
+      openProfilesDialog();
+    }catch(err){notify(err.message,true);}
   }));
   $('#listContent').querySelectorAll('[data-pick-profile]').forEach(btn=>btn.addEventListener('click',async()=>{
     const id=btn.dataset.pickProfile;
@@ -882,7 +1089,7 @@ document.addEventListener('keydown',event=>{if(event.key==='/'&&!['INPUT','TEXTA
 window.addEventListener('hashchange',()=>{window.scrollTo(0,0);render();});
 async function pollStatus(){if(document.hidden||state.player)return;try{const previous=state.status;const next=await api('/api/status');state.status=next;updateShell();if(previous?.catalog?.syncing&&!next.catalog?.syncing){notify(next.catalog?.error?'Eşitleme tamamlanamadı: '+next.catalog.error:'Kütüphanen güncel.',!!next.catalog?.error);render();}else if(previous?.configured!==next.configured||previous?.authorized!==next.authorized||previous?.catalog?.updatedAt!==next.catalog?.updatedAt)render();else if(state.route==='favorites'&&!document.querySelector('dialog[open]')&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)){const data=await api('/api/favorites');const sig=JSON.stringify(data.items||[]);if(state.route==='favorites'&&$('#main').dataset.favSignature!==sig){$('#main').dataset.favSignature=sig;renderFavorites(data.items||[]);}}else if(state.route.startsWith('playlists')&&!document.querySelector('dialog[open]')&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)){const data=await api('/api/playlists');const sig=JSON.stringify(data.playlists||[]);if(state.route.startsWith('playlists')&&$('#main').dataset.listSignature!==sig){$('#main').dataset.listSignature=sig;state.playlists=data.playlists||[];renderPlaylists();}}else if(state.route==='home'&&!document.querySelector('dialog[open]')){const data=await api('/api/home');if(state.route==='home')renderHome(data);}}catch{/* Leave the current screen usable during a temporary disconnect. */}}
 async function init(){
-  hydrateIcons();bindPlayer();window.AkisTracks?.bind();
+  hydrateIcons();bindPlayer();window.VrelioTracks?.bind();
   $('#localFilePicker')?.addEventListener('change',e=>{const f=e.target.files?.[0];if(f)playLocalFile(f);e.target.value='';});
   let dragDepth=0;
   document.addEventListener('dragenter',e=>{if(e.dataTransfer?.types?.includes('Files')){dragDepth++;if($('#dropOverlay'))$('#dropOverlay').hidden=false;}});
@@ -893,6 +1100,6 @@ async function init(){
     dragDepth=0;if($('#dropOverlay'))$('#dropOverlay').hidden=true;
     if(f&&(/\.(mp4|mkv|avi|mov|m4v|webm|ts)$/i.test(f.name)||f.type?.startsWith('video/'))){e.preventDefault();playLocalFile(f);}
   });
-  try{state.status=await api('/api/status');await render();}catch(error){$('#main').innerHTML=empty('Cineva sunucusuna ulaşamadık',error.message,'alert',button('Tekrar bağlan','reload'));}setInterval(pollStatus,15000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)pollStatus();});if('serviceWorker'in navigator&&window.isSecureContext)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+  try{state.status=await api('/api/status');await render();}catch(error){$('#main').innerHTML=empty('Vrelio sunucusuna ulaşamadık',error.message,'alert',button('Tekrar bağlan','reload'));}setInterval(pollStatus,15000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)pollStatus();});if('serviceWorker'in navigator&&window.isSecureContext)navigator.serviceWorker.register('/sw.js').catch(()=>{});
 }
 init();

@@ -1,6 +1,7 @@
 import type { Config, Context } from "@netlify/edge-functions";
 
-const COOKIE_NAME = "cineva_admin_gate";
+const COOKIE_NAME = "vrelio_admin_gate";
+const LEGACY_COOKIE_NAME = "cineva_admin_gate";
 const enc = new TextEncoder();
 
 async function hmacHex(secret: string, message: string): Promise<string> {
@@ -32,7 +33,13 @@ function getCookie(req: Request, name: string): string {
   for (const part of raw.split(";")) {
     const idx = part.indexOf("=");
     if (idx === -1) continue;
-    if (part.slice(0, idx).trim() === name) return decodeURIComponent(part.slice(idx + 1).trim());
+    if (part.slice(0, idx).trim() === name) {
+      try {
+        return decodeURIComponent(part.slice(idx + 1).trim());
+      } catch {
+        return "";
+      }
+    }
   }
   return "";
 }
@@ -61,16 +68,26 @@ function hidden404(isApi: boolean): Response {
 }
 
 export default async (req: Request, context: Context) => {
-  const gateKey = (Netlify.env.get("CINEVA_ADMIN_GATE_KEY") ?? "").trim();
+  const gateKey = (
+    Netlify.env.get("VRELIO_ADMIN_GATE_KEY") ??
+    Netlify.env.get("CINEVA_ADMIN_GATE_KEY") ??
+    ""
+  ).trim();
   const url = new URL(req.url);
   const isApi = url.pathname.startsWith("/api/");
 
-  // Fail closed until CINEVA_ADMIN_GATE_KEY is configured in Netlify Env Vars.
+  // Fail closed until VRELIO_ADMIN_GATE_KEY (or CINEVA_ADMIN_GATE_KEY) is configured in Netlify Env Vars.
   if (!gateKey) return hidden404(isApi);
 
-  const signingSecret = (Netlify.env.get("CINEVA_CLOUD_SECRET") ?? "").trim() || gateKey;
+  const signingSecret =
+    (
+      Netlify.env.get("VRELIO_CLOUD_SECRET") ??
+      Netlify.env.get("CINEVA_CLOUD_SECRET") ??
+      ""
+    ).trim() || gateKey;
   const headerGate = (req.headers.get("x-admin-gate") ?? "").trim();
-  const cookieValid = await verifyGateCookie(signingSecret, getCookie(req, COOKIE_NAME));
+  const gateCookie = getCookie(req, COOKIE_NAME) || getCookie(req, LEGACY_COOKIE_NAME);
+  const cookieValid = await verifyGateCookie(signingSecret, gateCookie);
   const headerValid = headerGate ? await constantTimeEqual(signingSecret, headerGate, gateKey) : false;
 
   if (!isApi) {

@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
  <application>
-  <activity android:name="com.akis.iptv.qa.SubtitleTestHoldingActivity" android:exported="true" android:label="Akış altyazı testi" />
+  <activity android:name="app.vrelio.player.qa.SubtitleTestHoldingActivity" android:exported="true" android:label="Vrelio altyazı testi" />
  </application>
 </manifest>

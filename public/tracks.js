@@ -1,7 +1,7 @@
 'use strict';
-// Source tracks are selected on the Mac; HLS rendition/native tracks switch in
+// Source tracks are selected on this device; HLS rendition/native tracks switch in
 // the browser. Both paths use the same controls and per-content preferences.
-window.AkisTracks = (() => {
+window.VrelioTracks = (() => {
   let current = null, busy = false;
   const el = id => document.getElementById(id);
   const languageNames = {tur:'Türkçe',tr:'Türkçe',eng:'İngilizce',en:'İngilizce',deu:'Almanca',ger:'Almanca',de:'Almanca',fra:'Fransızca',fre:'Fransızca',fr:'Fransızca',ara:'Arapça',ar:'Arapça',spa:'İspanyolca',es:'İspanyolca',ita:'İtalyanca',it:'İtalyanca',rus:'Rusça',ru:'Rusça',jpn:'Japonca',ja:'Japonca',kor:'Korece',ko:'Korece',por:'Portekizce',pt:'Portekizce',nld:'Felemenkçe',dut:'Felemenkçe',nl:'Felemenkçe',pol:'Lehçe',pl:'Lehçe',zho:'Çince',chi:'Çince',zh:'Çince',aze:'Azerice',az:'Azerice',kur:'Kürtçe',ku:'Kürtçe',ell:'Yunanca',gre:'Yunanca',el:'Yunanca',fas:'Farsça',per:'Farsça',fa:'Farsça',hin:'Hintçe',hi:'Hintçe',ukr:'Ukraynaca',uk:'Ukraynaca',und:'Dil belirtilmemiş'};

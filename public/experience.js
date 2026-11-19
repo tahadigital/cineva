@@ -1,7 +1,7 @@
 'use strict';
 // Presentation only: no playback, account or navigation state is changed here.
 (() => {
-  const introKey = 'cineva:launch:v1';
+  const introKey = 'vrelio:launch:v1';
   const motion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
   const launchDuration = 720;
   const fadeDuration = 180;
@@ -23,7 +23,7 @@
     removalTimer = setTimeout(removeIntro, fadeDuration);
   }
   function startIntro() {
-    intro = document.getElementById('cinevaLaunch');
+    intro = document.getElementById('vrelioLaunch');
     if (!intro) return;
     let played = false;
     try { played = sessionStorage.getItem(introKey) === '1'; sessionStorage.setItem(introKey, '1'); } catch {}
@@ -130,7 +130,7 @@
     window.addEventListener('pagehide', () => { removeIntro(); for (const animation of animations) animation.cancel(); animations.clear(); });
     scheduleScan();
   }
-  window.AkisExperience = {finishIntro: () => finishIntro(true), version: 2};
+  window.VrelioExperience = {finishIntro: () => finishIntro(true), version: 3};
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, {once: true});
   else boot();
 })();

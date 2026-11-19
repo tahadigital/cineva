@@ -1,6 +1,8 @@
 .venv/
 /data/
 /cloud_data/
+/dist/
+/build/
 .netlify/
 website/.netlify/
 website/node_modules/

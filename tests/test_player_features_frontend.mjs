@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import test from 'node:test';
 import { harness } from './playback_harness.mjs';
 
-test('Cineva web player markup exposes speed, fit, sleep timer, episode drawer, profile, multiview, and local picker', () => {
+test('Vrelio web player markup exposes speed, fit, sleep timer, episode drawer, profile, multiview, and local picker', () => {
   const html = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   const css = fs.readFileSync(new URL('../public/player.css', import.meta.url), 'utf8');
   for (const id of [

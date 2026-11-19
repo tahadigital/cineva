@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="vrelioGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff4b45"/>
+      <stop offset="55%" stop-color="#ff7438"/>
+      <stop offset="100%" stop-color="#ff9933"/>
+    </linearGradient>
+    <linearGradient id="vrelioInner" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.32"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.04"/>
+    </linearGradient>
+  </defs>
+  <circle cx="60" cy="60" r="46" fill="none" stroke="url(#vrelioInner)" stroke-width="2"/>
+  <path d="M 90 36 A 38 38 0 1 0 90 84" fill="none" stroke="url(#vrelioGrad)" stroke-width="16" stroke-linecap="round"/>
+  <path d="M 52 43 L 83 60 L 52 77 Z" fill="#ffffff" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
+</svg>

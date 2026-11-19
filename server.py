@@ -1,22 +1,34 @@
 #!/usr/bin/env python3
-"""Cineva: local personal media, M3U/Xtream/XMLTV EPG catalog, state and playback service."""
+"""Vrelio: local personal media, M3U/Xtream/XMLTV EPG catalog, state and playback service."""
 from __future__ import annotations
 import argparse, base64, collections, contextlib, datetime as dt, hashlib, html, http.cookies
-import ipaddress, json, math, mimetypes, os, re, secrets, signal, socket, sqlite3
+import ipaddress, json, math, mimetypes, os, re, secrets, signal, socket, sqlite3, sys
 import threading, time, unicodedata, ssl, urllib.error, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from playback import PlaybackManager, BITMAP_SUBTITLES
+from playback import PlaybackManager, BITMAP_SUBTITLES, _infer_language as infer_subtitle_language
 import discovery
 import local_media
 import m3u
 import sports
 
-ROOT = Path(__file__).resolve().parent
-DATA = Path(os.environ.get('CINEVA_DATA_DIR') or os.environ.get('AKIS_DATA_DIR') or str(ROOT / 'data')).resolve()
+
+def configure_utf8_stdio():
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None and hasattr(stream, 'reconfigure'):
+            with contextlib.suppress(Exception):
+                stream.reconfigure(encoding='utf-8', errors='replace')
+
+
+configure_utf8_stdio()
+
+ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
+DATA = Path(os.environ.get('VRELIO_DATA_DIR') or os.environ.get('CINEVA_DATA_DIR') or os.environ.get('AKIS_DATA_DIR') or str(ROOT / 'data')).resolve()
 DATA.mkdir(parents=True, exist_ok=True)
-os.chmod(DATA, 0o700)
-os.umask(0o077)
+with contextlib.suppress(OSError):
+    os.chmod(DATA, 0o700)
+with contextlib.suppress(OSError):
+    os.umask(0o077)
 DB = DATA / 'state.sqlite3'
 CONFIG_FILE = DATA / 'config.json'
 PUBLIC = ROOT / 'public'
@@ -31,6 +43,13 @@ class PlaybackError(RuntimeError):
         super().__init__(message)
         self.mode = mode
         self.code = code
+
+
+class CloudError(RuntimeError):
+    def __init__(self, message, status=400, data=None):
+        super().__init__(message)
+        self.status = status
+        self.data = data if isinstance(data, dict) else {}
 
 
 def stamp(): return dt.datetime.now(dt.timezone.utc).isoformat()
@@ -227,6 +246,7 @@ media_sessions = {}
 internal_sources = {}
 play_clients = {}
 latest_play_request = 0
+multiview_slot_requests = {}
 playback = None
 HTTP_PORT = 8844
 PAIR_CODE = f'{secrets.randbelow(1000000):06d}'
@@ -474,14 +494,24 @@ def surprise_pick():
     return {'item': pool[secrets.randbelow(len(pool))]}
 
 
+DEFAULT_CLOUD_URL = 'https://cineva-app.netlify.app'
 CLOUD_OPENER = urllib.request.build_opener(urllib.request.HTTPSHandler(context=TLS_CONTEXT))
+
+
+def _cloud_platform():
+    if sys.platform.startswith('win'):
+        return 'windows'
+    if sys.platform == 'darwin':
+        return 'macos'
+    return 'desktop'
 
 
 def _cloud_state():
     saved = meta_get('cloud_auth', {})
     if not isinstance(saved, dict):
         saved = {}
-    url = saved.get('cloudUrl') or os.environ.get('CINEVA_CLOUD_URL', '').strip()
+    env_url = (os.environ.get('VRELIO_CLOUD_URL') or os.environ.get('CINEVA_CLOUD_URL') or '').strip()
+    url = saved.get('cloudUrl') or env_url
     return {'cloudUrl': url, 'token': saved.get('token', ''), 'deviceId': saved.get('deviceId') or meta_get('cloud_device_id') or ''}
 
 
@@ -495,7 +525,7 @@ def _ensure_cloud_device_id():
 
 def _cloud_request(cloud_url, path, method='GET', payload=None, token=''):
     base = validate_host(cloud_url)
-    headers = {'User-Agent': 'Cineva-Desktop/2.0', 'Accept': 'application/json'}
+    headers = {'User-Agent': 'Vrelio-Desktop/3.0', 'Accept': 'application/json'}
     if token:
         headers['Authorization'] = 'Bearer ' + token
     raw = None
@@ -509,18 +539,77 @@ def _cloud_request(cloud_url, path, method='GET', payload=None, token=''):
             return json.loads(body.decode('utf-8')) if body else {}
     except urllib.error.HTTPError as err:
         raw_err = err.read(64 * 1024)
-        msg = 'Bulut sunucusu isteği reddetti.'
+        parsed = {}
         with contextlib.suppress(Exception):
-            msg = json.loads(raw_err.decode('utf-8')).get('error') or msg
-        raise ValueError(msg) from None
+            decoded = json.loads(raw_err.decode('utf-8'))
+            if isinstance(decoded, dict):
+                parsed = decoded
+        msg = parsed.get('error') or 'Bulut sunucusu isteği reddetti.'
+        raise CloudError(msg, status=err.code, data=parsed) from None
     except (urllib.error.URLError, TimeoutError) as err:
-        raise RuntimeError('Cineva Bulut sunucusuna şu anda ulaşılamıyor.') from err
+        raise RuntimeError('Vrelio Bulut sunucusuna şu anda ulaşılamıyor.') from err
+
+
+def _cloud_status_shape(connected, cloud_url, user, cfg):
+    u = user if isinstance(user, dict) else None
+    return {
+        'connected': connected,
+        'cloudUrl': cloud_url,
+        'user': u,
+        'config': cfg,
+        'emailVerified': bool(u and u.get('emailVerified')),
+        'plan': (u or {}).get('plan', 'normal'),
+        'effectivePlan': (u or {}).get('effectivePlan', 'normal'),
+        'isPro': bool(u and u.get('isPro')),
+        'trialActive': bool(u and u.get('trialActive')),
+        'trialEndsAt': (u or {}).get('trialEndsAt'),
+        'features': (u or {}).get('features', {}),
+    }
+
+
+def _complete_cloud_session(cloud_url, token, user=None):
+    meta_set('cloud_auth', {'cloudUrl': cloud_url, 'token': token})
+    if isinstance(user, dict):
+        meta_set('cloud_user', user)
+    with contextlib.suppress(Exception):
+        _cloud_request(cloud_url, '/api/v1/devices/register', method='POST', payload={
+            'deviceId': _ensure_cloud_device_id(),
+            'deviceName': socket.gethostname() or 'Vrelio Masaüstü',
+            'platform': _cloud_platform(),
+        }, token=token)
+    with contextlib.suppress(Exception):
+        cloud_sync()
+
+
+def _linked_normal_user():
+    st = _cloud_state()
+    if not st['token']:
+        return False
+    u = meta_get('cloud_user')
+    if not isinstance(u, dict) and st['cloudUrl']:
+        with contextlib.suppress(Exception):
+            u = _cloud_request(st['cloudUrl'], '/api/v1/me', token=st['token']).get('user')
+            if isinstance(u, dict):
+                meta_set('cloud_user', u)
+    if not isinstance(u, dict):
+        return False
+    if u.get('effectivePlan') == 'normal':
+        return True
+    exp_raw = u.get('trialEndsAt') if u.get('trialActive') else u.get('expiresAt')
+    if isinstance(exp_raw, str) and exp_raw.strip():
+        with contextlib.suppress(ValueError):
+            exp_dt = dt.datetime.fromisoformat(exp_raw.strip().replace('Z', '+00:00'))
+            if exp_dt.tzinfo is None:
+                exp_dt = exp_dt.replace(tzinfo=dt.timezone.utc)
+            if exp_dt <= dt.datetime.now(dt.timezone.utc):
+                return True
+    return False
 
 
 def cloud_status():
     st = _cloud_state()
     if not st['cloudUrl']:
-        return {'connected': False, 'cloudUrl': '', 'user': None, 'config': None}
+        return _cloud_status_shape(False, '', None, None)
     cfg = None
     with contextlib.suppress(Exception):
         cfg = _cloud_request(st['cloudUrl'], '/api/v1/app-config')
@@ -528,15 +617,19 @@ def cloud_status():
     if st['token']:
         try:
             user = _cloud_request(st['cloudUrl'], '/api/v1/me', token=st['token']).get('user')
-        except ValueError:
-            meta_set('cloud_auth', {'cloudUrl': st['cloudUrl'], 'token': ''})
+            if isinstance(user, dict):
+                meta_set('cloud_user', user)
+        except CloudError as err:
+            if err.status in (401, 403):
+                meta_set('cloud_auth', {'cloudUrl': st['cloudUrl'], 'token': ''})
+                meta_set('cloud_user', None)
         except Exception:
             pass
-    return {'connected': True, 'cloudUrl': st['cloudUrl'], 'user': user, 'config': cfg}
+    return _cloud_status_shape(True, st['cloudUrl'], user, cfg)
 
 
 def cloud_auth(action, d):
-    cloud_url = validate_host(d.get('cloudUrl') or _cloud_state().get('cloudUrl') or 'https://cineva-app.netlify.app')
+    cloud_url = validate_host(d.get('cloudUrl') or _cloud_state().get('cloudUrl') or DEFAULT_CLOUD_URL)
     endpoint = '/api/v1/auth/register' if action == 'register' else '/api/v1/auth/login'
     res = _cloud_request(cloud_url, endpoint, method='POST', payload={
         'email': str(d.get('email', '')).strip(),
@@ -545,28 +638,101 @@ def cloud_auth(action, d):
     })
     token = res.get('token', '')
     if token:
-        meta_set('cloud_auth', {'cloudUrl': cloud_url, 'token': token})
-        with contextlib.suppress(Exception):
-            _cloud_request(cloud_url, '/api/v1/devices/register', method='POST', payload={
-                'deviceId': _ensure_cloud_device_id(),
-                'deviceName': socket.gethostname() or 'Cineva Masaüstü',
-                'platform': 'desktop',
-            }, token=token)
-        with contextlib.suppress(Exception):
-            cloud_sync()
-    return cloud_status()
+        _complete_cloud_session(cloud_url, token, res.get('user'))
+        return cloud_status()
+    meta_set('cloud_auth', {'cloudUrl': cloud_url, 'token': ''})
+    meta_set('cloud_user', None)
+    return {**res, 'cloudUrl': cloud_url}
+
+
+def cloud_verify_email(d):
+    cloud_url = validate_host(d.get('cloudUrl') or _cloud_state().get('cloudUrl') or DEFAULT_CLOUD_URL)
+    payload = {}
+    if str(d.get('token', '')).strip():
+        payload['token'] = str(d.get('token', '')).strip()
+    else:
+        payload['email'] = str(d.get('email', '')).strip()
+        payload['code'] = str(d.get('code', '')).strip()
+    res = _cloud_request(cloud_url, '/api/v1/auth/verify-email', method='POST', payload=payload)
+    token = res.get('token', '')
+    if token:
+        _complete_cloud_session(cloud_url, token, res.get('user'))
+    st = cloud_status()
+    return {**res, **st, 'user': st.get('user') or res.get('user')}
+
+
+def cloud_resend_verification(d):
+    cloud_url = validate_host(d.get('cloudUrl') or _cloud_state().get('cloudUrl') or DEFAULT_CLOUD_URL)
+    return _cloud_request(cloud_url, '/api/v1/auth/resend-verification', method='POST', payload={
+        'email': str(d.get('email', '')).strip(),
+    })
+
+
+def cloud_forgot_password(d):
+    cloud_url = validate_host(d.get('cloudUrl') or _cloud_state().get('cloudUrl') or DEFAULT_CLOUD_URL)
+    return _cloud_request(cloud_url, '/api/v1/auth/forgot-password', method='POST', payload={
+        'email': str(d.get('email', '')).strip(),
+    })
+
+
+def cloud_verify_reset_code(d):
+    cloud_url = validate_host(d.get('cloudUrl') or _cloud_state().get('cloudUrl') or DEFAULT_CLOUD_URL)
+    payload = {}
+    if str(d.get('token', '')).strip():
+        payload['token'] = str(d.get('token', '')).strip()
+    else:
+        payload['email'] = str(d.get('email', '')).strip()
+        payload['code'] = str(d.get('code', '')).strip()
+    return _cloud_request(cloud_url, '/api/v1/auth/verify-reset-code', method='POST', payload=payload)
+
+
+def cloud_reset_password(d):
+    cloud_url = validate_host(d.get('cloudUrl') or _cloud_state().get('cloudUrl') or DEFAULT_CLOUD_URL)
+    payload = {'newPassword': str(d.get('newPassword', ''))}
+    if str(d.get('token', '')).strip():
+        payload['token'] = str(d.get('token', '')).strip()
+    else:
+        payload['email'] = str(d.get('email', '')).strip()
+        payload['code'] = str(d.get('code', '')).strip()
+    return _cloud_request(cloud_url, '/api/v1/auth/reset-password', method='POST', payload=payload)
+
+
+def cloud_delete_device(device_id):
+    st = _cloud_state()
+    if not st['cloudUrl'] or not st['token']:
+        raise CloudError('Önce Vrelio hesabınızla giriş yapın.', status=401)
+    did = urllib.parse.quote(str(device_id or '').strip(), safe='')
+    if not did:
+        raise ValueError('Cihaz kimliği gerekli.')
+    res = _cloud_request(st['cloudUrl'], f'/api/v1/devices/{did}', method='DELETE', token=st['token'])
+    u = meta_get('cloud_user')
+    if isinstance(u, dict) and isinstance(res.get('devices'), list):
+        u['devices'] = res['devices']
+        meta_set('cloud_user', u)
+    return res
 
 
 def cloud_sync():
     st = _cloud_state()
     if not st['cloudUrl'] or not st['token']:
-        raise ValueError('Önce Cineva hesabınızla giriş yapın.')
-    remote_res = _cloud_request(st['cloudUrl'], '/api/v1/sync', token=st['token'])
-    remote_state = remote_res.get('state') if isinstance(remote_res, dict) else None
-    if isinstance(remote_state, dict) and remote_state.get('version') == 1:
-        merge_state_dict(remote_state)
-    merged = export_state_dict()
-    pushed = _cloud_request(st['cloudUrl'], '/api/v1/sync', method='PUT', payload={'state': merged}, token=st['token'])
+        raise ValueError('Önce Vrelio hesabınızla giriş yapın.')
+    if _linked_normal_user():
+        raise CloudError('Bulut eşitleme Pro plan gerektirir.', status=403, data={'code': 'PRO_REQUIRED', 'upgradeRequired': True})
+    try:
+        remote_res = _cloud_request(st['cloudUrl'], '/api/v1/sync', token=st['token'])
+        remote_state = remote_res.get('state') if isinstance(remote_res, dict) else None
+        if isinstance(remote_state, dict) and remote_state.get('version') == 1:
+            merge_state_dict(remote_state)
+        merged = export_state_dict()
+        pushed = _cloud_request(st['cloudUrl'], '/api/v1/sync', method='PUT', payload={'state': merged}, token=st['token'])
+    except CloudError as err:
+        if err.status == 403 and err.data.get('code') == 'PRO_REQUIRED':
+            u = meta_get('cloud_user')
+            if isinstance(u, dict):
+                u['effectivePlan'] = 'normal'
+                u['isPro'] = False
+                meta_set('cloud_user', u)
+        raise
     return {
         'ok': True,
         'updatedAt': pushed.get('updatedAt') or merged['exportedAt'],
@@ -581,14 +747,17 @@ def cloud_sync():
 def cloud_redeem(d):
     st = _cloud_state()
     if not st['cloudUrl'] or not st['token']:
-        raise ValueError('Önce Cineva hesabınızla giriş yapın.')
+        raise ValueError('Önce Vrelio hesabınızla giriş yapın.')
     res = _cloud_request(st['cloudUrl'], '/api/v1/licenses/redeem', method='POST', payload={'code': d.get('code', '')}, token=st['token'])
+    if isinstance(res.get('user'), dict):
+        meta_set('cloud_user', res['user'])
     return {'ok': True, 'user': res.get('user')}
 
 
 def cloud_logout():
     st = _cloud_state()
     meta_set('cloud_auth', {'cloudUrl': st.get('cloudUrl', ''), 'token': ''})
+    meta_set('cloud_user', None)
     return {'ok': True}
 
 
@@ -932,7 +1101,7 @@ def sidecar_subtitles(iid, r=None):
         if not isinstance(sub_path, str) or not sub_path.strip():
             continue
         p = Path(sub_path)
-        lang = playback._infer_language('und', p.stem)
+        lang = infer_subtitle_language('und', p.stem)
         out.append({
             'id': f'sidecar:{idx}',
             'index': idx,
@@ -974,6 +1143,16 @@ def tracks_response(iid, probe=False):
 def register_play_request(options):
     """Reject late slider requests before they can replace newer playback."""
     global latest_play_request
+    if options.get('multiview'):
+        slot = options.get('multiviewSlot')
+        if slot is not None:
+            if isinstance(slot, bool) or not isinstance(slot, int) or not 0 <= slot <= 3:
+                raise ValueError('Çoklu ekran yuvası geçersiz.')
+            with resource_lock:
+                seq = multiview_slot_requests.get(slot, 0) + 1
+                multiview_slot_requests[slot] = seq
+                return ('multiview', slot, seq)
+        return ('multiview', None, None)
     client, generation = options.get('clientId'), options.get('generation')
     if client is not None or generation is not None:
         if (not isinstance(client, str) or not re.fullmatch(r'[A-Za-z0-9_-]{8,80}', client)
@@ -988,12 +1167,18 @@ def register_play_request(options):
             if client not in play_clients and len(play_clients) >= 64: play_clients.pop(next(iter(play_clients)))
             play_clients[client] = (generation, now)
         latest_play_request += 1
-        return latest_play_request
+        return ('single', latest_play_request)
 
 
 def ensure_current_play_request(request):
     with resource_lock:
-        if request != latest_play_request:
+        if isinstance(request, tuple) and request[0] == 'multiview':
+            _, slot, seq = request
+            if slot is not None and seq != multiview_slot_requests.get(slot):
+                raise PlaybackError('Daha yeni bir oynatma isteği alındı.', code='superseded')
+            return
+        expected = request[1] if isinstance(request, tuple) else request
+        if expected != latest_play_request:
             raise PlaybackError('Daha yeni bir oynatma isteği alındı.', code='superseded')
 
 
@@ -1002,7 +1187,11 @@ def play_item(iid, mode, start, options=None):
     r = get_row(iid)
     if r['kind'] == 'series': raise ValueError('Oynatmak için bir dizi bölümü seçin.')
     if mode not in ('direct', 'remux', 'transcode'): raise ValueError('Oynatma modu geçersiz.')
+    is_multiview = bool(options.get('multiview'))
+    if _linked_normal_user() and (mode == 'transcode' or is_multiview):
+        raise CloudError('Dönüştürme ve Çoklu Ekran özellikleri Pro plan gerektirir.', status=403, data={'code': 'PRO_REQUIRED', 'upgradeRequired': True})
     request = register_play_request(options)
+    mv_slot = request[1] if isinstance(request, tuple) and request[0] == 'multiview' else None
     start = max(0, number(start))
     if r['kind'] == 'vod' and not number(json.loads(r['extra']).get('duration')):
         try:
@@ -1030,15 +1219,36 @@ def play_item(iid, mode, start, options=None):
             selection['clientAudio' if key == 'audio' else 'clientSubtitle'] = None
     with play_lock:
         ensure_current_play_request(request)
-        stop_all()
+        if is_multiview:
+            with resource_lock:
+                to_stop = [
+                    s_id for s_id, s_data in media_sessions.items()
+                    if not s_data.get('multiview')
+                    or (mv_slot is not None and s_data.get('multiviewSlot') == mv_slot)
+                ]
+                if mv_slot is None:
+                    remaining_mv = [
+                        (s_data.get('touched', 0), s_id)
+                        for s_id, s_data in media_sessions.items()
+                        if s_id not in to_stop and s_data.get('multiview')
+                    ]
+                    if len(remaining_mv) >= 4:
+                        remaining_mv.sort()
+                        to_stop.extend(s_id for _, s_id in remaining_mv[:len(remaining_mv) - 3])
+            for s_id in to_stop:
+                stop_session(s_id)
+        else:
+            stop_all()
         live = r['kind'] == 'live'
         duration = max(0, number(extra.get('duration'))) or (r['p_duration'] or None)
-        token = secrets.token_urlsafe(32)
-        with resource_lock: internal_sources[token] = {'url': provider.source(r, hls=False), 'touched': time.monotonic()}
-        local_source = f'http://127.0.0.1:{HTTP_PORT}/internal/source/{token}'
+        skip_probe = is_multiview and mode == 'direct'
+        token = None if skip_probe else secrets.token_urlsafe(32)
+        if token is not None:
+            with resource_lock: internal_sources[token] = {'url': provider.source(r, hls=False), 'touched': time.monotonic()}
+        local_source = f'http://127.0.0.1:{HTTP_PORT}/internal/source/{token}' if token is not None else ''
         tracks = None if options.get('refreshTracks') else cached_tracks(iid, fresh=True)
         try:
-            if (not isinstance(tracks, dict) or (not live and not duration and 'duration' not in tracks)) and playback.available:
+            if not skip_probe and (not isinstance(tracks, dict) or (not live and not duration and 'duration' not in tracks)) and playback.available:
                 try: tracks = playback.probe(local_source)
                 except (RuntimeError, OSError): tracks = None
                 # The input probe exits before playback starts: release its TCP
@@ -1076,10 +1286,11 @@ def play_item(iid, mode, start, options=None):
             if subtitle and subtitle.get('bitmap'): mode = 'transcode'
             ensure_current_play_request(request)
             if mode == 'direct':
-                with resource_lock: internal_sources.pop(token, None)
+                if token is not None:
+                    with resource_lock: internal_sources.pop(token, None)
                 sid = secrets.token_urlsafe(18)
                 source = provider.source(r, hls=live)
-                with resource_lock: media_sessions[sid] = {'resources': {}, 'reverse': {}, 'touched': time.monotonic(), 'owner': None, 'item': iid}
+                with resource_lock: media_sessions[sid] = {'resources': {}, 'reverse': {}, 'touched': time.monotonic(), 'owner': None, 'item': iid, 'multiview': is_multiview, 'multiviewSlot': mv_slot}
                 result = {'sessionId': sid, 'url': resource_for(sid, source), 'type': 'hls' if live else 'file', 'startOffset': 0, 'duration': duration, 'mode': mode}
             else:
                 if audio is None and selection['audio'] == 'auto':
@@ -1096,7 +1307,7 @@ def play_item(iid, mode, start, options=None):
                 except PlaybackError:
                     playback.stop(sid)
                     raise
-                with resource_lock: media_sessions[sid] = {'resources': {}, 'reverse': {}, 'touched': time.monotonic(), 'sourceToken': token, 'owner': None, 'item': iid}
+                with resource_lock: media_sessions[sid] = {'resources': {}, 'reverse': {}, 'touched': time.monotonic(), 'sourceToken': token, 'owner': None, 'item': iid, 'multiview': is_multiview, 'multiviewSlot': mv_slot}
                 result['mode'] = mode
             save_track_preferences(iid, selection)
             result.update(tracks=tracks, selection=selection, externalSubtitles=sidecar_subtitles(iid, r))
@@ -1104,7 +1315,9 @@ def play_item(iid, mode, start, options=None):
                 result['nextEpisode'] = next_episode
             return result
         except Exception as exc:
-            with resource_lock: source = internal_sources.pop(token, None)
+            source = None
+            if token is not None:
+                with resource_lock: source = internal_sources.pop(token, None)
             if source:
                 abort_connections(list(source.get('connections', ())))
                 failure = source.get('source_error')
@@ -1116,7 +1329,7 @@ def play_item(iid, mode, start, options=None):
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
-    server_version = 'Cineva/2.0'
+    server_version = 'Vrelio/3.0'
     def setup(self):
         super().setup()
         self.connection.settimeout(35)
@@ -1139,7 +1352,7 @@ class Handler(BaseHTTPRequestHandler):
     def authorized(self):
         try:
             c = http.cookies.SimpleCookie(self.headers.get('Cookie', ''))
-            token = c.get('cineva_device') or c.get('akis_device')
+            token = c.get('vrelio_device') or c.get('cineva_device') or c.get('akis_device')
             if not token: return False
             digest = hashlib.sha256(token.value.encode()).hexdigest()
             with connect() as db: return db.execute('SELECT 1 FROM devices WHERE token_hash=?', (digest,)).fetchone() is not None
@@ -1147,7 +1360,7 @@ class Handler(BaseHTTPRequestHandler):
     def device_cookie(self):
         token = secrets.token_urlsafe(32)
         with connect() as c: c.execute('INSERT INTO devices VALUES(?,?)', (hashlib.sha256(token.encode()).hexdigest(), stamp()))
-        return f'cineva_device={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=31536000'
+        return f'vrelio_device={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=31536000'
     def headers_out(self, code, content_type, length=None, extra=None):
         self.send_response(code)
         self.send_header('Content-Type', content_type)
@@ -1183,14 +1396,19 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({'error': 'Bu kaynaktan değişiklik yapılamaz.'}, 403); return False
         return True
     def require_auth(self):
-        if not self.authorized(): self.send_json({'error': 'Bu cihazı Mac üzerindeki eşleştirme koduyla bağlayın.'}, 401); return False
+        if not self.authorized(): self.send_json({'error': 'Bu cihazı ana cihazdaki eşleştirme koduyla bağlayın.'}, 401); return False
         return True
     def handle_error(self, e):
         if isinstance(e, (BrokenPipeError, ConnectionResetError)): return
         code = 400 if isinstance(e, ValueError) else (502 if isinstance(e, (RuntimeError, urllib.error.URLError, TimeoutError)) else 500)
         message = str(e) if isinstance(e, (ValueError, RuntimeError)) else 'İşlem tamamlanamadı. Yeniden deneyin.'
         payload = {'error': message}
-        if isinstance(e, PlaybackError):
+        if isinstance(e, CloudError):
+            code = int(e.status) if isinstance(e.status, int) and 400 <= e.status < 600 else 400
+            for k in ('code', 'verificationRequired', 'upgradeRequired', 'email', 'deliveryMode'):
+                if k in e.data:
+                    payload[k] = e.data[k]
+        elif isinstance(e, PlaybackError):
             if e.code == 'superseded': code = 409
             if e.mode: payload['mode'] = e.mode
             if e.code: payload['code'] = e.code
@@ -1201,11 +1419,11 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if not self.guard(): return
             u = urllib.parse.urlsplit(self.path); p = urllib.parse.unquote(u.path); q = urllib.parse.parse_qs(u.query)
-            if p == '/api/health': return self.send_json({'app': 'cineva', 'ok': True})
+            if p == '/api/health': return self.send_json({'app': 'vrelio', 'ok': True})
             if p == '/api/legal':
                 return self.send_json({
-                    'app': 'Cineva',
-                    'disclaimer': 'Cineva kişisel bir medya oynatıcı ve kütüphane düzenleyicidir. Telifli içerik barındırmaz veya sağlamaz.',
+                    'app': 'Vrelio',
+                    'disclaimer': 'Vrelio kişisel bir medya oynatıcı ve kütüphane düzenleyicidir. Telifli içerik barındırmaz veya sağlamaz.',
                     'licenses': ['LibVLC (LGPL-2.1+)', 'hls.js (Apache-2.0)', 'TMDB Discovery (opsiyonel resmi API)'],
                 })
             if p.startswith('/internal/source/'):
@@ -1246,6 +1464,8 @@ class Handler(BaseHTTPRequestHandler):
                 if p == '/api/profiles': return self.send_json({'activeProfileId': active_profile_id(), 'profiles': list_profiles()})
                 if p == '/api/cloud/status': return self.send_json(cloud_status())
                 if p == '/api/sports':
+                    if _linked_normal_user():
+                        return self.send_json({'error': 'Canlı Yayın & EPG rehberi Pro plan gerektirir.', 'code': 'PRO_REQUIRED', 'upgradeRequired': True}, 403)
                     day = sports.selected_date(q.get('date', [''])[0])
                     epg_url = q.get('epgUrl', [''])[0].strip() or provider.config.get('epgUrl') or provider.config.get('discoveredEpgUrl', '')
                     if epg_url: validate_host(epg_url)
@@ -1268,7 +1488,7 @@ class Handler(BaseHTTPRequestHandler):
                 if p.startswith('/api/image'): return self.image(q.get('url', [''])[0])
                 if p.startswith('/api/epg/'): return self.epg(p[len('/api/epg/'):])
                 if p == '/api/export':
-                    return self.send_json(export_state_dict(), extra={'Content-Disposition': 'attachment; filename="cineva-yedek.json"'})
+                    return self.send_json(export_state_dict(), extra={'Content-Disposition': 'attachment; filename="vrelio-yedek.json"'})
                 if p.startswith('/media/'): return self.media(p)
                 return self.send_json({'error': 'Sayfa bulunamadı.'}, 404)
             return self.static(p)
@@ -1309,7 +1529,13 @@ class Handler(BaseHTTPRequestHandler):
                 is_kids = bool(d.get('isKids', False))
                 color = str(d.get('avatarColor') or '#FF4B45')
                 if not re.fullmatch(r'#[0-9A-Fa-f]{6}', color): color = '#FF4B45'
-                pin_hash = _hash_pin(d.get('pin', ''))
+                raw_pin = str(d.get('pin', '')).strip()
+                if _linked_normal_user():
+                    with connect() as c:
+                        prof_count = c.execute('SELECT count(*) FROM profiles').fetchone()[0]
+                    if prof_count >= 1 or bool(raw_pin):
+                        return self.send_json({'error': 'Çoklu profil ve PIN kilidi Pro plan gerektirir.', 'code': 'PRO_REQUIRED', 'upgradeRequired': True}, 403)
+                pin_hash = _hash_pin(raw_pin)
                 pid = 'p_' + secrets.token_urlsafe(8)
                 with connect() as c:
                     c.execute('INSERT INTO profiles VALUES(?,?,?,?,?,?)', (pid, name, color, int(is_kids), pin_hash, stamp()))
@@ -1435,14 +1661,24 @@ class Handler(BaseHTTPRequestHandler):
             if p == '/api/track-preferences' and method == 'POST':
                 iid = str(d.get('id', '')); get_row(iid)
                 return self.send_json({'ok': True, 'selection': save_track_preferences(iid, d)})
-            if p == '/api/cloud/login' and method == 'POST': return self.send_json(cloud_auth('login', d))
-            if p == '/api/cloud/register' and method == 'POST': return self.send_json(cloud_auth('register', d))
+            if p == '/api/cloud/login' and method == 'POST':
+                return self.send_json(cloud_auth('login', d), 200)
+            if p == '/api/cloud/register' and method == 'POST':
+                payload = cloud_auth('register', d)
+                return self.send_json(payload, 201 if payload.get('verificationRequired') else 200)
+            if p == '/api/cloud/verify-email' and method == 'POST': return self.send_json(cloud_verify_email(d))
+            if p == '/api/cloud/resend-verification' and method == 'POST': return self.send_json(cloud_resend_verification(d))
+            if p == '/api/cloud/forgot-password' and method == 'POST': return self.send_json(cloud_forgot_password(d))
+            if p == '/api/cloud/verify-reset-code' and method == 'POST': return self.send_json(cloud_verify_reset_code(d))
+            if p == '/api/cloud/reset-password' and method == 'POST': return self.send_json(cloud_reset_password(d))
+            if p.startswith('/api/cloud/devices/') and method == 'DELETE':
+                return self.send_json(cloud_delete_device(p[len('/api/cloud/devices/'):]))
             if p == '/api/cloud/redeem' and method == 'POST': return self.send_json(cloud_redeem(d))
             if p == '/api/cloud/sync' and method == 'POST': return self.send_json(cloud_sync())
             if p == '/api/cloud/logout' and method == 'POST': return self.send_json(cloud_logout())
             if p == '/api/import' and method == 'POST': return self.import_state(d.get('data'))
             if p == '/api/devices/revoke' and method == 'POST':
-                if not self.is_local: return self.send_json({'error': 'Bu işlem yalnızca Mac üzerinde kullanılabilir.'}, 403)
+                if not self.is_local: return self.send_json({'error': 'Bu işlem yalnızca ana cihaz üzerinde kullanılabilir.'}, 403)
                 with connect() as c: c.execute('DELETE FROM devices')
                 stop_all()
                 return self.send_json({'ok': True}, extra={'Set-Cookie': self.device_cookie()})
@@ -1682,7 +1918,7 @@ def export_state_dict():
 
 
 def merge_state_dict(data):
-    if not isinstance(data, dict) or data.get('version') != 1: raise ValueError('Geçerli bir Akış yedeği seçin.')
+    if not isinstance(data, dict) or data.get('version') != 1: raise ValueError('Geçerli bir Vrelio yedeği seçin.')
     tables = ('favorites', 'progress', 'playlists', 'playlistItems', 'trackPreferences', 'items')
     if any(not isinstance(data.get(t, []), list) or len(data.get(t, [])) > 100000 for t in tables): raise ValueError('Yedek biçimi veya boyutu geçersiz.')
     metadata = [portable_item_row(r) for r in data.get('items', [])]
@@ -1746,48 +1982,87 @@ def cleanup_loop(stop_event):
             stop_session(sid)
 
 
-def main():
+def run_server(
+    host='0.0.0.0',
+    port=8844,
+    parent_pid=None,
+    install_signals=True,
+    stop_event=None,
+    ready_event=None,
+):
     global HTTP_PORT, playback
-    p = argparse.ArgumentParser(description='Cineva yerel medya sunucusu')
-    p.add_argument('--host', default='0.0.0.0'); p.add_argument('--port', type=int, default=8844)
-    p.add_argument('--parent-pid', type=int, default=None, help='Exit when the owning app process exits')
-    args = p.parse_args(); HTTP_PORT = args.port
+    configure_utf8_stdio()
+    HTTP_PORT = int(port)
     initialize()
     ffmpeg_path = None
     try:
         import imageio_ffmpeg
         ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
-    except (ImportError, RuntimeError): pass
+    except (ImportError, RuntimeError):
+        pass
     playback = PlaybackManager(DATA, ffmpeg_path)
-    server = ThreadingHTTPServer((args.host, args.port), Handler)
+    server = ThreadingHTTPServer((host, int(port)), Handler)
     server.daemon_threads = True
+    HTTP_PORT = int(server.server_address[1])
     (DATA / 'server.pid').write_text(str(os.getpid()))
-    stop_event = threading.Event()
-    def stop(signum, frame):
+    if stop_event is None:
+        stop_event = threading.Event()
+
+    def stop(signum=None, frame=None):
         stop_event.set()
         threading.Thread(target=server.shutdown, daemon=True).start()
-    signal.signal(signal.SIGTERM, stop); signal.signal(signal.SIGINT, stop)
+
+    if install_signals and threading.current_thread() is threading.main_thread():
+        signal.signal(signal.SIGTERM, stop)
+        signal.signal(signal.SIGINT, stop)
+
+    def watch_stop():
+        stop_event.wait()
+        with contextlib.suppress(Exception):
+            server.shutdown()
+
+    threading.Thread(target=watch_stop, daemon=True, name='server-stop-watcher').start()
     threading.Thread(target=cleanup_loop, args=(stop_event,), daemon=True).start()
-    if args.parent_pid is not None:
+    if parent_pid is not None:
         def watch_app():
             while not stop_event.wait(.5):
-                if os.getppid() != args.parent_pid:
+                if os.getppid() != parent_pid:
                     stop(None, None)
                     return
         threading.Thread(target=watch_app, daemon=True, name='app-lifetime').start()
     if provider.configured:
-        if not meta_get('catalog_updated'): launch_sync()
+        if not meta_get('catalog_updated'):
+            launch_sync()
         else:
             def check_account():
-                try: meta_set('account', provider.account())
-                except (ValueError, RuntimeError): pass
+                try:
+                    meta_set('account', provider.account())
+                except (ValueError, RuntimeError):
+                    pass
             threading.Thread(target=check_account, daemon=True).start()
-    print(f'Cineva hazır: http://localhost:{args.port}', flush=True)
-    try: server.serve_forever(poll_interval=.3)
+    if ready_event is not None:
+        ready_event.set()
+    print(f'Vrelio hazır: http://localhost:{HTTP_PORT}', flush=True)
+    try:
+        server.serve_forever(poll_interval=.3)
     finally:
-        stop_event.set(); stop_all(); playback.close(); server.server_close()
+        stop_event.set()
+        stop_all()
+        playback.close()
+        server.server_close()
         with contextlib.suppress(OSError):
-            if (DATA / 'server.pid').read_text().strip() == str(os.getpid()): (DATA / 'server.pid').unlink()
+            if (DATA / 'server.pid').read_text().strip() == str(os.getpid()):
+                (DATA / 'server.pid').unlink()
 
 
-if __name__ == '__main__': main()
+def main():
+    p = argparse.ArgumentParser(description='Vrelio yerel medya sunucusu')
+    p.add_argument('--host', default='0.0.0.0')
+    p.add_argument('--port', type=int, default=8844)
+    p.add_argument('--parent-pid', type=int, default=None, help='Exit when the owning app process exits')
+    args = p.parse_args()
+    run_server(host=args.host, port=args.port, parent_pid=args.parent_pid, install_signals=True)
+
+
+if __name__ == '__main__':
+    main()

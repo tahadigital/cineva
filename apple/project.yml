@@ -1,0 +1,102 @@
+name: Vrelio
+options:
+  bundleIdPrefix: app.vrelio
+  deploymentTarget:
+    iOS: "16.0"
+    macOS: "13.0"
+  xcodeVersion: "15.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    MARKETING_VERSION: "2.1.0"
+    CURRENT_PROJECT_VERSION: "210"
+
+targets:
+  VrelioMacOS:
+    type: application
+    platform: macOS
+    sources:
+      - path: macOS
+        excludes:
+          - "**/*.sh"
+          - "**/*.spec"
+          - "**/*.plist"
+          - "**/*.entitlements"
+      - path: Shared
+    info:
+      path: macOS/Info.plist
+    entitlements:
+      path: macOS/VrelioMac.entitlements
+    settings:
+      base:
+        PRODUCT_NAME: Vrelio
+        PRODUCT_MODULE_NAME: VrelioMacOS
+        PRODUCT_BUNDLE_IDENTIFIER: app.vrelio.macos
+        COMBINE_HIDPI_IMAGES: YES
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+
+  VrelioIOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: iOS
+        excludes:
+          - "**/*.plist"
+      - path: Shared
+    info:
+      path: iOS/Info.plist
+    settings:
+      base:
+        PRODUCT_NAME: Vrelio
+        PRODUCT_MODULE_NAME: VrelioIOS
+        PRODUCT_BUNDLE_IDENTIFIER: app.vrelio.ios
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ENABLE_TESTING_SEARCH_PATHS: YES
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGN_IDENTITY: ""
+
+  VrelioIOSTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: VrelioIOS
+    settings:
+      base:
+        PRODUCT_NAME: VrelioIOSTests
+        PRODUCT_BUNDLE_IDENTIFIER: app.vrelio.ios.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Vrelio.app/Vrelio"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGN_IDENTITY: ""
+
+schemes:
+  VrelioMacOS:
+    build:
+      targets:
+        VrelioMacOS: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+
+  VrelioIOS:
+    build:
+      targets:
+        VrelioIOS: all
+        VrelioIOSTests: [test]
+    test:
+      config: Debug
+      targets:
+        - VrelioIOSTests
+    archive:
+      config: Release
