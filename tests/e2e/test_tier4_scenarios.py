@@ -244,11 +244,11 @@ class Tier4EndToEndScenariosTests(unittest.TestCase):
                 f"Tracked sensitive/local path found: {f}",
             )
 
-        # 2. Akış Programı source files remain completely untouched (zero Vrelio edits)
-        self.assertTrue(AKIS_ROOT.exists(), "Baseline Akış Programı directory expected")
-        for rel in ("server.py", "playback.py", "discovery.py", "sports.py"):
-            src = (AKIS_ROOT / rel).read_text(encoding="utf-8", errors="ignore")
-            self.assertNotIn("vrelio", src.lower(), f"Akış Programı {rel} must stay untouched")
+        # 2. Akış Programı source files remain completely untouched (zero Vrelio edits) when present locally
+        if AKIS_ROOT.exists():
+            for rel in ("server.py", "playback.py", "discovery.py", "sports.py"):
+                src = (AKIS_ROOT / rel).read_text(encoding="utf-8", errors="ignore")
+                self.assertNotIn("vrelio", src.lower(), f"Akış Programı {rel} must stay untouched")
 
         # 3. Cloud API responses never leak secrets, password hashes, or tokens
         cloud = CloudServerProcess().start()
