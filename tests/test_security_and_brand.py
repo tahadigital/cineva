@@ -205,7 +205,8 @@ class SecurityAndHardeningTests(unittest.TestCase):
             "/package.json",
             "/netlify/functions/cloud-core.mjs",
             "/netlify/edge-functions/admin-gate.ts",
-            "/netlify/database/migrations/20261119000000_mavie_plans_verify.sql",
+            "/netlify/database/migrations/20261119000000_vrelio_plans_verify.sql",
+            "/netlify/database/migrations/20261121163000_mavie_brand_urls.sql",
             "/admin.html",
             "/admin",
             "/../server.py",
@@ -381,7 +382,11 @@ class MavieBrandPaletteAndIconsTests(unittest.TestCase):
     def test_01_zero_vrelio_and_zero_legacy_red_orange_colors(self) -> None:
         tracked = subprocess.check_output(["git", "ls-files"], cwd=ROOT, text=True).splitlines()
         for rel in tracked:
-            if rel.startswith("tests/test_security_and_brand.py") or rel.startswith("tests/test_player_features_frontend.mjs"):
+            if (
+                rel.startswith("tests/test_security_and_brand.py")
+                or rel.startswith("tests/test_player_features_frontend.mjs")
+                or rel == "website/netlify/database/migrations/20261119000000_vrelio_plans_verify.sql"
+            ):
                 continue
             p = ROOT / rel
             if not p.is_file() or p.suffix.lower() in (".png", ".ico", ".icns", ".jpg", ".webp", ".woff2", ".mp4", ".ts"):

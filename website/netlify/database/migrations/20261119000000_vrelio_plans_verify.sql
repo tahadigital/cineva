@@ -1,5 +1,5 @@
--- Migration: 20261119000000_mavie_plans_verify
--- Mavie rebrand, 2-tier plans (normal/pro), 3-day Pro trial, email verification,
+-- Migration: 20261119000000_vrelio_plans_verify
+-- Vrelio rebrand, 2-tier plans (normal/pro), 3-day Pro trial, email verification,
 -- password reset codes, token_version revocation, email outbox, and 4-platform download URLs.
 
 -- 1. Extend users table safely (existing pre-migration accounts stay email_verified = TRUE)
@@ -75,9 +75,9 @@ CREATE TABLE IF NOT EXISTS email_outbox (
 
 CREATE INDEX IF NOT EXISTS idx_email_outbox_recipient ON email_outbox(recipient, created_at DESC);
 
--- 6. Update app_config versions with Mavie 4-platform release URLs & seed 'ios' in download_stats
+-- 6. Update app_config versions with Vrelio 4-platform release URLs & seed 'ios' in download_stats
 INSERT INTO app_config (key, value) VALUES
-  ('versions', '{"latestVersion":"2.1.0","windowsLatest":"2.1.0","windowsMin":"2.0.0","androidLatest":"2.1.0","androidMin":"2.0.0","macosLatest":"2.1.0","macosMin":"2.0.0","iosLatest":"2.1.0","iosMin":"2.0.0","windowsInstallerUrl":"https://github.com/tahadigital/cineva/releases/latest/download/Mavie-Setup.exe","windowsPortableUrl":"https://github.com/tahadigital/cineva/releases/latest/download/Mavie.exe","androidApkUrl":"https://github.com/tahadigital/cineva/releases/latest/download/Mavie-Android.apk","macosUrl":"https://github.com/tahadigital/cineva/releases/latest/download/Mavie-macOS.dmg","iosUrl":"https://github.com/tahadigital/cineva/releases/latest/download/Mavie-iOS.ipa","releaseNotes":"Mavie 2.1.0: 4 platform desteği, e-posta doğrulama ve 3 günlük Pro deneme."}')
+  ('versions', '{"latestVersion":"2.1.0","windowsLatest":"2.1.0","windowsMin":"2.0.0","androidLatest":"2.1.0","androidMin":"2.0.0","macosLatest":"2.1.0","macosMin":"2.0.0","iosLatest":"2.1.0","iosMin":"2.0.0","windowsInstallerUrl":"https://github.com/tahadigital/cineva/releases/latest/download/Vrelio-Setup.exe","windowsPortableUrl":"https://github.com/tahadigital/cineva/releases/latest/download/Vrelio.exe","androidApkUrl":"https://github.com/tahadigital/cineva/releases/latest/download/Vrelio-Android.apk","macosUrl":"https://github.com/tahadigital/cineva/releases/latest/download/Vrelio-macOS.dmg","iosUrl":"https://github.com/tahadigital/cineva/releases/latest/download/Vrelio-iOS.ipa","releaseNotes":"Vrelio 2.1.0: 4 platform desteği, e-posta doğrulama ve 3 günlük Pro deneme."}')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 
 INSERT INTO download_stats (target, count, updated_at) VALUES
