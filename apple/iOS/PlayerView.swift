@@ -50,7 +50,7 @@ private final class PlayerController: ObservableObject {
                 case .failed:
                     self.isLoading = false
                     let rawMsg = observedItem.error?.localizedDescription ?? "Bilinmeyen oynatma hatası"
-                    self.errorMessage = "Video oynatılamadı (\(rawMsg)). Ham .ts veya uyumsuz akışlarda yerel Vrelio masaüstü sunucusu üzerinden HLS olarak açmayı deneyin."
+                    self.errorMessage = "Video oynatılamadı (\(rawMsg)). Ham .ts veya uyumsuz akışlarda yerel Mavie masaüstü sunucusu üzerinden HLS olarak açmayı deneyin."
                 case .unknown:
                     break
                 @unknown default:
@@ -197,7 +197,7 @@ private final class PlayerLayerHostView: UIView {
     var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
 }
 
-private struct VrelioVideoSurfaceView: UIViewRepresentable {
+private struct MavieVideoSurfaceView: UIViewRepresentable {
     var controller: PlayerController
 
     func makeCoordinator() -> Coordinator {
@@ -243,11 +243,11 @@ private struct VrelioVideoSurfaceView: UIViewRepresentable {
     }
 }
 
-private struct VrelioAirPlayRoutePicker: UIViewRepresentable {
+private struct MavieAirPlayRoutePicker: UIViewRepresentable {
     func makeUIView(context: Context) -> AVRoutePickerView {
         let picker = AVRoutePickerView()
         picker.tintColor = .white
-        picker.activeTintColor = UIColor(red: 1.0, green: 75.0 / 255.0, blue: 69.0 / 255.0, alpha: 1.0)
+        picker.activeTintColor = UIColor(red: 124.0 / 255.0, green: 58.0 / 255.0, blue: 237.0 / 255.0, alpha: 1.0)
         picker.prioritizesVideoDevices = true
         return picker
     }
@@ -289,7 +289,7 @@ public struct PlayerView: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            VrelioVideoSurfaceView(controller: controller)
+            MavieVideoSurfaceView(controller: controller)
                 .ignoresSafeArea()
                 .onTapGesture {
                     if reduceMotion {
@@ -305,7 +305,7 @@ public struct PlayerView: View {
                 VStack(spacing: 12) {
                     ProgressView()
                         .controlSize(.large)
-                        .tint(VrelioTheme.amber)
+                        .tint(MavieTheme.amber)
                     Text("Akış hazırlanıyor…")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.white)
@@ -318,13 +318,13 @@ public struct PlayerView: View {
                 VStack(spacing: 14) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.largeTitle)
-                        .foregroundStyle(VrelioTheme.danger)
+                        .foregroundStyle(MavieTheme.danger)
                     Text("Oynatma Hatası")
                         .font(.headline)
                         .foregroundStyle(.white)
                     Text(errorMessage)
                         .font(.subheadline)
-                        .foregroundStyle(VrelioTheme.muted)
+                        .foregroundStyle(MavieTheme.muted)
                         .multilineTextAlignment(.center)
                     HStack(spacing: 12) {
                         Button {
@@ -332,7 +332,7 @@ public struct PlayerView: View {
                         } label: {
                             Label("Tekrar Dene", systemImage: "arrow.clockwise")
                         }
-                        .buttonStyle(VrelioPrimaryButtonStyle(compact: true))
+                        .buttonStyle(MaviePrimaryButtonStyle(compact: true))
                         .accessibilityLabel("Videoyu Tekrar Dene")
 
                         Button {
@@ -342,13 +342,13 @@ public struct PlayerView: View {
                         } label: {
                             Label("Kapat", systemImage: "xmark")
                         }
-                        .buttonStyle(VrelioGhostButtonStyle(compact: true))
+                        .buttonStyle(MavieGhostButtonStyle(compact: true))
                         .accessibilityLabel("Oynatıcıyı Kapat")
                     }
                 }
                 .padding(24)
                 .frame(maxWidth: 420)
-                .vrelioCard()
+                .mavieCard()
                 .padding(20)
             }
 
@@ -402,7 +402,7 @@ public struct PlayerView: View {
                     if let sleep = controller.sleepRemainingMinutes {
                         Text("Uyku zamanlayıcı: \(sleep) dk")
                             .font(.caption2)
-                            .foregroundStyle(VrelioTheme.amber)
+                            .foregroundStyle(MavieTheme.amber)
                     }
                 }
 
@@ -422,7 +422,7 @@ public struct PlayerView: View {
                     .accessibilityLabel("Resim İçinde Resim Modunu Aç veya Kapat")
                 }
 
-                VrelioAirPlayRoutePicker()
+                MavieAirPlayRoutePicker()
                     .frame(width: 44, height: 44)
                     .background(.black.opacity(0.65), in: Circle())
                     .accessibilityLabel("AirPlay Cihazı Seç")
@@ -472,7 +472,7 @@ public struct PlayerView: View {
                     }
                     .foregroundStyle(.white)
                     .frame(width: 76, height: 76)
-                    .background(VrelioTheme.brandGradient, in: Circle())
+                    .background(MavieTheme.brandGradient, in: Circle())
                 }
                 .accessibilityLabel(controller.isPlaying ? "Oynatmayı Duraklat" : "Oynat")
 
@@ -508,11 +508,11 @@ public struct PlayerView: View {
                             ),
                             in: 0...max(1, controller.duration)
                         )
-                        .tint(VrelioTheme.coral)
+                        .tint(MavieTheme.coral)
                         .accessibilityLabel("Oynatma İlerleme Çubuğu")
                         Text(formatClock(controller.duration))
                             .font(.caption.monospacedDigit())
-                            .foregroundStyle(VrelioTheme.muted)
+                            .foregroundStyle(MavieTheme.muted)
                     }
                 }
 
@@ -560,7 +560,7 @@ public struct PlayerView: View {
                         } label: {
                             Label("Sonraki Bölüm", systemImage: "forward.end.fill")
                         }
-                        .buttonStyle(VrelioPrimaryButtonStyle(compact: true))
+                        .buttonStyle(MaviePrimaryButtonStyle(compact: true))
                         .accessibilityLabel("Sonraki Bölüm: \(nextEp.name)")
                     }
                 }
@@ -582,7 +582,7 @@ public struct PlayerView: View {
                 Section("Ses İzleri") {
                     if controller.audioOptions.isEmpty {
                         Text("Bu akışta seçilebilir ek ses izi yok.")
-                            .foregroundStyle(VrelioTheme.muted)
+                            .foregroundStyle(MavieTheme.muted)
                     } else {
                         ForEach(controller.audioOptions, id: \.self) { option in
                             Button {
@@ -592,7 +592,7 @@ public struct PlayerView: View {
                                     Text(option.displayName)
                                     Spacer()
                                     if controller.selectedAudioOption == option {
-                                        Image(systemName: "checkmark").foregroundStyle(VrelioTheme.coral)
+                                        Image(systemName: "checkmark").foregroundStyle(MavieTheme.coral)
                                     }
                                 }
                                 .frame(minHeight: 44)
@@ -609,7 +609,7 @@ public struct PlayerView: View {
                             Text("Altyazı Kapalı")
                             Spacer()
                             if controller.selectedSubtitleOption == nil {
-                                Image(systemName: "checkmark").foregroundStyle(VrelioTheme.coral)
+                                Image(systemName: "checkmark").foregroundStyle(MavieTheme.coral)
                             }
                         }
                         .frame(minHeight: 44)
@@ -622,7 +622,7 @@ public struct PlayerView: View {
                                 Text(option.displayName)
                                 Spacer()
                                 if controller.selectedSubtitleOption == option {
-                                    Image(systemName: "checkmark").foregroundStyle(VrelioTheme.coral)
+                                    Image(systemName: "checkmark").foregroundStyle(MavieTheme.coral)
                                 }
                             }
                             .frame(minHeight: 44)

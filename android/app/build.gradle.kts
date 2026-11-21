@@ -9,10 +9,10 @@ val signingProperties = Properties().apply {
     if (file.exists()) file.inputStream().use { load(it) }
 }
 android {
-    namespace = "app.vrelio.player"
+    namespace = "app.mavie.player"
     compileSdk = 36
     defaultConfig {
-        applicationId = "app.vrelio.player"
+        applicationId = "app.mavie.player"
         minSdk = 26
         targetSdk = 36
         versionCode = 8
@@ -22,8 +22,8 @@ android {
     }
     signingConfigs {
         if (signingProperties.isNotEmpty()) create("personal") {
-            val vrelioStore = rootProject.file("signing/vrelio-release.jks")
-            storeFile = if (vrelioStore.exists()) vrelioStore else rootProject.file("signing/akis-release.jks")
+            val mavieStore = rootProject.file("signing/mavie-release.jks")
+            storeFile = if (mavieStore.exists()) mavieStore else rootProject.file("signing/akis-release.jks")
             storePassword = signingProperties.getProperty("storePassword")
             keyAlias = signingProperties.getProperty("keyAlias", "akis")
             keyPassword = signingProperties.getProperty("keyPassword")

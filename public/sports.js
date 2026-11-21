@@ -1,5 +1,5 @@
 'use strict';
-window.VrelioSports = (() => {
+window.MavieSports = (() => {
   const zone = 'Europe/Istanbul';
   const days = new Intl.DateTimeFormat('tr-TR', {weekday:'short', day:'numeric', month:'short', timeZone:'UTC'});
   const dates = new Intl.DateTimeFormat('en-CA', {year:'numeric',month:'2-digit',day:'2-digit',timeZone:zone});
@@ -52,7 +52,7 @@ window.VrelioSports = (() => {
     const availableDays = range(today);
     const selected = availableDays.some(day => day.id === params.get('date')) ? params.get('date') : today;
     main.innerHTML = `<div class="sports-page">
-      <header class="sports-intro"><span class="sports-kicker">${icon('sports')} VRELIO REHBER</span>
+      <header class="sports-intro"><span class="sports-kicker">${icon('sports')} MAVIE REHBER</span>
         <h1>Canlı Yayın & EPG Rehberi</h1><p>XMLTV rehberine göre programlar, spor karşılaşmaları ve kanallar.</p>
       </header>
       <nav aria-label="Yayın günü" class="sports-dates">${availableDays.map(day => `<a href="#sports?date=${day.id}"

@@ -1,8 +1,8 @@
 'use strict';
 (() => {
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const TOKEN_KEY = 'vrelio_admin_token';
-  const API_KEY = 'vrelio_cloud_api';
+  const TOKEN_KEY = 'mavie_admin_token';
+  const API_KEY = 'mavie_cloud_api';
   const apiBase = () => (localStorage.getItem(API_KEY) || '').replace(/\/$/, '');
 
   async function api(path, opts = {}) {
@@ -64,7 +64,7 @@
     });
     const { users } = await api('/api/v1/admin/users?' + qs.toString());
     document.getElementById('usersTbody').innerHTML = (users || []).map(u => {
-      const planText = u.trialActive ? 'Pro Deneme' : (u.effectivePlan === 'pro' ? 'Vrelio Pro' : 'Normal');
+      const planText = u.trialActive ? 'Pro Deneme' : (u.effectivePlan === 'pro' ? 'Mavie Pro' : 'Normal');
       const planClass = u.trialActive ? 'trial' : (u.effectivePlan || 'normal');
       const verBadge = u.emailVerified
         ? '<span class="badge verified">Doğrulandı</span>'
@@ -131,7 +131,7 @@
     document.getElementById('licensesTbody').innerHTML = (licenses || []).map(l => `
       <tr>
         <td><code>${esc(l.code)}</code></td>
-        <td><span class="badge ${esc(l.plan)}">${esc(l.plan === 'pro' ? 'Vrelio Pro' : l.plan)}</span></td>
+        <td><span class="badge ${esc(l.plan)}">${esc(l.plan === 'pro' ? 'Mavie Pro' : l.plan)}</span></td>
         <td>${l.durationDays ? esc(l.durationDays) + ' gün' : 'Süresiz'}</td>
         <td>${esc(l.maxDevices)}</td>
         <td>${esc(l.usesCount)} / ${esc(l.maxUses)}</td>

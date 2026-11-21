@@ -1,28 +1,31 @@
 import SwiftUI
 
-public enum VrelioTheme {
-    public static let coral = Color(red: 1.0, green: 75.0 / 255.0, blue: 69.0 / 255.0)
-    public static let amber = Color(red: 1.0, green: 153.0 / 255.0, blue: 51.0 / 255.0)
-    public static let bg = Color(red: 14.0 / 255.0, green: 16.0 / 255.0, blue: 21.0 / 255.0)
-    public static let bgDeep = Color(red: 10.0 / 255.0, green: 12.0 / 255.0, blue: 17.0 / 255.0)
-    public static let panel = Color(red: 22.0 / 255.0, green: 25.0 / 255.0, blue: 34.0 / 255.0)
-    public static let panelElevated = Color(red: 30.0 / 255.0, green: 34.0 / 255.0, blue: 46.0 / 255.0)
-    public static let border = Color.white.opacity(0.10)
-    public static let muted = Color(red: 179.0 / 255.0, green: 182.0 / 255.0, blue: 194.0 / 255.0)
+public enum MavieTheme {
+    public static let purple = Color(red: 124.0 / 255.0, green: 58.0 / 255.0, blue: 237.0 / 255.0)
+    public static let blue = Color(red: 59.0 / 255.0, green: 130.0 / 255.0, blue: 246.0 / 255.0)
+    public static let turquoise = Color(red: 6.0 / 255.0, green: 182.0 / 255.0, blue: 212.0 / 255.0)
+    public static let coral = purple
+    public static let amber = turquoise
+    public static let bg = Color(red: 10.0 / 255.0, green: 13.0 / 255.0, blue: 22.0 / 255.0)
+    public static let bgDeep = Color(red: 7.0 / 255.0, green: 10.0 / 255.0, blue: 18.0 / 255.0)
+    public static let panel = Color(red: 18.0 / 255.0, green: 23.0 / 255.0, blue: 38.0 / 255.0)
+    public static let panelElevated = Color(red: 26.0 / 255.0, green: 33.0 / 255.0, blue: 52.0 / 255.0)
+    public static let border = Color.white.opacity(0.11)
+    public static let muted = Color(red: 168.0 / 255.0, green: 181.0 / 255.0, blue: 214.0 / 255.0)
     public static let success = Color(red: 52.0 / 255.0, green: 211.0 / 255.0, blue: 153.0 / 255.0)
-    public static let warning = Color(red: 251.0 / 255.0, green: 191.0 / 255.0, blue: 36.0 / 255.0)
-    public static let danger = Color(red: 248.0 / 255.0, green: 113.0 / 255.0, blue: 113.0 / 255.0)
+    public static let warning = Color(red: 56.0 / 255.0, green: 189.0 / 255.0, blue: 248.0 / 255.0)
+    public static let danger = Color(red: 244.0 / 255.0, green: 63.0 / 255.0, blue: 94.0 / 255.0)
 
     public static let brandGradient = LinearGradient(
-        colors: [coral, amber],
+        colors: [purple, blue, turquoise],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
 
     public static let cinemaBackdrop = RadialGradient(
         colors: [
-            coral.opacity(0.22),
-            amber.opacity(0.08),
+            purple.opacity(0.24),
+            turquoise.opacity(0.12),
             bgDeep
         ],
         center: .top,
@@ -31,7 +34,7 @@ public enum VrelioTheme {
     )
 }
 
-public struct VrelioLogoMark: View {
+public struct MavieLogoMark: View {
     public var size: CGFloat
     public var animateSweep: Bool
 
@@ -68,10 +71,10 @@ public struct VrelioLogoMark: View {
                 .stroke(
                     AngularGradient(
                         gradient: Gradient(colors: [
-                            VrelioTheme.coral,
-                            VrelioTheme.amber,
-                            VrelioTheme.coral.opacity(0.35),
-                            VrelioTheme.coral
+                            MavieTheme.coral,
+                            MavieTheme.amber,
+                            MavieTheme.coral.opacity(0.35),
+                            MavieTheme.coral
                         ]),
                         center: .center
                     ),
@@ -86,7 +89,7 @@ public struct VrelioLogoMark: View {
                 .offset(x: size * 0.03)
         }
         .frame(width: size, height: size)
-        .shadow(color: VrelioTheme.coral.opacity(0.28), radius: size * 0.22, y: size * 0.08)
+        .shadow(color: MavieTheme.coral.opacity(0.28), radius: size * 0.22, y: size * 0.08)
         .accessibilityHidden(true)
         .onAppear {
             guard animateSweep && !reduceMotion else { return }
@@ -97,7 +100,7 @@ public struct VrelioLogoMark: View {
     }
 }
 
-public struct VrelioWordmark: View {
+public struct MavieWordmark: View {
     public var subtitle: String?
     public var markSize: CGFloat
 
@@ -108,13 +111,13 @@ public struct VrelioWordmark: View {
 
     public var body: some View {
         HStack(spacing: 10) {
-            VrelioLogoMark(size: markSize)
+            MavieLogoMark(size: markSize)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Vrelio")
+                Text("Mavie")
                     .font(.system(size: markSize * 0.62, weight: .bold, design: .rounded))
                     .foregroundStyle(
                         LinearGradient(
-                            colors: [.white, VrelioTheme.amber.opacity(0.95)],
+                            colors: [.white, MavieTheme.amber.opacity(0.95)],
                             startPoint: .leading,
                             endPoint: .trailing
                         )
@@ -122,14 +125,14 @@ public struct VrelioWordmark: View {
                 if let subtitle, !subtitle.isEmpty {
                     Text(subtitle)
                         .font(.caption)
-                        .foregroundStyle(VrelioTheme.muted)
+                        .foregroundStyle(MavieTheme.muted)
                 }
             }
         }
     }
 }
 
-public struct VrelioPrimaryButtonStyle: ButtonStyle {
+public struct MaviePrimaryButtonStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     public var compact: Bool
 
@@ -146,16 +149,16 @@ public struct VrelioPrimaryButtonStyle: ButtonStyle {
             .frame(minWidth: 44, minHeight: 44)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(VrelioTheme.brandGradient)
+                    .fill(MavieTheme.brandGradient)
             )
-            .shadow(color: VrelioTheme.coral.opacity(configuration.isPressed ? 0.15 : 0.35), radius: 10, y: 4)
+            .shadow(color: MavieTheme.coral.opacity(configuration.isPressed ? 0.15 : 0.35), radius: 10, y: 4)
             .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1.0)
             .opacity(configuration.isPressed ? 0.92 : 1.0)
             .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.72), value: configuration.isPressed)
     }
 }
 
-public struct VrelioGhostButtonStyle: ButtonStyle {
+public struct MavieGhostButtonStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     public var compact: Bool
 
@@ -172,10 +175,10 @@ public struct VrelioGhostButtonStyle: ButtonStyle {
             .frame(minWidth: 44, minHeight: 44)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(VrelioTheme.panelElevated.opacity(configuration.isPressed ? 0.95 : 0.75))
+                    .fill(MavieTheme.panelElevated.opacity(configuration.isPressed ? 0.95 : 0.75))
                     .overlay(
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(VrelioTheme.border, lineWidth: 1)
+                            .strokeBorder(MavieTheme.border, lineWidth: 1)
                     )
             )
             .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1.0)
@@ -183,7 +186,7 @@ public struct VrelioGhostButtonStyle: ButtonStyle {
     }
 }
 
-public struct VrelioCardModifier: ViewModifier {
+public struct MavieCardModifier: ViewModifier {
     public var cornerRadius: CGFloat
     public init(cornerRadius: CGFloat = 16) {
         self.cornerRadius = cornerRadius
@@ -193,17 +196,17 @@ public struct VrelioCardModifier: ViewModifier {
         content
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(VrelioTheme.panel)
+                    .fill(MavieTheme.panel)
                     .overlay(
                         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .strokeBorder(VrelioTheme.border, lineWidth: 1)
+                            .strokeBorder(MavieTheme.border, lineWidth: 1)
                     )
             )
     }
 }
 
 public extension View {
-    func vrelioCard(cornerRadius: CGFloat = 16) -> some View {
-        modifier(VrelioCardModifier(cornerRadius: cornerRadius))
+    func mavieCard(cornerRadius: CGFloat = 16) -> some View {
+        modifier(MavieCardModifier(cornerRadius: cornerRadius))
     }
 }

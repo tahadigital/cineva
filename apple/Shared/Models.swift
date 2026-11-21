@@ -100,14 +100,14 @@ public struct WatchProgress: Codable, Hashable, Sendable {
         }
 
         if let iso = try? canonical.decodeIfPresent(String.self, forKey: .updatedAt),
-           let parsed = VrelioDateParser.parseISO8601(iso) {
+           let parsed = MavieDateParser.parseISO8601(iso) {
             self.updatedAt = parsed.timeIntervalSince1970
         } else if let ts = try? canonical.decodeIfPresent(Double.self, forKey: .updatedAt) {
             self.updatedAt = ts
         } else if let ts = try? legacy.decodeIfPresent(Double.self, forKey: .updatedAt) {
             self.updatedAt = ts
         } else if let iso = try? legacy.decodeIfPresent(String.self, forKey: .updatedAt),
-                  let parsed = VrelioDateParser.parseISO8601(iso) {
+                  let parsed = MavieDateParser.parseISO8601(iso) {
             self.updatedAt = parsed.timeIntervalSince1970
         } else {
             self.updatedAt = Date().timeIntervalSince1970
@@ -120,7 +120,7 @@ public struct WatchProgress: Codable, Hashable, Sendable {
         try container.encode(max(0, positionSeconds), forKey: .position)
         try container.encode(max(0, durationSeconds), forKey: .duration)
         try container.encode(completed ? 1 : 0, forKey: .completed)
-        try container.encode(VrelioDateParser.formatISO8601(Date(timeIntervalSince1970: updatedAt)), forKey: .updatedAt)
+        try container.encode(MavieDateParser.formatISO8601(Date(timeIntervalSince1970: updatedAt)), forKey: .updatedAt)
     }
 
     public var progressFraction: Double {
@@ -447,7 +447,7 @@ public struct Playlist: Identifiable, Codable, Hashable, Sendable {
         case createdAt
     }
 
-    public init(id: String, name: String, createdAt: String = VrelioDateParser.formatISO8601(), itemIds: [String] = []) {
+    public init(id: String, name: String, createdAt: String = MavieDateParser.formatISO8601(), itemIds: [String] = []) {
         self.id = id
         self.name = name
         self.createdAt = createdAt
@@ -461,7 +461,7 @@ public struct Playlist: Identifiable, Codable, Hashable, Sendable {
         self.name = try c.decode(String.self, forKey: .name)
         self.createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
             ?? l.decodeIfPresent(String.self, forKey: .createdAt)
-            ?? VrelioDateParser.formatISO8601()
+            ?? MavieDateParser.formatISO8601()
         self.itemIds = (try c.decodeIfPresent([String].self, forKey: .itemIds)) ?? []
     }
 
@@ -486,7 +486,7 @@ public struct UserProfile: Identifiable, Codable, Hashable, Sendable {
     public init(
         id: String,
         name: String,
-        avatarColor: String = "#FF4B45",
+        avatarColor: String = "#7C3AED",
         isKids: Bool = false,
         hasPin: Bool = false,
         pinHash: String = "",
@@ -549,7 +549,7 @@ public struct AccountInfo: Codable, Hashable, Sendable {
         id: String = "default",
         username: String = "",
         host: String = "",
-        name: String = "Vrelio Kütüphanesi",
+        name: String = "Mavie Kütüphanesi",
         status: String = "Active",
         expiresAt: String = "",
         maxConnections: Int = 1,
@@ -678,7 +678,7 @@ public struct CloudUser: Identifiable, Codable, Hashable, Sendable {
 
     public func trialRemainingSummary(now: Date = Date()) -> String? {
         guard trialActive, !trialEndsAt.isEmpty else { return nil }
-        guard let endDate = VrelioDateParser.parseISO8601(trialEndsAt) else { return nil }
+        guard let endDate = MavieDateParser.parseISO8601(trialEndsAt) else { return nil }
         let seconds = endDate.timeIntervalSince(now)
         if seconds <= 0 { return "Deneme süresi sona erdi" }
         let totalHours = Int(ceil(seconds / 3600.0))
@@ -754,7 +754,7 @@ public struct CloudApiError: Codable, Equatable, Sendable {
     }
 }
 
-public enum VrelioError: LocalizedError, Equatable, Sendable {
+public enum MavieError: LocalizedError, Equatable, Sendable {
     case invalidURL(String)
     case insecureTransport(String)
     case network(String)
@@ -787,7 +787,7 @@ public struct SyncFavoriteRecord: Codable, Hashable, Sendable {
         case createdAt = "created_at"
     }
 
-    public init(itemId: String, createdAt: String = VrelioDateParser.formatISO8601()) {
+    public init(itemId: String, createdAt: String = MavieDateParser.formatISO8601()) {
         self.itemId = itemId
         self.createdAt = createdAt
     }
@@ -796,13 +796,13 @@ public struct SyncFavoriteRecord: Codable, Hashable, Sendable {
         if let single = try? decoder.singleValueContainer(),
            let legacyId = try? single.decode(String.self) {
             self.itemId = legacyId
-            self.createdAt = VrelioDateParser.formatISO8601()
+            self.createdAt = MavieDateParser.formatISO8601()
             return
         }
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.itemId = try c.decode(String.self, forKey: .itemId)
         self.createdAt = (try c.decodeIfPresent(String.self, forKey: .createdAt))
-            ?? VrelioDateParser.formatISO8601()
+            ?? MavieDateParser.formatISO8601()
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -888,7 +888,7 @@ public struct SyncTrackPreferenceRecord: Codable, Hashable, Sendable {
     public init(
         itemId: String,
         data: SyncTrackPreferenceData,
-        updatedAt: String = VrelioDateParser.formatISO8601()
+        updatedAt: String = MavieDateParser.formatISO8601()
     ) {
         self.itemId = itemId
         self.data = data
@@ -899,7 +899,7 @@ public struct SyncTrackPreferenceRecord: Codable, Hashable, Sendable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.itemId = try c.decode(String.self, forKey: .itemId)
         self.updatedAt = (try c.decodeIfPresent(String.self, forKey: .updatedAt))
-            ?? VrelioDateParser.formatISO8601()
+            ?? MavieDateParser.formatISO8601()
 
         if let obj = try? c.decode(SyncTrackPreferenceData.self, forKey: .data) {
             self.data = obj
@@ -943,7 +943,7 @@ public struct CloudSyncPayload: Codable, Hashable, Sendable {
 
     public init(
         version: Int = 1,
-        exportedAt: String = VrelioDateParser.formatISO8601(),
+        exportedAt: String = MavieDateParser.formatISO8601(),
         items: [MediaItem] = [],
         favorites: [SyncFavoriteRecord] = [],
         progress: [WatchProgress] = [],
@@ -969,7 +969,7 @@ public struct CloudSyncPayload: Codable, Hashable, Sendable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.version = (try c.decodeIfPresent(Int.self, forKey: .version)) ?? 1
         self.exportedAt = (try c.decodeIfPresent(String.self, forKey: .exportedAt))
-            ?? VrelioDateParser.formatISO8601()
+            ?? MavieDateParser.formatISO8601()
         self.items = (try c.decodeIfPresent([MediaItem].self, forKey: .items)) ?? []
         self.favorites = (try c.decodeIfPresent([SyncFavoriteRecord].self, forKey: .favorites)) ?? []
         self.progress = (try c.decodeIfPresent([WatchProgress].self, forKey: .progress)) ?? []
@@ -1036,7 +1036,7 @@ public struct CloudSyncPayload: Codable, Hashable, Sendable {
     }
 }
 
-public enum VrelioDateParser {
+public enum MavieDateParser {
     public static func formatISO8601(_ date: Date = Date()) -> String {
         let formatter = ISO8601DateFormatter()
         formatter.timeZone = TimeZone(secondsFromGMT: 0)

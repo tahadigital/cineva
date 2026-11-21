@@ -79,11 +79,11 @@ export function harness({hls = true, responses = [], ffmpeg = true, tracks = fal
   api.state.items.set('episode:test', {id: 'episode:test', kind: 'episode', name: 'Test bölümü', extension: 'mkv', progress: {position: 120}});
   documentSetup?.(context.document);
   api.bindPlayer();
-  if(tracks)context.window.VrelioTracks.bind();
+  if(tracks)context.window.MavieTracks.bind();
   const plays = () => requests.filter(request => request.url === '/api/play');
   const settle = () => new Promise(resolve => setImmediate(resolve));
   const runTimers=async(maxDelay=Infinity)=>{for(const [id,timer] of [...timers]){if(timer.delay>maxDelay||!timers.has(id))continue;timers.delete(id);await timer.callback();}await settle();};
   const advance=async(milliseconds)=>{now+=milliseconds;await runTimers(milliseconds);};
-  return {...api, tracks:context.window.VrelioTracks, element, modes, requests, instances, plays, settle,runTimers,timers,advance};
+  return {...api, tracks:context.window.MavieTracks, element, modes, requests, instances, plays, settle,runTimers,timers,advance};
 }
 

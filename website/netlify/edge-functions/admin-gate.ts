@@ -1,6 +1,6 @@
 import type { Config, Context } from "@netlify/edge-functions";
 
-const COOKIE_NAME = "vrelio_admin_gate";
+const COOKIE_NAME = "mavie_admin_gate";
 const LEGACY_COOKIE_NAME = "cineva_admin_gate";
 const enc = new TextEncoder();
 
@@ -69,19 +69,19 @@ function hidden404(isApi: boolean): Response {
 
 export default async (req: Request, context: Context) => {
   const gateKey = (
-    Netlify.env.get("VRELIO_ADMIN_GATE_KEY") ??
+    Netlify.env.get("MAVIE_ADMIN_GATE_KEY") ??
     Netlify.env.get("CINEVA_ADMIN_GATE_KEY") ??
     ""
   ).trim();
   const url = new URL(req.url);
   const isApi = url.pathname.startsWith("/api/");
 
-  // Fail closed until VRELIO_ADMIN_GATE_KEY (or CINEVA_ADMIN_GATE_KEY) is configured in Netlify Env Vars.
+  // Fail closed until MAVIE_ADMIN_GATE_KEY (or CINEVA_ADMIN_GATE_KEY) is configured in Netlify Env Vars.
   if (!gateKey) return hidden404(isApi);
 
   const signingSecret =
     (
-      Netlify.env.get("VRELIO_CLOUD_SECRET") ??
+      Netlify.env.get("MAVIE_CLOUD_SECRET") ??
       Netlify.env.get("CINEVA_CLOUD_SECRET") ??
       ""
     ).trim() || gateKey;

@@ -23,11 +23,11 @@ import cloud_admin
 
 class _BaseCloudHarness(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix='vrelio-m1-tests-')
+        self.temp = tempfile.TemporaryDirectory(prefix='mavie-m1-tests-')
         self.data_dir = Path(self.temp.name)
         self.service = cloud_admin.CloudService(
             self.data_dir,
-            admin_email='admin@vrelio.app',
+            admin_email='admin@mavie.app',
             admin_password='AdminStrongPass!2026',
             admin_gate_key='m1-gate-key',
         )
@@ -136,7 +136,7 @@ class EmailVerificationAndPlansTests(_BaseCloudHarness):
             ('PUT', '/api/v1/sync', {'state': {'version': 1}}),
             ('POST', '/api/v1/devices/register', {'deviceId': 'd1', 'deviceName': 'PC', 'platform': 'windows'}),
             ('DELETE', '/api/v1/devices/d1', None),
-            ('POST', '/api/v1/licenses/redeem', {'code': 'VRELIO-0000-0000-0000'}),
+            ('POST', '/api/v1/licenses/redeem', {'code': 'MAVIE-0000-0000-0000'}),
         ):
             status, body = self.req(method, path, payload, token=forged_tok)
             self.assertEqual(status, 403, f'{method} {path} returned {status}: {body}')
@@ -355,14 +355,14 @@ class EmailVerificationAndPlansTests(_BaseCloudHarness):
         }, token=tok_a)
         self.assertEqual(c_dre_ok, 200)
 
-        # Admin mints a VRELIO-* Pro license -> user A redeems -> Pro & preserved sync data restored
+        # Admin mints a MAVIE-* Pro license -> user A redeems -> Pro & preserved sync data restored
         _, adm_login = self.req('POST', '/api/v1/auth/login', {
-            'email': 'admin@vrelio.app', 'password': 'AdminStrongPass!2026',
+            'email': 'admin@mavie.app', 'password': 'AdminStrongPass!2026',
         })
         _, lic_res = self.req('POST', '/api/v1/admin/licenses', {
             'plan': 'pro', 'durationDays': 365, 'maxDevices': 5, 'maxUses': 1,
         }, token=adm_login['token'])
-        self.assertTrue(lic_res['license']['code'].startswith('VRELIO-'))
+        self.assertTrue(lic_res['license']['code'].startswith('MAVIE-'))
 
         c_red, red_res = self.req('POST', '/api/v1/licenses/redeem', {'code': lic_res['license']['code']}, token=tok_a)
         self.assertEqual(c_red, 200)
@@ -459,12 +459,12 @@ class EmailVerificationAndPlansTests(_BaseCloudHarness):
         fake_client.send_message.side_effect = lambda msg: sent_messages.append(msg)
 
         env_patch = {
-            'VRELIO_EMAIL_MODE': 'smtp',
-            'VRELIO_SMTP_HOST': 'smtp.example.test',
-            'VRELIO_SMTP_PORT': '587',
-            'VRELIO_SMTP_USER': 'mailer@vrelio.app',
-            'VRELIO_SMTP_PASS': 'smtp-secret',
-            'VRELIO_SMTP_FROM': 'Vrelio <noreply@vrelio.app>',
+            'MAVIE_EMAIL_MODE': 'smtp',
+            'MAVIE_SMTP_HOST': 'smtp.example.test',
+            'MAVIE_SMTP_PORT': '587',
+            'MAVIE_SMTP_USER': 'mailer@mavie.app',
+            'MAVIE_SMTP_PASS': 'smtp-secret',
+            'MAVIE_SMTP_FROM': 'Mavie <noreply@mavie.app>',
         }
         with patch.dict(os.environ, env_patch), patch('smtplib.SMTP', return_value=fake_client) as smtp_cls:
             c_reg, reg_res = self.req('POST', '/api/v1/auth/register', {
@@ -476,7 +476,7 @@ class EmailVerificationAndPlansTests(_BaseCloudHarness):
         self.assertEqual(reg_res['deliveryMode'], 'smtp')
         smtp_cls.assert_called_once_with('smtp.example.test', 587, timeout=15)
         fake_client.starttls.assert_called_once()
-        fake_client.login.assert_called_once_with('mailer@vrelio.app', 'smtp-secret')
+        fake_client.login.assert_called_once_with('mailer@mavie.app', 'smtp-secret')
         self.assertEqual(len(sent_messages), 1)
         sent_msg = sent_messages[0]
         self.assertEqual(sent_msg['To'], 'smtpuser@example.com')
@@ -494,7 +494,7 @@ class EmailVerificationAndPlansTests(_BaseCloudHarness):
         self.assertEqual(r, ('smtp', 'sent', '', ''))
 
     def test_8_legacy_sqlite_migration_preserves_existing_users_and_normalizes_plans(self):
-        with tempfile.TemporaryDirectory(prefix='vrelio-legacy-db-') as tmp:
+        with tempfile.TemporaryDirectory(prefix='mavie-legacy-db-') as tmp:
             legacy_dir = Path(tmp)
             db_path = legacy_dir / 'cloud.sqlite3'
             with sqlite3.connect(db_path) as db:
@@ -567,7 +567,7 @@ class EmailVerificationAndPlansTests(_BaseCloudHarness):
                     }),),
                 )
 
-            migrated = cloud_admin.CloudService(legacy_dir, admin_email='admin@vrelio.app', admin_password='AdminStrongPass!2026')
+            migrated = cloud_admin.CloudService(legacy_dir, admin_email='admin@mavie.app', admin_password='AdminStrongPass!2026')
             u_free = migrated.get_user_by_id('u_free')
             u_fam = migrated.get_user_by_id('u_fam')
             u_life = migrated.get_user_by_id('u_life')
@@ -584,11 +584,11 @@ class EmailVerificationAndPlansTests(_BaseCloudHarness):
             self.assertEqual(u_life['maxDevices'], 5)
 
             cfg = migrated.get_public_config()
-            self.assertIn('Vrelio-Setup.exe', cfg['versions']['windowsInstallerUrl'])
-            self.assertTrue(cfg['versions']['windowsPortableUrl'].endswith('/Vrelio.exe'))
+            self.assertIn('Mavie-Setup.exe', cfg['versions']['windowsInstallerUrl'])
+            self.assertTrue(cfg['versions']['windowsPortableUrl'].endswith('/Mavie.exe'))
             self.assertNotIn('Cineva', cfg['versions']['windowsPortableUrl'])
-            self.assertIn('Vrelio-macOS.dmg', cfg['versions']['macosUrl'])
-            self.assertIn('Vrelio-iOS.ipa', cfg['versions']['iosUrl'])
+            self.assertIn('Mavie-macOS.dmg', cfg['versions']['macosUrl'])
+            self.assertIn('Mavie-iOS.ipa', cfg['versions']['iosUrl'])
             self.assertIn('ios', cfg['downloads'])
 
             # Active legacy password_resets row (sha256(token)) migrates and completes reset cleanly

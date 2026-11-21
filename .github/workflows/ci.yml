@@ -1,4 +1,4 @@
-name: Vrelio Multi-Platform CI & Releases
+name: Mavie Multi-Platform CI & Releases
 
 on:
   push:
@@ -65,7 +65,7 @@ jobs:
           test -n "$(find android/app/build/outputs/bundle/release -name '*.aab' | head -n 1)"
       - uses: actions/upload-artifact@v4
         with:
-          name: Vrelio-Android
+          name: Mavie-Android
           path: |
             android/app/build/outputs/apk/release/*.apk
             android/app/build/outputs/bundle/release/*.aab
@@ -78,29 +78,29 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Build Standalone Portable Vrelio.exe
+      - name: Build Standalone Portable Mavie.exe
         run: |
           pip install pyinstaller imageio-ffmpeg tzdata
-          pyinstaller windows\vrelio.spec
-      - name: Smoke Test Built Vrelio.exe (--serve and normal launcher)
+          pyinstaller windows\mavie.spec
+      - name: Smoke Test Built Mavie.exe (--serve and normal launcher)
         shell: pwsh
         run: |
           # 1. Verify headless --serve mode
-          $serveData = Join-Path $env:RUNNER_TEMP "vrelio-smoke-serve"
+          $serveData = Join-Path $env:RUNNER_TEMP "mavie-smoke-serve"
           New-Item -ItemType Directory -Force -Path $serveData | Out-Null
-          $env:VRELIO_DATA_DIR = $serveData
-          $serveProc = Start-Process -FilePath "dist\Vrelio.exe" -ArgumentList "--serve", "--host", "127.0.0.1", "--port", "18844" -PassThru
+          $env:MAVIE_DATA_DIR = $serveData
+          $serveProc = Start-Process -FilePath "dist\Mavie.exe" -ArgumentList "--serve", "--host", "127.0.0.1", "--port", "18844" -PassThru
           try {
             $ok = $false
             for ($i = 0; $i -lt 30; $i++) {
               Start-Sleep -Milliseconds 500
-              if ($serveProc.HasExited) { throw "Vrelio.exe --serve exited prematurely with code $($serveProc.ExitCode)" }
+              if ($serveProc.HasExited) { throw "Mavie.exe --serve exited prematurely with code $($serveProc.ExitCode)" }
               try {
                 $resp = Invoke-RestMethod -Uri "http://127.0.0.1:18844/api/health" -TimeoutSec 2
-                if ($resp.app -eq "vrelio" -and $resp.ok -eq $true) { $ok = $true; break }
+                if ($resp.app -eq "mavie" -and $resp.ok -eq $true) { $ok = $true; break }
               } catch {}
             }
-            if (-not $ok) { throw "Vrelio.exe --serve health check did not pass in time" }
+            if (-not $ok) { throw "Mavie.exe --serve health check did not pass in time" }
             $homeResp = Invoke-WebRequest -Uri "http://127.0.0.1:18844/" -UseBasicParsing -TimeoutSec 5
             if ($homeResp.StatusCode -ne 200) { throw "Unexpected status $($homeResp.StatusCode)" }
           } finally {
@@ -110,27 +110,27 @@ jobs:
           }
 
           # 2. Verify normal desktop launcher mode (>3s uptime, /api/health, clean desktop.log)
-          $launcherData = Join-Path $env:RUNNER_TEMP "vrelio-smoke-launcher"
+          $launcherData = Join-Path $env:RUNNER_TEMP "mavie-smoke-launcher"
           New-Item -ItemType Directory -Force -Path $launcherData | Out-Null
-          $env:VRELIO_DATA_DIR = $launcherData
-          $env:VRELIO_PORT = "18845"
-          $launchProc = Start-Process -FilePath "dist\Vrelio.exe" -PassThru
+          $env:MAVIE_DATA_DIR = $launcherData
+          $env:MAVIE_PORT = "18845"
+          $launchProc = Start-Process -FilePath "dist\Mavie.exe" -PassThru
           try {
             $ok = $false
             for ($i = 0; $i -lt 30; $i++) {
               Start-Sleep -Milliseconds 500
-              if ($launchProc.HasExited) { throw "Vrelio.exe launcher exited prematurely with code $($launchProc.ExitCode)" }
+              if ($launchProc.HasExited) { throw "Mavie.exe launcher exited prematurely with code $($launchProc.ExitCode)" }
               try {
                 $resp = Invoke-RestMethod -Uri "http://127.0.0.1:18845/api/health" -TimeoutSec 2
-                if ($resp.app -eq "vrelio" -and $resp.ok -eq $true) { $ok = $true; break }
+                if ($resp.app -eq "mavie" -and $resp.ok -eq $true) { $ok = $true; break }
               } catch {}
             }
-            if (-not $ok) { throw "Vrelio.exe launcher health check did not pass in time" }
+            if (-not $ok) { throw "Mavie.exe launcher health check did not pass in time" }
             Start-Sleep -Seconds 4
-            if ($launchProc.HasExited) { throw "Vrelio.exe launcher exited before 3s stability check (code $($launchProc.ExitCode))" }
+            if ($launchProc.HasExited) { throw "Mavie.exe launcher exited before 3s stability check (code $($launchProc.ExitCode))" }
             $resp2 = Invoke-RestMethod -Uri "http://127.0.0.1:18845/api/health" -TimeoutSec 2
-            if ($resp2.app -ne "vrelio" -or $resp2.ok -ne $true) {
-              throw "Vrelio.exe launcher health check failed after 4s"
+            if ($resp2.app -ne "mavie" -or $resp2.ok -ne $true) {
+              throw "Mavie.exe launcher health check failed after 4s"
             }
             $logFile = Join-Path $launcherData "desktop.log"
             if (-not (Test-Path $logFile)) { throw "Expected desktop.log at $logFile" }
@@ -139,22 +139,22 @@ jobs:
               throw "Traceback detected in desktop.log:`n$logText"
             }
           } finally {
-            Remove-Item Env:\VRELIO_PORT -ErrorAction SilentlyContinue
+            Remove-Item Env:\MAVIE_PORT -ErrorAction SilentlyContinue
             if (-not $launchProc.HasExited) {
               & taskkill /PID $launchProc.Id /T /F 2>$null | Out-Null
             }
           }
-      - name: Build Windows Setup Wizard (Vrelio-Setup.exe)
+      - name: Build Windows Setup Wizard (Mavie-Setup.exe)
         run: |
           choco install innosetup -y
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows\VrelioSetup.iss
-          if (-not (Test-Path "dist\Vrelio-Setup.exe")) { throw "dist\Vrelio-Setup.exe was not produced" }
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows\MavieSetup.iss
+          if (-not (Test-Path "dist\Mavie-Setup.exe")) { throw "dist\Mavie-Setup.exe was not produced" }
       - uses: actions/upload-artifact@v4
         with:
-          name: Vrelio-Windows
+          name: Mavie-Windows
           path: |
-            dist/Vrelio.exe
-            dist/Vrelio-Setup.exe
+            dist/Mavie.exe
+            dist/Mavie-Setup.exe
 
   apple-macos-and-ios:
     runs-on: macos-latest
@@ -169,15 +169,15 @@ jobs:
           python3 -m pip install --upgrade pip
           pip install pyinstaller imageio-ffmpeg tzdata
           brew install xcodegen
-      - name: Generate Xcode Project (apple/Vrelio.xcodeproj)
+      - name: Generate Xcode Project (apple/Mavie.xcodeproj)
         run: |
           xcodegen generate --spec apple/project.yml --project apple
-          test -d apple/Vrelio.xcodeproj
-      - name: Build & Smoke-Test macOS Vrelio.app + DMG + ZIP
+          test -d apple/Mavie.xcodeproj
+      - name: Build & Smoke-Test macOS Mavie.app + DMG + ZIP
         run: |
           bash apple/macOS/build_macos.sh
-          test -s dist/Vrelio-macOS.dmg
-          test -s dist/Vrelio-macOS.zip
+          test -s dist/Mavie-macOS.dmg
+          test -s dist/Mavie-macOS.zip
       - name: Run iOS XCTest Suite on iOS Simulator
         run: |
           SIM_ID=$(xcrun simctl list devices available -j | python3 -c '
@@ -206,18 +206,18 @@ jobs:
           test -n "$SIM_ID"
           xcrun simctl boot "$SIM_ID" || true
           xcodebuild test \
-            -project apple/Vrelio.xcodeproj \
-            -scheme VrelioIOS \
+            -project apple/Mavie.xcodeproj \
+            -scheme MavieIOS \
             -destination "platform=iOS Simulator,id=$SIM_ID" \
             -derivedDataPath build/ios-test-derived \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""
-      - name: Build Unsigned iOS App & Package Vrelio-iOS.ipa
+      - name: Build Unsigned iOS App & Package Mavie-iOS.ipa
         run: |
           xcodebuild \
-            -project apple/Vrelio.xcodeproj \
-            -scheme VrelioIOS \
+            -project apple/Mavie.xcodeproj \
+            -scheme MavieIOS \
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath build/ios-derived \
@@ -225,25 +225,25 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             build
-          IOS_APP=$(find build/ios-derived/Build/Products -maxdepth 3 -type d -name "Vrelio.app" | head -n 1)
+          IOS_APP=$(find build/ios-derived/Build/Products -maxdepth 3 -type d -name "Mavie.app" | head -n 1)
           echo "Built iOS app bundle: $IOS_APP"
           test -d "$IOS_APP"
-          test -f "$IOS_APP/Vrelio"
+          test -f "$IOS_APP/Mavie"
           mkdir -p build/ipa/Payload dist
-          cp -R "$IOS_APP" build/ipa/Payload/Vrelio.app
-          (cd build/ipa && zip -qry ../../dist/Vrelio-iOS.ipa Payload)
-          test -s dist/Vrelio-iOS.ipa
-          unzip -l dist/Vrelio-iOS.ipa | grep -q "Payload/Vrelio.app/Vrelio"
+          cp -R "$IOS_APP" build/ipa/Payload/Mavie.app
+          (cd build/ipa && zip -qry ../../dist/Mavie-iOS.ipa Payload)
+          test -s dist/Mavie-iOS.ipa
+          unzip -l dist/Mavie-iOS.ipa | grep -q "Payload/Mavie.app/Mavie"
       - uses: actions/upload-artifact@v4
         with:
-          name: Vrelio-macOS
+          name: Mavie-macOS
           path: |
-            dist/Vrelio-macOS.dmg
-            dist/Vrelio-macOS.zip
+            dist/Mavie-macOS.dmg
+            dist/Mavie-macOS.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: Vrelio-iOS
-          path: dist/Vrelio-iOS.ipa
+          name: Mavie-iOS
+          path: dist/Mavie-iOS.ipa
 
   publish-release:
     if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.publish_release == true)
@@ -262,33 +262,33 @@ jobs:
             APK_FILE=$(find release-assets -name '*.apk' | head -n 1)
           fi
           test -n "$APK_FILE"
-          cp "$APK_FILE" release-assets/Vrelio-Android.apk
+          cp "$APK_FILE" release-assets/Mavie-Android.apk
 
           AAB_FILE=$(find release-assets -name '*.aab' | head -n 1)
           test -n "$AAB_FILE"
-          cp "$AAB_FILE" release-assets/Vrelio-Android.aab
+          cp "$AAB_FILE" release-assets/Mavie-Android.aab
 
           for asset in \
-            release-assets/Vrelio-Windows/Vrelio-Setup.exe \
-            release-assets/Vrelio-Windows/Vrelio.exe \
-            release-assets/Vrelio-Android.apk \
-            release-assets/Vrelio-Android.aab \
-            release-assets/Vrelio-macOS/Vrelio-macOS.dmg \
-            release-assets/Vrelio-macOS/Vrelio-macOS.zip \
-            release-assets/Vrelio-iOS/Vrelio-iOS.ipa; do
+            release-assets/Mavie-Windows/Mavie-Setup.exe \
+            release-assets/Mavie-Windows/Mavie.exe \
+            release-assets/Mavie-Android.apk \
+            release-assets/Mavie-Android.aab \
+            release-assets/Mavie-macOS/Mavie-macOS.dmg \
+            release-assets/Mavie-macOS/Mavie-macOS.zip \
+            release-assets/Mavie-iOS/Mavie-iOS.ipa; do
             test -s "$asset" || { echo "Missing or empty release asset: $asset" >&2; exit 1; }
           done
-          ls -lh release-assets/Vrelio-Windows/ release-assets/Vrelio-macOS/ release-assets/Vrelio-iOS/ release-assets/Vrelio-Android.*
+          ls -lh release-assets/Mavie-Windows/ release-assets/Mavie-macOS/ release-assets/Mavie-iOS/ release-assets/Mavie-Android.*
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.release_tag || 'v2.1.0' }}
-          name: Vrelio ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.release_tag || 'v2.1.0' }}
+          name: Mavie ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.release_tag || 'v2.1.0' }}
           generate_release_notes: true
           files: |
-            release-assets/Vrelio-Windows/Vrelio-Setup.exe
-            release-assets/Vrelio-Windows/Vrelio.exe
-            release-assets/Vrelio-Android.apk
-            release-assets/Vrelio-Android.aab
-            release-assets/Vrelio-macOS/Vrelio-macOS.dmg
-            release-assets/Vrelio-macOS/Vrelio-macOS.zip
-            release-assets/Vrelio-iOS/Vrelio-iOS.ipa
+            release-assets/Mavie-Windows/Mavie-Setup.exe
+            release-assets/Mavie-Windows/Mavie.exe
+            release-assets/Mavie-Android.apk
+            release-assets/Mavie-Android.aab
+            release-assets/Mavie-macOS/Mavie-macOS.dmg
+            release-assets/Mavie-macOS/Mavie-macOS.zip
+            release-assets/Mavie-iOS/Mavie-iOS.ipa

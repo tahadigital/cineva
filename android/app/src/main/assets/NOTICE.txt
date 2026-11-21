@@ -1,7 +1,7 @@
-Vrelio Media Player
+Mavie Media Player
 
-Copyright (c) 2026 Vrelio Contributors.
-Vrelio is a personal media player and stream organizer. It does not include or distribute any third-party media streams.
+Copyright (c) 2026 Mavie Contributors.
+Mavie is a personal media player and stream organizer. It does not include or distribute any third-party media streams.
 
 Open-Source Components:
 
@@ -10,7 +10,7 @@ Open-Source Components:
    Copyright VideoLAN and contributors.
    Corresponding source: https://code.videolan.org/videolan/libvlcjni
    License: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
-   Vrelio includes no modifications to the LibVLC library.
+   Mavie includes no modifications to the LibVLC library.
 
 2. Jetpack Compose, AndroidX, Kotlin, kotlinx.coroutines
    Licensed under Apache License 2.0.

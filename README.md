@@ -1,17 +1,17 @@
-# Vrelio
+# Mavie
 
-**Vrelio**, kişisel medya arşivlerinizi, M3U/M3U8 oynatma listelerinizi, XMLTV EPG program rehberlerinizi ve açık lisanslı akışları tek bir modern arayüzde yönetip oynatmanızı sağlayan çoklu platform medya merkezidir.
+**Mavie**, kişisel medya arşivlerinizi, M3U/M3U8 oynatma listelerinizi, XMLTV EPG program rehberlerinizi ve açık lisanslı akışları tek bir modern arayüzde yönetip oynatmanızı sağlayan çoklu platform medya merkezidir.
 
-> **Gizlilik ve Yasal Konumlandırma:** Vrelio kişisel bir medya oynatıcıdır; herhangi bir televizyon kanalı, telifli içerik veya yayın akışı barındırmaz ve sağlamaz. Medya kaynaklarınız ve izleme geçmişiniz yalnızca kendi cihazınızda saklanır.
+> **Gizlilik ve Yasal Konumlandırma:** Mavie kişisel bir medya oynatıcıdır; herhangi bir televizyon kanalı, telifli içerik veya yayın akışı barındırmaz ve sağlamaz. Medya kaynaklarınız ve izleme geçmişiniz yalnızca kendi cihazınızda saklanır.
 
 ## İndirme
 
 Hazır kurulum dosyalarını her zaman en güncel haliyle GitHub Releases üzerinden indirebilirsiniz:
 
-- **Windows Kurulum Sihirbazı (`Vrelio-Setup.exe`) & Taşınabilir (`Vrelio.exe`):** [GitHub Releases](https://github.com/tahadigital/cineva/releases/latest)
-- **Android APK (`Vrelio-Android.apk` / `Vrelio-Android.aab`):** [GitHub Releases](https://github.com/tahadigital/cineva/releases/latest)
-- **macOS (`Vrelio-macOS.dmg` / `Vrelio-macOS.zip`):** [GitHub Releases](https://github.com/tahadigital/cineva/releases/latest)
-- **iOS (`Vrelio-iOS.ipa`):** [GitHub Releases](https://github.com/tahadigital/cineva/releases/latest)
+- **Windows Kurulum Sihirbazı (`Mavie-Setup.exe`) & Taşınabilir (`Mavie.exe`):** [GitHub Releases](https://github.com/tahadigital/cineva/releases/latest)
+- **Android APK (`Mavie-Android.apk` / `Mavie-Android.aab`):** [GitHub Releases](https://github.com/tahadigital/cineva/releases/latest)
+- **macOS (`Mavie-macOS.dmg` / `Mavie-macOS.zip`):** [GitHub Releases](https://github.com/tahadigital/cineva/releases/latest)
+- **iOS (`Mavie-iOS.ipa`):** [GitHub Releases](https://github.com/tahadigital/cineva/releases/latest)
 
 ## Özellikler
 
@@ -26,7 +26,7 @@ Hazır kurulum dosyalarını her zaman en güncel haliyle GitHub Releases üzeri
 
 ### Masaüstü / Web Uygulaması (Windows / Mac / Linux)
 ```bash
-python3 desktop/vrelio_desktop.py
+python3 desktop/mavie_desktop.py
 ```
 
 ### Bulut Kontrol Sunucusu & E-posta Yapılandırması
@@ -34,9 +34,9 @@ python3 desktop/vrelio_desktop.py
 python3 cloud_admin.py --host 127.0.0.1 --port 8899
 ```
 İsteğe bağlı e-posta ortam değişkenleri:
-- `VRELIO_EMAIL_MODE`: `auto` (varsayılan), `smtp` veya `outbox`
-- `VRELIO_SMTP_HOST`, `VRELIO_SMTP_PORT` (varsayılan `587`), `VRELIO_SMTP_USER`, `VRELIO_SMTP_PASS`, `VRELIO_SMTP_FROM`
-- `VRELIO_EMAIL_OUTBOX_FILE`: SMTP kimlik bilgileri yokken doğrulama/sıfırlama e-postalarının yazıldığı dosya yolu (varsayılan `cloud_data/email_outbox.json`)
+- `MAVIE_EMAIL_MODE`: `auto` (varsayılan), `smtp` veya `outbox`
+- `MAVIE_SMTP_HOST`, `MAVIE_SMTP_PORT` (varsayılan `587`), `MAVIE_SMTP_USER`, `MAVIE_SMTP_PASS`, `MAVIE_SMTP_FROM`
+- `MAVIE_EMAIL_OUTBOX_FILE`: SMTP kimlik bilgileri yokken doğrulama/sıfırlama e-postalarının yazıldığı dosya yolu (varsayılan `cloud_data/email_outbox.json`)
 
 ### Android
 `android/` dizinindeki Gradle projesini Android Studio ile açabilir veya komut satırından derleyebilirsiniz:

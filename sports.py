@@ -1,4 +1,4 @@
-"""Standard XMLTV EPG parser and live program guide matcher for Vrelio.
+"""Standard XMLTV EPG parser and live program guide matcher for Mavie.
 
 Reads user-configured XMLTV (.xml or .xml.gz) program guides cleanly without scraping third-party sites.
 """
@@ -167,7 +167,7 @@ def get_listings(day, fetch, epg_url='', refresh=False, tz=ZONE):
         cached = _cache.get(cache_key)
         if not cached or now - cached[0] >= (15 if refresh else FRESH):
             try:
-                with fetch(source, timeout=15, headers={'User-Agent': 'Vrelio/3.0 (XMLTV EPG)'}) as response:
+                with fetch(source, timeout=15, headers={'User-Agent': 'Mavie/3.0 (XMLTV EPG)'}) as response:
                     payload = response.read(MAX_PAGE + 1)
                 if len(payload) > MAX_PAGE:
                     raise RuntimeError('XMLTV rehberi çok büyük.')

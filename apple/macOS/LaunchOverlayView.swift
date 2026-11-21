@@ -16,23 +16,23 @@ public struct LaunchOverlayView: View {
 
     public var body: some View {
         ZStack {
-            VrelioTheme.cinemaBackdrop
+            MavieTheme.cinemaBackdrop
                 .ignoresSafeArea()
 
             VStack(spacing: 24) {
                 ZStack {
                     if !reduceMotion {
                         Circle()
-                            .fill(VrelioTheme.coral.opacity(0.16))
+                            .fill(MavieTheme.coral.opacity(0.16))
                             .frame(width: 128, height: 128)
                             .scaleEffect(pulse ? 1.12 : 0.94)
                             .animation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true), value: pulse)
                     }
-                    VrelioLogoMark(size: 88, animateSweep: true)
+                    MavieLogoMark(size: 88, animateSweep: true)
                 }
 
                 VStack(spacing: 8) {
-                    Text("Vrelio")
+                    Text("Mavie")
                         .font(.system(size: 32, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
 
@@ -40,26 +40,26 @@ public struct LaunchOverlayView: View {
                     case .idle, .starting:
                         Text(manager.healthDetails)
                             .font(.subheadline)
-                            .foregroundStyle(VrelioTheme.muted)
+                            .foregroundStyle(MavieTheme.muted)
                         ProgressView()
                             .controlSize(.regular)
-                            .tint(VrelioTheme.amber)
+                            .tint(MavieTheme.amber)
                             .padding(.top, 4)
 
                     case .ready:
                         Label("Arayüz yükleniyor…", systemImage: "checkmark.circle.fill")
                             .font(.subheadline.weight(.medium))
-                            .foregroundStyle(VrelioTheme.success)
+                            .foregroundStyle(MavieTheme.success)
 
                     case .failed(let message):
                         VStack(spacing: 14) {
                             Label("Sunucu Başlatılamadı", systemImage: "exclamationmark.triangle.fill")
                                 .font(.headline)
-                                .foregroundStyle(VrelioTheme.danger)
+                                .foregroundStyle(MavieTheme.danger)
 
                             Text(message)
                                 .font(.callout)
-                                .foregroundStyle(VrelioTheme.muted)
+                                .foregroundStyle(MavieTheme.muted)
                                 .multilineTextAlignment(.center)
                                 .frame(maxWidth: 420)
 
@@ -67,7 +67,7 @@ public struct LaunchOverlayView: View {
                                 Button(action: onRetry) {
                                     Label("Tekrar Dene", systemImage: "arrow.clockwise")
                                 }
-                                .buttonStyle(VrelioPrimaryButtonStyle(compact: true))
+                                .buttonStyle(MaviePrimaryButtonStyle(compact: true))
                                 .accessibilityLabel("Sunucuyu Tekrar Başlat")
 
                                 Button {
@@ -75,18 +75,18 @@ public struct LaunchOverlayView: View {
                                 } label: {
                                     Label("Günlüğü Aç", systemImage: "doc.text.magnifyingglass")
                                 }
-                                .buttonStyle(VrelioGhostButtonStyle(compact: true))
+                                .buttonStyle(MavieGhostButtonStyle(compact: true))
                                 .accessibilityLabel("Sunucu Günlüğünü Aç")
 
                                 Button(action: onQuit) {
                                     Label("Çık", systemImage: "xmark.circle")
                                 }
-                                .buttonStyle(VrelioGhostButtonStyle(compact: true))
-                                .accessibilityLabel("Vrelio Uygulamasından Çık")
+                                .buttonStyle(MavieGhostButtonStyle(compact: true))
+                                .accessibilityLabel("Mavie Uygulamasından Çık")
                             }
                         }
                         .padding(20)
-                        .vrelioCard(cornerRadius: 18)
+                        .mavieCard(cornerRadius: 18)
                     }
                 }
             }

@@ -28,16 +28,16 @@ class Tier2EmailVerificationBoundariesTests(unittest.TestCase):
     def test_invalid_verification_code_rejected_and_user_remains_unverified(self) -> None:
         self.cloud.client().post(
             "/api/v1/auth/register",
-            {"email": "badcode@vrelio.app", "password": "StrongPassword123!"},
+            {"email": "badcode@mavie.app", "password": "StrongPassword123!"},
         )
         res = self.cloud.client().post(
             "/api/v1/auth/verify-email",
-            {"email": "badcode@vrelio.app", "code": "000000"},
+            {"email": "badcode@mavie.app", "code": "000000"},
         )
         self.assertIn(res.status, (400, 401, 403), res.text)
         login = self.cloud.client().post(
             "/api/v1/auth/login",
-            {"email": "badcode@vrelio.app", "password": "StrongPassword123!"},
+            {"email": "badcode@mavie.app", "password": "StrongPassword123!"},
         )
         self.assertEqual(login.status, 403)
         self.assertEqual((login.json or {}).get("code"), "EMAIL_NOT_VERIFIED")
@@ -45,24 +45,24 @@ class Tier2EmailVerificationBoundariesTests(unittest.TestCase):
     def test_expired_verification_code_rejected(self) -> None:
         self.cloud.client().post(
             "/api/v1/auth/register",
-            {"email": "expcode@vrelio.app", "password": "StrongPassword123!"},
+            {"email": "expcode@mavie.app", "password": "StrongPassword123!"},
         )
-        _, code, token = self.cloud.find_latest_mail("expcode@vrelio.app")
+        _, code, token = self.cloud.find_latest_mail("expcode@mavie.app")
         self.assertTrue(code or token)
         updated = self.cloud.expire_tokens_in_db("verif")
         self.assertGreater(updated, 0, "Expected verification token row in SQLite to backdate 24h expiry")
 
-        payload = {"email": "expcode@vrelio.app", "code": code} if code else {"token": token}
+        payload = {"email": "expcode@mavie.app", "code": code} if code else {"token": token}
         res = self.cloud.client().post("/api/v1/auth/verify-email", payload)
         self.assertIn(res.status, (400, 401, 410), res.text)
 
     def test_reused_verification_code_rejected_after_first_verify(self) -> None:
         self.cloud.client().post(
             "/api/v1/auth/register",
-            {"email": "reuse@vrelio.app", "password": "StrongPassword123!"},
+            {"email": "reuse@mavie.app", "password": "StrongPassword123!"},
         )
-        _, code, token = self.cloud.find_latest_mail("reuse@vrelio.app")
-        payload = {"email": "reuse@vrelio.app", "code": code} if code else {"token": token}
+        _, code, token = self.cloud.find_latest_mail("reuse@mavie.app")
+        payload = {"email": "reuse@mavie.app", "code": code} if code else {"token": token}
         first = self.cloud.client().post("/api/v1/auth/verify-email", payload)
         self.assertEqual(first.status, 200, first.text)
         second = self.cloud.client().post("/api/v1/auth/verify-email", payload)
@@ -71,7 +71,7 @@ class Tier2EmailVerificationBoundariesTests(unittest.TestCase):
     def test_unverified_user_blocked_across_all_verified_only_endpoints(self) -> None:
         reg = self.cloud.client().post(
             "/api/v1/auth/register",
-            {"email": "gateall@vrelio.app", "password": "StrongPassword123!"},
+            {"email": "gateall@mavie.app", "password": "StrongPassword123!"},
         )
         self.assertEqual(reg.status, 201)
         self.assertIsNone((reg.json or {}).get("token"))
@@ -83,7 +83,7 @@ class Tier2EmailVerificationBoundariesTests(unittest.TestCase):
             ("PUT", "/api/v1/sync", {"favorites": []}),
             ("POST", "/api/v1/devices/register", {"deviceId": "d1", "name": "PC", "platform": "windows"}),
             ("DELETE", "/api/v1/devices/d1", None),
-            ("POST", "/api/v1/licenses/redeem", {"code": "VRELIO-AAAA-BBBB-CCCC"}),
+            ("POST", "/api/v1/licenses/redeem", {"code": "MAVIE-AAAA-BBBB-CCCC"}),
         ):
             resp = self.cloud.client().request(method, path, json_body=body)
             self.assertIn(resp.status, (401, 403), f"{method} {path} must reject unverified/unauthenticated caller")
@@ -91,11 +91,11 @@ class Tier2EmailVerificationBoundariesTests(unittest.TestCase):
     def test_resend_verification_rate_limited(self) -> None:
         self.cloud.client().post(
             "/api/v1/auth/register",
-            {"email": "ratelimit@vrelio.app", "password": "StrongPassword123!"},
+            {"email": "ratelimit@mavie.app", "password": "StrongPassword123!"},
         )
         statuses = []
         for _ in range(12):
-            r = self.cloud.client().post("/api/v1/auth/resend-verification", {"email": "ratelimit@vrelio.app"})
+            r = self.cloud.client().post("/api/v1/auth/resend-verification", {"email": "ratelimit@mavie.app"})
             statuses.append(r.status)
             if r.status == 429:
                 break
@@ -104,15 +104,15 @@ class Tier2EmailVerificationBoundariesTests(unittest.TestCase):
     def test_duplicate_email_case_insensitive_and_weak_password_rejected(self) -> None:
         weak = self.cloud.client().post(
             "/api/v1/auth/register",
-            {"email": "weak@vrelio.app", "password": "123"},
+            {"email": "weak@mavie.app", "password": "123"},
         )
         self.assertEqual(weak.status, 400, weak.text)
 
-        ver, _, _ = self.cloud.register_and_verify("DupCase@Vrelio.app", "StrongPassword123!")
+        ver, _, _ = self.cloud.register_and_verify("DupCase@Mavie.app", "StrongPassword123!")
         self.assertEqual(ver.status, 200, ver.text)
         dup = self.cloud.client().post(
             "/api/v1/auth/register",
-            {"email": " dupcase@vrelio.app ", "password": "StrongPassword123!"},
+            {"email": " dupcase@mavie.app ", "password": "StrongPassword123!"},
         )
         self.assertIn(dup.status, (400, 409), dup.text)
 
@@ -123,7 +123,7 @@ class Tier2PasswordResetBoundariesTests(unittest.TestCase):
     def setUp(self) -> None:
         self.cloud = CloudServerProcess().start()
         self.addCleanup(self.cloud.stop)
-        self.email = "pwbounds@vrelio.app"
+        self.email = "pwbounds@mavie.app"
         self.cloud.register_and_verify(self.email, "FirstPass123!")
 
     def test_wrong_password_login_returns_401(self) -> None:
@@ -195,7 +195,7 @@ class Tier2TrialDeviceLicenseBoundariesTests(unittest.TestCase):
         self.addCleanup(self.cloud.stop)
 
     def test_trial_just_before_72h_expiry_remains_pro(self) -> None:
-        _, tok, user = self.cloud.register_and_verify("t_before@vrelio.app", "StrongPassword123!")
+        _, tok, user = self.cloud.register_and_verify("t_before@mavie.app", "StrongPassword123!")
         admin_tok = self.cloud.admin_login()
         almost = (datetime.now(timezone.utc) + timedelta(seconds=120)).isoformat()
         self.cloud.client().patch(
@@ -209,7 +209,7 @@ class Tier2TrialDeviceLicenseBoundariesTests(unittest.TestCase):
         self.assertEqual(me["maxDevices"], 5)
 
     def test_trial_just_after_72h_expiry_auto_downgrades_to_normal(self) -> None:
-        _, tok, user = self.cloud.register_and_verify("t_after@vrelio.app", "StrongPassword123!")
+        _, tok, user = self.cloud.register_and_verify("t_after@mavie.app", "StrongPassword123!")
         admin_tok = self.cloud.admin_login()
         expired = (datetime.now(timezone.utc) - timedelta(seconds=120)).isoformat()
         self.cloud.client().patch(
@@ -224,7 +224,7 @@ class Tier2TrialDeviceLicenseBoundariesTests(unittest.TestCase):
         self.assertEqual(me["maxDevices"], 1)
 
     def test_normal_device_limit_boundary_and_idempotent_reregister(self) -> None:
-        _, tok, user = self.cloud.register_and_verify("dev1@vrelio.app", "StrongPassword123!")
+        _, tok, user = self.cloud.register_and_verify("dev1@mavie.app", "StrongPassword123!")
         admin_tok = self.cloud.admin_login()
         self.cloud.client().patch(
             f"/api/v1/admin/users/{user['id']}",
@@ -242,7 +242,7 @@ class Tier2TrialDeviceLicenseBoundariesTests(unittest.TestCase):
         self.assertEqual((r2.json or {}).get("code"), "DEVICE_LIMIT_REACHED")
 
     def test_pro_device_limit_boundary_5_vs_6(self) -> None:
-        _, tok, _ = self.cloud.register_and_verify("dev5@vrelio.app", "StrongPassword123!")
+        _, tok, _ = self.cloud.register_and_verify("dev5@mavie.app", "StrongPassword123!")
         for idx in range(1, 6):
             r = self.cloud.client().post(
                 "/api/v1/devices/register",
@@ -267,10 +267,10 @@ class Tier2TrialDeviceLicenseBoundariesTests(unittest.TestCase):
         self.assertEqual(r6_ok.status, 200)
 
     def test_invalid_and_already_used_license_keys_rejected(self) -> None:
-        _, tok1, _ = self.cloud.register_and_verify("lic1@vrelio.app", "StrongPassword123!")
-        _, tok2, _ = self.cloud.register_and_verify("lic2@vrelio.app", "StrongPassword123!")
+        _, tok1, _ = self.cloud.register_and_verify("lic1@mavie.app", "StrongPassword123!")
+        _, tok2, _ = self.cloud.register_and_verify("lic2@mavie.app", "StrongPassword123!")
 
-        bad = self.cloud.client().post("/api/v1/licenses/redeem", {"code": "VRELIO-0000-0000-0000"}, token=tok1)
+        bad = self.cloud.client().post("/api/v1/licenses/redeem", {"code": "MAVIE-0000-0000-0000"}, token=tok1)
         self.assertIn(bad.status, (400, 404))
         empty = self.cloud.client().post("/api/v1/licenses/redeem", {"code": ""}, token=tok1)
         self.assertEqual(empty.status, 400)
@@ -288,8 +288,8 @@ class Tier2TrialDeviceLicenseBoundariesTests(unittest.TestCase):
         self.assertIn(reused.status, (400, 409, 410), reused.text)
 
     def test_cannot_delete_another_users_device(self) -> None:
-        _, tok_a, _ = self.cloud.register_and_verify("own_a@vrelio.app", "StrongPassword123!")
-        _, tok_b, _ = self.cloud.register_and_verify("own_b@vrelio.app", "StrongPassword123!")
+        _, tok_a, _ = self.cloud.register_and_verify("own_a@mavie.app", "StrongPassword123!")
+        _, tok_b, _ = self.cloud.register_and_verify("own_b@mavie.app", "StrongPassword123!")
         self.cloud.client().post("/api/v1/devices/register", {"deviceId": "a_device_99", "name": "A", "platform": "windows"}, token=tok_a)
         res = self.cloud.client().delete("/api/v1/devices/a_device_99", token=tok_b)
         self.assertIn(res.status, (403, 404))
@@ -391,26 +391,26 @@ class Tier2OutboxWebsiteAdminBoundariesTests(unittest.TestCase):
     """Boundary Area E: Missing SMTP outbox fallback, anti-leakage, malformed inputs, admin gate."""
 
     def setUp(self) -> None:
-        self.cloud = CloudServerProcess(extra_env={"VRELIO_EMAIL_MODE": "auto"}).start()
+        self.cloud = CloudServerProcess(extra_env={"MAVIE_EMAIL_MODE": "auto"}).start()
         self.addCleanup(self.cloud.stop)
 
     def test_missing_smtp_falls_back_to_local_outbox_cleanly(self) -> None:
         reg = self.cloud.client().post(
             "/api/v1/auth/register",
-            {"email": "nosmtp@vrelio.app", "password": "StrongPassword123!"},
+            {"email": "nosmtp@mavie.app", "password": "StrongPassword123!"},
         )
         self.assertEqual(reg.status, 201, reg.text)
         self.assertEqual((reg.json or {}).get("deliveryMode"), "outbox")
-        mail, code, token = self.cloud.find_latest_mail("nosmtp@vrelio.app")
+        mail, code, token = self.cloud.find_latest_mail("nosmtp@mavie.app")
         self.assertIsNotNone(mail)
         self.assertTrue(code or token)
 
     def test_public_responses_never_leak_codes_or_tokens(self) -> None:
         reg = self.cloud.client().post(
             "/api/v1/auth/register",
-            {"email": "noleak@vrelio.app", "password": "StrongPassword123!"},
+            {"email": "noleak@mavie.app", "password": "StrongPassword123!"},
         )
-        _, vcode, vtok = self.cloud.find_latest_mail("noleak@vrelio.app")
+        _, vcode, vtok = self.cloud.find_latest_mail("noleak@mavie.app")
         if vcode:
             self.assertNotIn(vcode, reg.text)
         if vtok:
@@ -418,10 +418,10 @@ class Tier2OutboxWebsiteAdminBoundariesTests(unittest.TestCase):
 
         self.cloud.client().post(
             "/api/v1/auth/verify-email",
-            {"email": "noleak@vrelio.app", "code": vcode} if vcode else {"token": vtok},
+            {"email": "noleak@mavie.app", "code": vcode} if vcode else {"token": vtok},
         )
-        fg = self.cloud.client().post("/api/v1/auth/forgot-password", {"email": "noleak@vrelio.app"})
-        _, rcode, rtok = self.cloud.find_latest_mail("noleak@vrelio.app")
+        fg = self.cloud.client().post("/api/v1/auth/forgot-password", {"email": "noleak@mavie.app"})
+        _, rcode, rtok = self.cloud.find_latest_mail("noleak@mavie.app")
         if rcode and rcode != vcode:
             self.assertNotIn(rcode, fg.text)
         if rtok and rtok != vtok:
@@ -446,7 +446,7 @@ class Tier2OutboxWebsiteAdminBoundariesTests(unittest.TestCase):
         )
         self.assertIn(no_gate.status, (401, 403, 404))
 
-        _, user_tok, _ = self.cloud.register_and_verify("norm_adm@vrelio.app", "StrongPassword123!")
+        _, user_tok, _ = self.cloud.register_and_verify("norm_adm@mavie.app", "StrongPassword123!")
         non_admin = self.cloud.client().get(
             "/api/v1/admin/users",
             headers=self.cloud.admin_headers(user_tok),

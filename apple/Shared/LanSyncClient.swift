@@ -21,7 +21,7 @@ public enum LanSyncClient {
             trimmed.removeLast()
         }
         guard !trimmed.isEmpty else {
-            throw VrelioError.invalidURL("Masaüstü sunucusunun yerel ağ adresini girin (ör. 192.168.1.25:8844).")
+            throw MavieError.invalidURL("Masaüstü sunucusunun yerel ağ adresini girin (ör. 192.168.1.25:8844).")
         }
         if !trimmed.contains("://") {
             trimmed = "http://" + trimmed
@@ -31,20 +31,20 @@ public enum LanSyncClient {
               scheme == "http" || scheme == "https",
               let host = components.host,
               !host.isEmpty else {
-            throw VrelioError.invalidURL("Geçerli bir yerel ağ adresi girin.")
+            throw MavieError.invalidURL("Geçerli bir yerel ağ adresi girin.")
         }
         if components.user != nil || components.password != nil || components.query != nil || components.fragment != nil {
-            throw VrelioError.validation("Yalnızca sunucunun yerel ağ adresini ve portunu girin.")
+            throw MavieError.validation("Yalnızca sunucunun yerel ağ adresini ve portunu girin.")
         }
         guard isAllowedLanHost(host) else {
-            throw VrelioError.validation("Eşitleme için aynı Wi-Fi ağındaki yerel (RFC1918/loopback) adresi kullanın.")
+            throw MavieError.validation("Eşitleme için aynı Wi-Fi ağındaki yerel (RFC1918/loopback) adresi kullanın.")
         }
         if components.port == nil && !host.contains(":") {
             components.port = 8844
         }
         components.path = ""
         guard let url = components.url else {
-            throw VrelioError.invalidURL("Yerel ağ adresi oluşturulamadı.")
+            throw MavieError.invalidURL("Yerel ağ adresi oluşturulamadı.")
         }
         return url
     }
@@ -52,7 +52,7 @@ public enum LanSyncClient {
     public static func validatePairingCode(_ code: String) throws -> String {
         let clean = code.trimmingCharacters(in: .whitespacesAndNewlines)
         guard clean.count == 6, clean.allSatisfy(\.isNumber) else {
-            throw VrelioError.validation("Masaüstü uygulamasındaki 6 haneli eşleştirme kodunu girin.")
+            throw MavieError.validation("Masaüstü uygulamasındaki 6 haneli eşleştirme kodunu girin.")
         }
         return clean
     }
@@ -129,7 +129,7 @@ public enum LanSyncClient {
 
         // 1. Pair
         guard let pairURL = URL(string: base.absoluteString + "/api/pair") else {
-            throw VrelioError.invalidURL("Eşleştirme adresi geçersiz.")
+            throw MavieError.invalidURL("Eşleştirme adresi geçersiz.")
         }
         var pairReq = URLRequest(url: pairURL)
         pairReq.httpMethod = "POST"
@@ -139,20 +139,20 @@ public enum LanSyncClient {
 
         let (_, pairResp) = try await session.data(for: pairReq)
         guard let pairHttp = pairResp as? HTTPURLResponse else {
-            throw VrelioError.network("Masaüstü sunucusundan yanıt alınamadı.")
+            throw MavieError.network("Masaüstü sunucusundan yanıt alınamadı.")
         }
         guard (200...299).contains(pairHttp.statusCode) else {
-            throw VrelioError.validation(pairHttp.statusCode == 403 ? "Eşleştirme kodu hatalı." : "Masaüstü sunucusuyla eşleştirme başarısız.")
+            throw MavieError.validation(pairHttp.statusCode == 403 ? "Eşleştirme kodu hatalı." : "Masaüstü sunucusuyla eşleştirme başarısız.")
         }
         guard let setCookie = pairHttp.value(forHTTPHeaderField: "Set-Cookie"),
               let cookieHeader = setCookie.split(separator: ";").first.map(String.init),
               !cookieHeader.isEmpty else {
-            throw VrelioError.network("Masaüstü eşleştirme çerezi alınamadı.")
+            throw MavieError.network("Masaüstü eşleştirme çerezi alınamadı.")
         }
 
         // 2. Pull remote export
         guard let exportURL = URL(string: base.absoluteString + "/api/export") else {
-            throw VrelioError.invalidURL("Dışa aktarım adresi geçersiz.")
+            throw MavieError.invalidURL("Dışa aktarım adresi geçersiz.")
         }
         var exportReq = URLRequest(url: exportURL)
         exportReq.timeoutInterval = 15
@@ -160,18 +160,18 @@ public enum LanSyncClient {
 
         let (exportData, exportResp) = try await session.data(for: exportReq)
         guard let exportHttp = exportResp as? HTTPURLResponse, (200...299).contains(exportHttp.statusCode) else {
-            throw VrelioError.network("Masaüstü kütüphanesi okunamadı.")
+            throw MavieError.network("Masaüstü kütüphanesi okunamadı.")
         }
         guard exportData.count <= maxBackupBytes else {
-            throw VrelioError.validation("Masaüstü yedek boyutu çok büyük.")
+            throw MavieError.validation("Masaüstü yedek boyutu çok büyük.")
         }
         guard let remoteObj = try JSONSerialization.jsonObject(with: exportData) as? [String: Any] else {
-            throw VrelioError.parsing("Masaüstü yedek verisi ayrıştırılamadı.")
+            throw MavieError.parsing("Masaüstü yedek verisi ayrıştırılamadı.")
         }
 
         // 3. Push local backup back to desktop
         guard let importURL = URL(string: base.absoluteString + "/api/import") else {
-            throw VrelioError.invalidURL("İçe aktarım adresi geçersiz.")
+            throw MavieError.invalidURL("İçe aktarım adresi geçersiz.")
         }
         var importReq = URLRequest(url: importURL)
         importReq.httpMethod = "POST"
@@ -182,11 +182,11 @@ public enum LanSyncClient {
 
         let (importData, importResp) = try await session.data(for: importReq)
         guard let importHttp = importResp as? HTTPURLResponse else {
-            throw VrelioError.network("Masaüstü sunucusundan içe aktarım yanıtı alınamadı.")
+            throw MavieError.network("Masaüstü sunucusundan içe aktarım yanıtı alınamadı.")
         }
         guard (200...299).contains(importHttp.statusCode) else {
             let serverErr = (try? JSONSerialization.jsonObject(with: importData) as? [String: Any])?["error"] as? String
-            throw VrelioError.validation(serverErr ?? "Masaüstü sunucusu yedek verisini kabul etmedi (HTTP \(importHttp.statusCode)).")
+            throw MavieError.validation(serverErr ?? "Masaüstü sunucusu yedek verisini kabul etmedi (HTTP \(importHttp.statusCode)).")
         }
 
         return remoteObj

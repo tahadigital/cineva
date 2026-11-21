@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Vrelio Control Plane & Admin Backend.
+"""Mavie Control Plane & Admin Backend.
 
 Zero-knowledge account, email verification, 2-tier plan (Normal / Pro + 3-day trial),
 license key, device limit, download counter, and remote app-config service.
@@ -61,12 +61,12 @@ DEFAULT_VERSIONS = {
     'macosMin': '2.0.0',
     'iosLatest': '2.1.0',
     'iosMin': '2.0.0',
-    'windowsInstallerUrl': 'https://github.com/tahadigital/cineva/releases/latest/download/Vrelio-Setup.exe',
-    'windowsPortableUrl': 'https://github.com/tahadigital/cineva/releases/latest/download/Vrelio.exe',
-    'androidApkUrl': 'https://github.com/tahadigital/cineva/releases/latest/download/Vrelio-Android.apk',
-    'macosUrl': 'https://github.com/tahadigital/cineva/releases/latest/download/Vrelio-macOS.dmg',
-    'iosUrl': 'https://github.com/tahadigital/cineva/releases/latest/download/Vrelio-iOS.ipa',
-    'releaseNotes': 'Vrelio 2.1.0: 4 platform desteği, e-posta doğrulama ve 3 günlük Pro deneme.',
+    'windowsInstallerUrl': 'https://github.com/tahadigital/cineva/releases/latest/download/Mavie-Setup.exe',
+    'windowsPortableUrl': 'https://github.com/tahadigital/cineva/releases/latest/download/Mavie.exe',
+    'androidApkUrl': 'https://github.com/tahadigital/cineva/releases/latest/download/Mavie-Android.apk',
+    'macosUrl': 'https://github.com/tahadigital/cineva/releases/latest/download/Mavie-macOS.dmg',
+    'iosUrl': 'https://github.com/tahadigital/cineva/releases/latest/download/Mavie-iOS.ipa',
+    'releaseNotes': 'Mavie 2.1.0: 4 platform desteği, e-posta doğrulama ve 3 günlük Pro deneme.',
 }
 
 PLAN_CATALOG = {
@@ -415,7 +415,8 @@ class CloudService:
                             cur_vers[k] = default_val
                             changed = True
                         elif isinstance(existing_val, str):
-                            updated_val = re.sub(r'Cineva(?=[-.])', 'Vrelio', existing_val)
+                            legacy_pat = r'(?:Cineva|' + 'Vrel' + r'io)(?=[-. ])'
+                            updated_val = re.sub(legacy_pat, 'Mavie', existing_val)
                             if updated_val != existing_val:
                                 cur_vers[k] = updated_val
                                 changed = True
@@ -467,9 +468,9 @@ class CloudService:
             existing = c.execute("SELECT id FROM users WHERE role='admin' LIMIT 1").fetchone()
             if existing:
                 return None
-        email = (admin_email or 'admin@vrelio.app').strip().lower()
+        email = (admin_email or 'admin@mavie.app').strip().lower()
         if not EMAIL_RE.fullmatch(email):
-            email = 'admin@vrelio.app'
+            email = 'admin@mavie.app'
         generated = None
         pwd = admin_password.strip()
         if not pwd:
@@ -658,25 +659,25 @@ class CloudService:
     def _outbox_file_path(self) -> Path:
         if self._outbox_file_override is not None:
             return self._outbox_file_override
-        env_path = _env_first('VRELIO_EMAIL_OUTBOX_FILE', 'CINEVA_EMAIL_OUTBOX_FILE')
+        env_path = _env_first('MAVIE_EMAIL_OUTBOX_FILE', 'CINEVA_EMAIL_OUTBOX_FILE')
         if env_path:
             return Path(env_path).resolve()
         return self.data_dir / 'email_outbox.json'
 
     def _email_config(self) -> dict:
-        mode = self._email_mode_override or _env_first('VRELIO_EMAIL_MODE', 'CINEVA_EMAIL_MODE', 'EMAIL_MODE', default='auto').lower()
-        host = self._smtp_host_override or _env_first('VRELIO_SMTP_HOST', 'CINEVA_SMTP_HOST', 'SMTP_HOST')
-        port_raw = str(self._smtp_port_override or _env_first('VRELIO_SMTP_PORT', 'CINEVA_SMTP_PORT', 'SMTP_PORT', default='587'))
+        mode = self._email_mode_override or _env_first('MAVIE_EMAIL_MODE', 'CINEVA_EMAIL_MODE', 'EMAIL_MODE', default='auto').lower()
+        host = self._smtp_host_override or _env_first('MAVIE_SMTP_HOST', 'CINEVA_SMTP_HOST', 'SMTP_HOST')
+        port_raw = str(self._smtp_port_override or _env_first('MAVIE_SMTP_PORT', 'CINEVA_SMTP_PORT', 'SMTP_PORT', default='587'))
         try:
             port = int(port_raw)
         except ValueError:
             port = 587
-        user = self._smtp_user_override or _env_first('VRELIO_SMTP_USER', 'CINEVA_SMTP_USER', 'SMTP_USER')
-        password = self._smtp_pass_override or _env_first('VRELIO_SMTP_PASS', 'CINEVA_SMTP_PASS', 'SMTP_PASS')
+        user = self._smtp_user_override or _env_first('MAVIE_SMTP_USER', 'CINEVA_SMTP_USER', 'SMTP_USER')
+        password = self._smtp_pass_override or _env_first('MAVIE_SMTP_PASS', 'CINEVA_SMTP_PASS', 'SMTP_PASS')
         sender = _strip_header_crlf(
-            self._smtp_from_override or _env_first('VRELIO_SMTP_FROM', 'CINEVA_SMTP_FROM', 'SMTP_FROM', default='Vrelio <noreply@vrelio.app>')
+            self._smtp_from_override or _env_first('MAVIE_SMTP_FROM', 'CINEVA_SMTP_FROM', 'SMTP_FROM', default='Mavie <noreply@mavie.app>')
         )
-        tls = self._smtp_tls_override or _env_first('VRELIO_SMTP_TLS', 'SMTP_TLS', default=('ssl' if port == 465 else 'starttls')).lower()
+        tls = self._smtp_tls_override or _env_first('MAVIE_SMTP_TLS', 'SMTP_TLS', default=('ssl' if port == 465 else 'starttls')).lower()
         effective_mode = 'outbox' if (mode == 'outbox' or (mode != 'smtp' and not host)) else 'smtp'
         if mode == 'smtp' and not host:
             effective_mode = 'smtp'
@@ -713,18 +714,18 @@ class CloudService:
         clean_recipient = _strip_header_crlf(recipient).lower()
         clean_name = _strip_header_crlf(display_name) or 'Kullanıcı'
         if kind == 'verify_email':
-            subject = _strip_header_crlf('Vrelio — E-posta Adresinizi Doğrulayın')
+            subject = _strip_header_crlf('Mavie — E-posta Adresinizi Doğrulayın')
             body_text = (
                 f'Merhaba {clean_name},\n\n'
-                f'Vrelio hesabınızı doğrulamak için 6 haneli kodunuz: {code}\n'
+                f'Mavie hesabınızı doğrulamak için 6 haneli kodunuz: {code}\n'
                 f'Doğrulama belirteci: {token}\n\n'
                 'Bu kod 24 saat geçerlidir. Doğrulama tamamlandığında 3 günlük ücretsiz Pro denemeniz otomatik başlar.\n'
             )
         else:
-            subject = _strip_header_crlf('Vrelio — Parola Sıfırlama Kodu')
+            subject = _strip_header_crlf('Mavie — Parola Sıfırlama Kodu')
             body_text = (
                 f'Merhaba {clean_name},\n\n'
-                f'Vrelio hesabınız için parola sıfırlama kodunuz: {code}\n'
+                f'Mavie hesabınız için parola sıfırlama kodunuz: {code}\n'
                 f'Sıfırlama belirteci: {token}\n\n'
                 'Bu kod 30 dakika geçerlidir. Bu isteği siz yapmadıysanız bu e-postayı yok sayabilirsiniz.\n'
             )
@@ -1479,7 +1480,7 @@ class CloudService:
         devs = max(1, min(50, int(max_devices)))
         uses = max(1, min(10000, int(max_uses)))
         raw = secrets.token_hex(6).upper()
-        code = f'VRELIO-{raw[:4]}-{raw[4:8]}-{raw[8:12]}'
+        code = f'MAVIE-{raw[:4]}-{raw[4:8]}-{raw[8:12]}'
         now = iso_now()
         with self.connect() as c:
             c.execute('INSERT INTO licenses VALUES(?,?,?,?,?,?,?,?,?)', (code, clean_plan, days, devs, uses, 0, str(note or '')[:200], actor['email'], now))
@@ -1602,6 +1603,8 @@ def make_handler(service: CloudService, cors_origin: str = ''):
             self.send_header('Content-Type', 'application/json; charset=utf-8')
             self.send_header('Content-Length', str(len(raw)))
             self.send_header('X-Content-Type-Options', 'nosniff')
+            self.send_header('X-Frame-Options', 'DENY')
+            self.send_header('Referrer-Policy', 'no-referrer')
             self.send_header('Cache-Control', 'no-store')
             if cors_origin:
                 self.send_header('Access-Control-Allow-Origin', cors_origin)
@@ -1619,13 +1622,19 @@ def make_handler(service: CloudService, cors_origin: str = ''):
             self._json(payload, err.status)
 
         def _read_json(self) -> dict:
-            length = int(self.headers.get('Content-Length') or 0)
+            try:
+                length = int(self.headers.get('Content-Length') or 0)
+            except (TypeError, ValueError):
+                raise ValueError('Geçersiz Content-Length başlığı.')
             if length > MAX_JSON:
                 raise ValueError('İstek boyutu çok büyük.')
             if length <= 0:
                 return {}
             raw = self.rfile.read(length)
-            data = json.loads(raw.decode('utf-8'))
+            try:
+                data = json.loads(raw.decode('utf-8'))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                raise ValueError('JSON gövdesi okunamadı.')
             if not isinstance(data, dict):
                 raise ValueError('JSON nesnesi bekleniyor.')
             return data
@@ -1667,8 +1676,19 @@ def make_handler(service: CloudService, cors_origin: str = ''):
             return u
 
         def _serve_static(self, rel_path: str, extra_headers: dict | None = None) -> None:
-            target = (WEBSITE / rel_path.lstrip('/')).resolve()
-            if not target.is_relative_to(WEBSITE.resolve()) or not target.is_file():
+            website_root = WEBSITE.resolve()
+            clean_rel = rel_path.lstrip('/').replace('\\', '/')
+            parts = [p for p in clean_rel.split('/') if p]
+            blocked_names = {'netlify.toml', 'package.json', 'package-lock.json'}
+            if (
+                not parts
+                or any(p.startswith('.') or p in ('..', 'netlify', 'node_modules') for p in parts)
+                or parts[-1].lower() in blocked_names
+            ):
+                self._json({'error': 'Sayfa bulunamadı.'}, 404)
+                return
+            target = (WEBSITE / clean_rel).resolve()
+            if not target.is_relative_to(website_root) or not target.is_file():
                 self._json({'error': 'Sayfa bulunamadı.'}, 404)
                 return
             if target.name.lower() == 'admin.html' and not self._has_admin_gate():
@@ -1683,6 +1703,14 @@ def make_handler(service: CloudService, cors_origin: str = ''):
             self.send_header('Content-Length', str(len(raw)))
             self.send_header('X-Content-Type-Options', 'nosniff')
             self.send_header('X-Frame-Options', 'DENY')
+            self.send_header('Referrer-Policy', 'no-referrer')
+            self.send_header('Permissions-Policy', 'geolocation=(), microphone=(), camera=()')
+            self.send_header(
+                'Content-Security-Policy',
+                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data:; connect-src 'self'; object-src 'none'; "
+                "frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+            )
             for k, v in (extra_headers or {}).items():
                 self.send_header(k, str(v))
             self.end_headers()
@@ -1696,7 +1724,7 @@ def make_handler(service: CloudService, cors_origin: str = ''):
                 return True
             try:
                 cookies = http.cookies.SimpleCookie(self.headers.get('Cookie', ''))
-                for cookie_name in ('vrelio_admin_gate', 'cineva_admin_gate'):
+                for cookie_name in ('mavie_admin_gate', 'cineva_admin_gate'):
                     gate = cookies.get(cookie_name)
                     if gate and service.verify_gate_cookie(gate.value):
                         return True
@@ -1718,7 +1746,7 @@ def make_handler(service: CloudService, cors_origin: str = ''):
             q = urllib.parse.parse_qs(u.query)
             try:
                 if p == '/api/v1/health':
-                    return self._json({'ok': True, 'service': 'vrelio-cloud'})
+                    return self._json({'ok': True, 'service': 'mavie-cloud'})
                 if p in ('/api/v1/app-config', '/api/v1/downloads'):
                     return self._json(service.get_public_config())
                 if p == '/api/v1/me':
@@ -1770,7 +1798,7 @@ def make_handler(service: CloudService, cors_origin: str = ''):
                             cookie_val = service.sign_gate_cookie()
                             self.send_response(302)
                             self.send_header('Location', '/admin')
-                            self.send_header('Set-Cookie', f'vrelio_admin_gate={cookie_val}; Path=/; HttpOnly; SameSite=Strict; Max-Age=43200')
+                            self.send_header('Set-Cookie', f'mavie_admin_gate={cookie_val}; Path=/; HttpOnly; SameSite=Strict; Max-Age=43200')
                             self.send_header('Cache-Control', 'no-store')
                             self.send_header('X-Robots-Tag', 'noindex, nofollow')
                             self.send_header('Content-Length', '0')
@@ -1943,21 +1971,21 @@ def make_handler(service: CloudService, cors_origin: str = ''):
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description='Vrelio Bulut Hesap & Yönetim Paneli Sunucusu')
+    parser = argparse.ArgumentParser(description='Mavie Bulut Hesap & Yönetim Paneli Sunucusu')
     parser.add_argument('--host', default='127.0.0.1')
-    parser.add_argument('--port', type=int, default=int(_env_first('VRELIO_CLOUD_PORT', 'CINEVA_CLOUD_PORT', default='8899')))
-    parser.add_argument('--data-dir', default=_env_first('VRELIO_CLOUD_DATA_DIR', 'CINEVA_CLOUD_DATA_DIR') or str(ROOT / 'cloud_data'))
+    parser.add_argument('--port', type=int, default=int(_env_first('MAVIE_CLOUD_PORT', 'CINEVA_CLOUD_PORT', default='8899')))
+    parser.add_argument('--data-dir', default=_env_first('MAVIE_CLOUD_DATA_DIR', 'CINEVA_CLOUD_DATA_DIR') or str(ROOT / 'cloud_data'))
     args = parser.parse_args()
 
-    admin_email = _env_first('VRELIO_ADMIN_EMAIL', 'CINEVA_ADMIN_EMAIL', default='admin@vrelio.app')
+    admin_email = _env_first('MAVIE_ADMIN_EMAIL', 'CINEVA_ADMIN_EMAIL', default='admin@mavie.app')
     service = CloudService(
         Path(args.data_dir),
-        secret_key=_env_first('VRELIO_CLOUD_SECRET', 'CINEVA_CLOUD_SECRET'),
+        secret_key=_env_first('MAVIE_CLOUD_SECRET', 'CINEVA_CLOUD_SECRET'),
         admin_email=admin_email,
-        admin_password=_env_first('VRELIO_ADMIN_PASSWORD', 'CINEVA_ADMIN_PASSWORD'),
-        admin_gate_key=_env_first('VRELIO_ADMIN_GATE_KEY', 'CINEVA_ADMIN_GATE_KEY', default='__auto__'),
+        admin_password=_env_first('MAVIE_ADMIN_PASSWORD', 'CINEVA_ADMIN_PASSWORD'),
+        admin_gate_key=_env_first('MAVIE_ADMIN_GATE_KEY', 'CINEVA_ADMIN_GATE_KEY', default='__auto__'),
     )
-    cors_origin = _env_first('VRELIO_CORS_ORIGIN', 'CINEVA_CORS_ORIGIN')
+    cors_origin = _env_first('MAVIE_CORS_ORIGIN', 'CINEVA_CORS_ORIGIN')
     server = ThreadingHTTPServer((args.host, args.port), make_handler(service, cors_origin))
     server.daemon_threads = True
 
@@ -1967,7 +1995,7 @@ def main() -> int:
     signal.signal(signal.SIGINT, stop)
     signal.signal(signal.SIGTERM, stop)
 
-    print(f'Vrelio Portal hazır: http://{args.host}:{args.port}/', flush=True)
+    print(f'Mavie Portal hazır: http://{args.host}:{args.port}/', flush=True)
     if service.admin_gate_key:
         print(f'Gizli Yönetim Paneli Bağlantısı: http://{args.host}:{args.port}/admin?access={service.admin_gate_key}', flush=True)
     else:

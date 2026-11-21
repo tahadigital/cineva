@@ -1,6 +1,6 @@
-name: Vrelio
+name: Mavie
 options:
-  bundleIdPrefix: app.vrelio
+  bundleIdPrefix: app.mavie
   deploymentTarget:
     iOS: "16.0"
     macOS: "13.0"
@@ -13,7 +13,7 @@ settings:
     CURRENT_PROJECT_VERSION: "210"
 
 targets:
-  VrelioMacOS:
+  MavieMacOS:
     type: application
     platform: macOS
     sources:
@@ -27,18 +27,18 @@ targets:
     info:
       path: macOS/Info.plist
     entitlements:
-      path: macOS/VrelioMac.entitlements
+      path: macOS/MavieMac.entitlements
     settings:
       base:
-        PRODUCT_NAME: Vrelio
-        PRODUCT_MODULE_NAME: VrelioMacOS
-        PRODUCT_BUNDLE_IDENTIFIER: app.vrelio.macos
+        PRODUCT_NAME: Mavie
+        PRODUCT_MODULE_NAME: MavieMacOS
+        PRODUCT_BUNDLE_IDENTIFIER: app.mavie.macos
         COMBINE_HIDPI_IMAGES: YES
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGNING_ALLOWED: NO
         CODE_SIGNING_REQUIRED: NO
 
-  VrelioIOS:
+  MavieIOS:
     type: application
     platform: iOS
     sources:
@@ -50,9 +50,9 @@ targets:
       path: iOS/Info.plist
     settings:
       base:
-        PRODUCT_NAME: Vrelio
-        PRODUCT_MODULE_NAME: VrelioIOS
-        PRODUCT_BUNDLE_IDENTIFIER: app.vrelio.ios
+        PRODUCT_NAME: Mavie
+        PRODUCT_MODULE_NAME: MavieIOS
+        PRODUCT_BUNDLE_IDENTIFIER: app.mavie.ios
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
@@ -61,42 +61,42 @@ targets:
         CODE_SIGNING_REQUIRED: NO
         CODE_SIGN_IDENTITY: ""
 
-  VrelioIOSTests:
+  MavieIOSTests:
     type: bundle.unit-test
     platform: iOS
     sources:
       - path: Tests
     dependencies:
-      - target: VrelioIOS
+      - target: MavieIOS
     settings:
       base:
-        PRODUCT_NAME: VrelioIOSTests
-        PRODUCT_BUNDLE_IDENTIFIER: app.vrelio.ios.tests
+        PRODUCT_NAME: MavieIOSTests
+        PRODUCT_BUNDLE_IDENTIFIER: app.mavie.ios.tests
         GENERATE_INFOPLIST_FILE: YES
-        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Vrelio.app/Vrelio"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Mavie.app/Mavie"
         BUNDLE_LOADER: "$(TEST_HOST)"
         CODE_SIGNING_ALLOWED: NO
         CODE_SIGNING_REQUIRED: NO
         CODE_SIGN_IDENTITY: ""
 
 schemes:
-  VrelioMacOS:
+  MavieMacOS:
     build:
       targets:
-        VrelioMacOS: all
+        MavieMacOS: all
     run:
       config: Debug
     archive:
       config: Release
 
-  VrelioIOS:
+  MavieIOS:
     build:
       targets:
-        VrelioIOS: all
-        VrelioIOSTests: [test]
+        MavieIOS: all
+        MavieIOSTests: [test]
     test:
       config: Debug
       targets:
-        - VrelioIOSTests
+        - MavieIOSTests
     archive:
       config: Release

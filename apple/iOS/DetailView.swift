@@ -42,10 +42,10 @@ public struct DetailView: View {
                         if activeItem.rating > 0 {
                             Label(String(format: "%.1f", activeItem.rating), systemImage: "star.fill")
                                 .font(.caption.weight(.bold))
-                                .foregroundStyle(VrelioTheme.amber)
+                                .foregroundStyle(MavieTheme.amber)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 4)
-                                .background(VrelioTheme.panelElevated, in: Capsule())
+                                .background(MavieTheme.panelElevated, in: Capsule())
                         }
                         if activeItem.durationSeconds > 0 {
                             badge("\(Int(activeItem.durationSeconds / 60)) dk")
@@ -73,7 +73,7 @@ public struct DetailView: View {
                     if !activeItem.plot.isEmpty {
                         Text(activeItem.plot)
                             .font(.body)
-                            .foregroundStyle(VrelioTheme.muted)
+                            .foregroundStyle(MavieTheme.muted)
                             .padding(.top, 4)
                     }
 
@@ -85,7 +85,7 @@ public struct DetailView: View {
                 .padding(.bottom, 24)
             }
         }
-        .background(VrelioTheme.bg.ignoresSafeArea())
+        .background(MavieTheme.bg.ignoresSafeArea())
         .navigationTitle(activeItem.kind.displayTitle)
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -110,14 +110,14 @@ public struct DetailView: View {
                     if case .success(let img) = phase {
                         img.resizable().scaledToFill()
                     } else {
-                        VrelioTheme.panelElevated
+                        MavieTheme.panelElevated
                     }
                 }
             } else {
-                VrelioTheme.panelElevated
+                MavieTheme.panelElevated
             }
             LinearGradient(
-                colors: [.clear, VrelioTheme.bg],
+                colors: [.clear, MavieTheme.bg],
                 startPoint: .center,
                 endPoint: .bottom
             )
@@ -147,7 +147,7 @@ public struct DetailView: View {
                     )
                     .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(VrelioPrimaryButtonStyle())
+                .buttonStyle(MaviePrimaryButtonStyle())
                 .disabled(activeItem.kind == .series && (detail?.seasons.isEmpty ?? true))
                 .accessibilityLabel("\(activeItem.name) oynat")
             }
@@ -160,7 +160,7 @@ public struct DetailView: View {
                     Label(fav ? "Favoriden Çıkar" : "Favoriye Ekle", systemImage: fav ? "heart.fill" : "heart")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(VrelioGhostButtonStyle(compact: true))
+                .buttonStyle(MavieGhostButtonStyle(compact: true))
                 .accessibilityLabel(store.isFavorite(activeItem) ? "Favorilerden çıkar" : "Favorilere ekle")
 
                 Button {
@@ -169,7 +169,7 @@ public struct DetailView: View {
                     Label("Listeye Ekle", systemImage: "text.badge.plus")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(VrelioGhostButtonStyle(compact: true))
+                .buttonStyle(MavieGhostButtonStyle(compact: true))
                 .accessibilityLabel("Çalma listesine ekle")
             }
         }
@@ -185,7 +185,7 @@ public struct DetailView: View {
 
             if isLoadingDetail {
                 ProgressView("Bölümler yükleniyor…")
-                    .tint(VrelioTheme.amber)
+                    .tint(MavieTheme.amber)
             } else if let seasons = detail?.seasons, !seasons.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -199,7 +199,7 @@ public struct DetailView: View {
                                     .padding(.horizontal, 14)
                                     .frame(minHeight: 44)
                                     .background(
-                                        Capsule().fill(selectedSeasonNumber == season.number ? AnyShapeStyle(VrelioTheme.brandGradient) : AnyShapeStyle(VrelioTheme.panel))
+                                        Capsule().fill(selectedSeasonNumber == season.number ? AnyShapeStyle(MavieTheme.brandGradient) : AnyShapeStyle(MavieTheme.panel))
                                     )
                             }
                             .accessibilityLabel(season.name)
@@ -215,21 +215,21 @@ public struct DetailView: View {
                             HStack(spacing: 12) {
                                 Image(systemName: "play.circle.fill")
                                     .font(.title2)
-                                    .foregroundStyle(VrelioTheme.coral)
+                                    .foregroundStyle(MavieTheme.coral)
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("Bölüm \(ep.episode): \(ep.name)")
                                         .font(.subheadline.weight(.semibold))
                                         .foregroundStyle(.white)
                                     if let p = store.progress(for: ep), p.durationSeconds > 0 {
                                         ProgressView(value: p.progressFraction)
-                                            .tint(VrelioTheme.amber)
+                                            .tint(MavieTheme.amber)
                                     }
                                 }
                                 Spacer()
                             }
                             .padding(12)
                             .frame(minHeight: 54)
-                            .vrelioCard(cornerRadius: 12)
+                            .mavieCard(cornerRadius: 12)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Bölüm \(ep.episode) \(ep.name) oynat")
@@ -238,7 +238,7 @@ public struct DetailView: View {
             } else {
                 Text("Bu dizi için bölüm bilgisi bulunamadı.")
                     .font(.subheadline)
-                    .foregroundStyle(VrelioTheme.muted)
+                    .foregroundStyle(MavieTheme.muted)
             }
         }
     }
@@ -259,7 +259,7 @@ public struct DetailView: View {
                 Section("Mevcut Listeler") {
                     if store.playlists.isEmpty {
                         Text("Henüz liste yok.")
-                            .foregroundStyle(VrelioTheme.muted)
+                            .foregroundStyle(MavieTheme.muted)
                     } else {
                         ForEach(store.playlists) { list in
                             Button {
@@ -271,7 +271,7 @@ public struct DetailView: View {
                                     Spacer()
                                     if list.itemIds.contains(activeItem.id) {
                                         Image(systemName: "checkmark.circle.fill")
-                                            .foregroundStyle(VrelioTheme.success)
+                                            .foregroundStyle(MavieTheme.success)
                                     }
                                 }
                                 .frame(minHeight: 44)
@@ -296,14 +296,14 @@ public struct DetailView: View {
             .foregroundStyle(.white)
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
-            .background(VrelioTheme.panelElevated, in: Capsule())
+            .background(MavieTheme.panelElevated, in: Capsule())
     }
 
     private func metadataRow(label: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
                 .font(.caption.weight(.bold))
-                .foregroundStyle(VrelioTheme.amber)
+                .foregroundStyle(MavieTheme.amber)
             Text(value)
                 .font(.subheadline)
                 .foregroundStyle(.white)

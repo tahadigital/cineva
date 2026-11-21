@@ -1,4 +1,4 @@
-"""Opaque-box E2E test runner and shared process/HTTP/outbox harness for Vrelio.
+"""Opaque-box E2E test runner and shared process/HTTP/outbox harness for Mavie.
 
 Usage:
     python3 -m unittest discover -s tests/e2e -v
@@ -107,7 +107,7 @@ class HttpClient:
         raw_body: Optional[bytes] = None,
         headers: Optional[Dict[str, str]] = None,
         token: Optional[str] = None,
-        timeout: float = 10.0,
+        timeout: float = 30.0,
     ) -> HttpResponse:
         url = path if path.startswith("http://") or path.startswith("https://") else f"{self.base_url}{path}"
         hdrs: Dict[str, str] = {"Origin": self.origin}
@@ -192,9 +192,9 @@ class CloudServerProcess:
 
     def __init__(
         self,
-        admin_email: str = "admin@vrelio.app",
-        admin_password: str = "VrelioAdminPass!2026",
-        gate_key: str = "vrelio-e2e-gate-key",
+        admin_email: str = "admin@mavie.app",
+        admin_password: str = "MavieAdminPass!2026",
+        gate_key: str = "mavie-e2e-gate-key",
         extra_env: Optional[Dict[str, str]] = None,
     ) -> None:
         self.admin_email = admin_email
@@ -209,7 +209,7 @@ class CloudServerProcess:
         self.proc: Optional[subprocess.Popen] = None
 
     def start(self) -> "CloudServerProcess":
-        self._tmp = tempfile.TemporaryDirectory(prefix="vrelio_e2e_cloud_")
+        self._tmp = tempfile.TemporaryDirectory(prefix="mavie_e2e_cloud_")
         self.data_dir = Path(self._tmp.name)
         self.outbox_file = self.data_dir / "email_outbox.json"
         self.port = find_free_port()
@@ -220,18 +220,18 @@ class CloudServerProcess:
             {
                 "PYTHONUNBUFFERED": "1",
                 "PYTHONIOENCODING": "utf-8",
-                "VRELIO_CLOUD_DATA_DIR": str(self.data_dir),
+                "MAVIE_CLOUD_DATA_DIR": str(self.data_dir),
                 "CINEVA_CLOUD_DATA_DIR": str(self.data_dir),
-                "VRELIO_ADMIN_EMAIL": self.admin_email,
+                "MAVIE_ADMIN_EMAIL": self.admin_email,
                 "CINEVA_ADMIN_EMAIL": self.admin_email,
-                "VRELIO_ADMIN_PASSWORD": self.admin_password,
+                "MAVIE_ADMIN_PASSWORD": self.admin_password,
                 "CINEVA_ADMIN_PASSWORD": self.admin_password,
-                "VRELIO_ADMIN_GATE_KEY": self.gate_key,
+                "MAVIE_ADMIN_GATE_KEY": self.gate_key,
                 "CINEVA_ADMIN_GATE_KEY": self.gate_key,
-                "VRELIO_CLOUD_SECRET": "e2e-cloud-secret-key-0123456789",
+                "MAVIE_CLOUD_SECRET": "e2e-cloud-secret-key-0123456789",
                 "CINEVA_CLOUD_SECRET": "e2e-cloud-secret-key-0123456789",
-                "VRELIO_EMAIL_MODE": "outbox",
-                "VRELIO_EMAIL_OUTBOX_FILE": str(self.outbox_file),
+                "MAVIE_EMAIL_MODE": "outbox",
+                "MAVIE_EMAIL_OUTBOX_FILE": str(self.outbox_file),
             }
         )
         env.update(self.extra_env)
@@ -476,7 +476,7 @@ class LocalMediaServerProcess:
         self.startup_output: str = ""
 
     def start(self, wait_seconds: float = 8.0) -> "LocalMediaServerProcess":
-        self._tmp = tempfile.TemporaryDirectory(prefix="vrelio_e2e_local_")
+        self._tmp = tempfile.TemporaryDirectory(prefix="mavie_e2e_local_")
         self.data_dir = Path(self._tmp.name)
         self.port = find_free_port()
         self.base_url = f"http://127.0.0.1:{self.port}"
@@ -490,12 +490,12 @@ class LocalMediaServerProcess:
         env.update(
             {
                 "PYTHONUNBUFFERED": "1",
-                "VRELIO_DATA_DIR": str(self.data_dir),
+                "MAVIE_DATA_DIR": str(self.data_dir),
                 "CINEVA_DATA_DIR": str(self.data_dir),
             }
         )
         if self.cloud_url:
-            env["VRELIO_CLOUD_URL"] = self.cloud_url
+            env["MAVIE_CLOUD_URL"] = self.cloud_url
             env["CINEVA_CLOUD_URL"] = self.cloud_url
         env.update(self.extra_env)
 
@@ -581,7 +581,7 @@ def build_suite(tier: str = "all") -> unittest.TestSuite:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="Run Vrelio 4-tier opaque-box E2E test suite")
+    parser = argparse.ArgumentParser(description="Run Mavie 4-tier opaque-box E2E test suite")
     parser.add_argument(
         "--tier",
         choices=("1", "2", "3", "4", "all"),

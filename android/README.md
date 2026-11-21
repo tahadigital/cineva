@@ -1,10 +1,10 @@
-# Vrelio Android
+# Mavie Android
 
 Mac'ten bağımsız, Kotlin/Jetpack Compose ile yazılmış Android IPTV istemcisi.
 
 ## Kurulum
 
-`dist/Vrelio-Android.apk` güncel ARM64 sürümüdür. Android cihazlarda Vrelio simgesiyle açılır. Başka bir cihaza kurarken APK'yı telefona aktarın ve Android'in kurulum ekranından açın. APK kullanıcı adı/parola içermez. İlk kullanımda kendi IPTV bilgileri girilir. Normal kullanımda Mac ve yerel sunucu gerekmez.
+`dist/Mavie-Android.apk` güncel ARM64 sürümüdür. Android cihazlarda Mavie simgesiyle açılır. Başka bir cihaza kurarken APK'yı telefona aktarın ve Android'in kurulum ekranından açın. APK kullanıcı adı/parola içermez. İlk kullanımda kendi IPTV bilgileri girilir. Normal kullanımda Mac ve yerel sunucu gerekmez.
 
 Filmler, diziler, canlı TV, yerel ses/altyazı seçimi, kaldığın yer, favoriler, kişisel listeler, arama, kategoriler, özgün açılış animasyonu ve ekran geçişleri bulunur. Sağlayıcının sunduğu içerikler ve dil seçenekleri kullanılır. Gelişmiş kodekler LibVLC ile telefonda çözülür; mümkün olduğunda donanım kullanılır.
 

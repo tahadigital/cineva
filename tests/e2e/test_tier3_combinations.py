@@ -25,7 +25,7 @@ class Tier3CrossFeatureCombinationsTests(unittest.TestCase):
         self.addCleanup(cloud.stop)
 
         # 1. Register -> Outbox verify -> 3-day Pro trial active
-        ver, tok, user = cloud.register_and_verify("combo_plan@vrelio.app", "StrongPassword123!")
+        ver, tok, user = cloud.register_and_verify("combo_plan@mavie.app", "StrongPassword123!")
         self.assertEqual(ver.status, 200, ver.text)
         self.assertTrue(user["trialActive"])
         self.assertEqual(user["effectivePlan"], "pro")
@@ -76,7 +76,7 @@ class Tier3CrossFeatureCombinationsTests(unittest.TestCase):
     def test_register_resend_verify_forgot_verify_reset_old_fails_new_logs_in(self) -> None:
         cloud = CloudServerProcess().start()
         self.addCleanup(cloud.stop)
-        email = "combo_auth@vrelio.app"
+        email = "combo_auth@mavie.app"
 
         reg = cloud.client().post("/api/v1/auth/register", {"email": email, "password": "OldPassword123!"})
         self.assertEqual(reg.status, 201, reg.text)
@@ -115,7 +115,7 @@ class Tier3CrossFeatureCombinationsTests(unittest.TestCase):
         self.addCleanup(srv.stop)
         c = srv.paired_client()
 
-        email = "bridge_user@vrelio.app"
+        email = "bridge_user@mavie.app"
         reg = c.post(
             "/api/cloud/register",
             {"email": email, "password": "BridgePassword123!", "displayName": "Bridge", "cloudUrl": cloud.base_url},
@@ -159,7 +159,7 @@ class Tier3CrossFeatureCombinationsTests(unittest.TestCase):
         self.addCleanup(srv.stop)
         c = srv.paired_client()
 
-        with tempfile.TemporaryDirectory(prefix="vrelio_combo_") as media_dir:
+        with tempfile.TemporaryDirectory(prefix="mavie_combo_") as media_dir:
             mp = Path(media_dir)
             (mp / "Spor").mkdir()
             (mp / "Korku +18").mkdir()
@@ -219,23 +219,23 @@ class Tier3CrossFeatureCombinationsTests(unittest.TestCase):
         for plat in ("windows-installer", "android-apk", "macos", "ios"):
             self.assertEqual(cloud.client().post("/api/v1/downloads/track", {"platform": plat}).status, 200)
 
-        cloud.register_and_verify("metric_user@vrelio.app", "StrongPassword123!")
+        cloud.register_and_verify("metric_user@mavie.app", "StrongPassword123!")
         admin_tok = cloud.admin_login()
         ov = cloud.client().get("/api/v1/admin/overview", headers=cloud.admin_headers(admin_tok))
         self.assertEqual(ov.status, 200, ov.text)
-        self.assertGreaterEqual(json.dumps(ov.json).count("metric_user@vrelio.app") + len(str(ov.json)), 1)
+        self.assertGreaterEqual(json.dumps(ov.json).count("metric_user@mavie.app") + len(str(ov.json)), 1)
         cfg2 = cloud.client().get("/api/v1/app-config").json
         self.assertEqual(cfg2["downloads"]["ios"], 1)
         self.assertEqual(cfg2["downloads"]["macos"], 1)
 
     def test_local_media_scan_subtitles_playback_and_restart_persistence(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="vrelio_persist_") as media_dir:
+        with tempfile.TemporaryDirectory(prefix="mavie_persist_") as media_dir:
             mp = Path(media_dir)
             (mp / "Documentary.2025.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"PERSIST" * 16)
-            (mp / "Documentary.2025.tr.srt").write_text("1\n00:00:01,000 --> 00:00:03,000\nMerhaba Vrelio\n", encoding="utf-8")
+            (mp / "Documentary.2025.tr.srt").write_text("1\n00:00:01,000 --> 00:00:03,000\nMerhaba Mavie\n", encoding="utf-8")
 
-            with tempfile.TemporaryDirectory(prefix="vrelio_data_") as fixed_data:
-                env = {"VRELIO_DATA_DIR": fixed_data, "CINEVA_DATA_DIR": fixed_data}
+            with tempfile.TemporaryDirectory(prefix="mavie_data_") as fixed_data:
+                env = {"MAVIE_DATA_DIR": fixed_data, "CINEVA_DATA_DIR": fixed_data}
                 srv1 = LocalMediaServerProcess(extra_env=env).start()
                 try:
                     c1 = srv1.paired_client()
@@ -267,7 +267,7 @@ class Tier3CrossFeatureCombinationsTests(unittest.TestCase):
                     self.assertIn("88", prog)
                     sub = c2.get(f"/api/subtitles/{item_id}/0.vtt")
                     self.assertEqual(sub.status, 200)
-                    self.assertIn("Merhaba Vrelio", sub.text)
+                    self.assertIn("Merhaba Mavie", sub.text)
                 finally:
                     srv2.stop()
 
@@ -275,8 +275,8 @@ class Tier3CrossFeatureCombinationsTests(unittest.TestCase):
         cloud = CloudServerProcess().start()
         self.addCleanup(cloud.stop)
 
-        _, tok_a, _ = cloud.register_and_verify("iso_a@vrelio.app", "StrongPassword123!")
-        _, tok_b, user_b = cloud.register_and_verify("iso_b@vrelio.app", "StrongPassword123!")
+        _, tok_a, _ = cloud.register_and_verify("iso_a@mavie.app", "StrongPassword123!")
+        _, tok_b, user_b = cloud.register_and_verify("iso_b@mavie.app", "StrongPassword123!")
         cloud.client().put("/api/v1/sync", {"favorites": ["vod:secret_a"]}, token=tok_a)
         cloud.client().post("/api/v1/devices/register", {"deviceId": "dev_a_only", "name": "A", "platform": "macos"}, token=tok_a)
 
@@ -311,7 +311,7 @@ class Tier3CrossFeatureCombinationsTests(unittest.TestCase):
             self.assertIn(endpoint, py_src, f"cloud_admin.py missing {endpoint}")
             self.assertIn(endpoint, mjs_src, f"cloud-core.mjs missing {endpoint}")
 
-        for contract_token in ("vrelio-cloud", "VRELIO-", "EMAIL_NOT_VERIFIED", "PRO_REQUIRED", "DEVICE_LIMIT_REACHED", "macosUrl", "iosUrl"):
+        for contract_token in ("mavie-cloud", "MAVIE-", "EMAIL_NOT_VERIFIED", "PRO_REQUIRED", "DEVICE_LIMIT_REACHED", "macosUrl", "iosUrl"):
             self.assertIn(contract_token, py_src, f"cloud_admin.py missing {contract_token}")
             self.assertIn(contract_token, mjs_src, f"cloud-core.mjs missing {contract_token}")
 
@@ -321,7 +321,7 @@ class Tier3CrossFeatureCombinationsTests(unittest.TestCase):
     def test_lan_pairing_with_normal_cloud_account_allows_basic_playback_blocks_pro(self) -> None:
         cloud = CloudServerProcess().start()
         self.addCleanup(cloud.stop)
-        _, _, user = cloud.register_and_verify("lan_norm@vrelio.app", "StrongPassword123!")
+        _, _, user = cloud.register_and_verify("lan_norm@mavie.app", "StrongPassword123!")
         admin_tok = cloud.admin_login()
         cloud.client().patch(
             f"/api/v1/admin/users/{user['id']}",
@@ -333,7 +333,7 @@ class Tier3CrossFeatureCombinationsTests(unittest.TestCase):
         self.addCleanup(srv.stop)
         host_c = srv.paired_client()
         self.assertEqual(
-            host_c.post("/api/cloud/login", {"email": "lan_norm@vrelio.app", "password": "StrongPassword123!", "cloudUrl": cloud.base_url}).status,
+            host_c.post("/api/cloud/login", {"email": "lan_norm@mavie.app", "password": "StrongPassword123!", "cloudUrl": cloud.base_url}).status,
             200,
         )
         code = host_c.get("/api/status").json["pairingCode"]
@@ -352,7 +352,7 @@ class Tier3CrossFeatureCombinationsTests(unittest.TestCase):
     def test_forgot_password_reset_plus_self_device_removal_within_normal_limit(self) -> None:
         cloud = CloudServerProcess().start()
         self.addCleanup(cloud.stop)
-        email = "combo_dev_reset@vrelio.app"
+        email = "combo_dev_reset@mavie.app"
         _, tok, user = cloud.register_and_verify(email, "FirstPass123!")
         admin_tok = cloud.admin_login()
         cloud.client().patch(

@@ -21,7 +21,7 @@ public struct SearchView: View {
             VStack(spacing: 12) {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
-                        .foregroundStyle(VrelioTheme.muted)
+                        .foregroundStyle(MavieTheme.muted)
                     TextField("Film, dizi, kanal veya kategori ara…", text: $query)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -31,7 +31,7 @@ public struct SearchView: View {
                             query = ""
                         } label: {
                             Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(VrelioTheme.muted)
+                                .foregroundStyle(MavieTheme.muted)
                                 .frame(width: 44, height: 44)
                         }
                         .accessibilityLabel("Aramayı Temizle")
@@ -39,7 +39,7 @@ public struct SearchView: View {
                 }
                 .padding(.horizontal, 12)
                 .frame(minHeight: 48)
-                .vrelioCard(cornerRadius: 14)
+                .mavieCard(cornerRadius: 14)
                 .padding(.horizontal, 16)
 
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -54,7 +54,7 @@ public struct SearchView: View {
 
                 ScrollView {
                     if results.isEmpty {
-                        VrelioEmptyStateCard(
+                        MavieEmptyStateCard(
                             systemImage: "magnifyingglass",
                             title: "Sonuç Bulunamadı",
                             message: "Farklı bir anahtar kelime deneyin veya tür filtresini temizleyin."
@@ -81,7 +81,7 @@ public struct SearchView: View {
                 }
             }
             .padding(.top, 10)
-            .background(VrelioTheme.bg.ignoresSafeArea())
+            .background(MavieTheme.bg.ignoresSafeArea())
             .navigationTitle("Ara")
         }
     }
@@ -98,8 +98,8 @@ public struct SearchView: View {
                 .frame(minHeight: 44)
                 .background(
                     Capsule()
-                        .fill(active ? AnyShapeStyle(VrelioTheme.brandGradient) : AnyShapeStyle(VrelioTheme.panel))
-                        .overlay(Capsule().strokeBorder(VrelioTheme.border, lineWidth: 1))
+                        .fill(active ? AnyShapeStyle(MavieTheme.brandGradient) : AnyShapeStyle(MavieTheme.panel))
+                        .overlay(Capsule().strokeBorder(MavieTheme.border, lineWidth: 1))
                 )
         }
         .accessibilityLabel("\(title) türünü filtrele")

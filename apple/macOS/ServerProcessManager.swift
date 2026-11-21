@@ -42,14 +42,14 @@ public final class ServerProcessManager: ObservableObject {
 
     public static func resolveDataDirectory() -> URL {
         let env = ProcessInfo.processInfo.environment
-        if let custom = env["VRELIO_DATA_DIR"] ?? env["CINEVA_DATA_DIR"],
+        if let custom = env["MAVIE_DATA_DIR"] ?? env["CINEVA_DATA_DIR"],
            !custom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return URL(fileURLWithPath: custom, isDirectory: true)
         }
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         return appSupport
-            .appendingPathComponent("Vrelio", isDirectory: true)
+            .appendingPathComponent("Mavie", isDirectory: true)
             .appendingPathComponent("data", isDirectory: true)
     }
 
@@ -93,7 +93,7 @@ public final class ServerProcessManager: ObservableObject {
             child.standardError = handle
 
             var env = ProcessInfo.processInfo.environment
-            env["VRELIO_DATA_DIR"] = dataDir.path
+            env["MAVIE_DATA_DIR"] = dataDir.path
             env["PYTHONUNBUFFERED"] = "1"
             child.environment = env
 
@@ -169,7 +169,7 @@ public final class ServerProcessManager: ObservableObject {
                     let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
                     stop()
                     if code == 200 {
-                        print("Vrelio macOS smoke test OK on port \(port)")
+                        print("Mavie macOS smoke test OK on port \(port)")
                         return 0
                     } else {
                         fputs("Smoke test failed: GET / returned HTTP \(code)\n", stderr)
@@ -203,7 +203,7 @@ public final class ServerProcessManager: ObservableObject {
             for attempt in 1...120 {
                 if Task.isCancelled || self.shuttingDown { return }
                 if let child = self.process, !child.isRunning {
-                    self.status = .failed("Vrelio sunucusu başlatılırken kapandı (çıkış kodu \(child.terminationStatus)). Günlüğü kontrol edin.")
+                    self.status = .failed("Mavie sunucusu başlatılırken kapandı (çıkış kodu \(child.terminationStatus)). Günlüğü kontrol edin.")
                     self.healthDetails = "Çıkış kodu \(child.terminationStatus)"
                     return
                 }
@@ -217,7 +217,7 @@ public final class ServerProcessManager: ObservableObject {
                 }
                 try? await Task.sleep(nanoseconds: 250_000_000)
             }
-            self.status = .failed("Vrelio sunucusu zamanında yanıt vermedi. Başka bir örneğin portu kullanmadığından emin olun.")
+            self.status = .failed("Mavie sunucusu zamanında yanıt vermedi. Başka bir örneğin portu kullanmadığından emin olun.")
             self.healthDetails = "Zaman aşımı"
         }
     }
@@ -231,7 +231,7 @@ public final class ServerProcessManager: ObservableObject {
             guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
             let app = obj["app"] as? String
             let ok = obj["ok"] as? Bool
-            return app == "vrelio" && ok == true
+            return app == "mavie" && ok == true
         } catch {
             return false
         }
@@ -249,16 +249,16 @@ public final class ServerProcessManager: ObservableObject {
         let pidArg = String(ProcessInfo.processInfo.processIdentifier)
         let serverArgs = ["--host", "0.0.0.0", "--port", String(port), "--parent-pid", pidArg]
 
-        // 1. Embedded PyInstaller --onedir binary inside Vrelio.app/Contents/Resources/vrelio-server/vrelio-server
+        // 1. Embedded PyInstaller --onedir binary inside Mavie.app/Contents/Resources/mavie-server/mavie-server
         if let resourceURL = Bundle.main.resourceURL {
-            let embeddedDir = resourceURL.appendingPathComponent("vrelio-server", isDirectory: true)
-            let embeddedExe = embeddedDir.appendingPathComponent("vrelio-server")
+            let embeddedDir = resourceURL.appendingPathComponent("mavie-server", isDirectory: true)
+            let embeddedExe = embeddedDir.appendingPathComponent("mavie-server")
             if fm.isExecutableFile(atPath: embeddedExe.path) {
                 return LaunchCommand(
                     executableURL: embeddedExe,
                     arguments: serverArgs,
                     workingDirectory: embeddedDir,
-                    description: "Gömülü Motor (vrelio-server)"
+                    description: "Gömülü Motor (mavie-server)"
                 )
             }
 
@@ -295,7 +295,7 @@ public final class ServerProcessManager: ObservableObject {
             }
         }
 
-        throw VrelioError.validation("Gömülü vrelio-server veya server.py bulunamadı. Uygulama paketini yeniden oluşturun.")
+        throw MavieError.validation("Gömülü mavie-server veya server.py bulunamadı. Uygulama paketini yeniden oluşturun.")
     }
 
     private static func findPython(near root: URL) -> URL? {
@@ -320,7 +320,7 @@ public final class ServerProcessManager: ObservableObject {
     }
 
     private static func choosePort() -> Int {
-        if let raw = ProcessInfo.processInfo.environment["VRELIO_PORT"],
+        if let raw = ProcessInfo.processInfo.environment["MAVIE_PORT"],
            let parsed = Int(raw.trimmingCharacters(in: .whitespaces)),
            (1024...65535).contains(parsed) {
             return parsed

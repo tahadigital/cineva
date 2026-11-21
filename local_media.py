@@ -1,4 +1,4 @@
-"""Secure local folder media scanner, filename parser, and subtitle sidecar finder for Vrelio."""
+"""Secure local folder media scanner, filename parser, and subtitle sidecar finder for Mavie."""
 from __future__ import annotations
 
 import hashlib

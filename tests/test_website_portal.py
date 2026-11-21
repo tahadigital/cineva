@@ -1,4 +1,4 @@
-"""Tests for Vrelio redesigned website routes, assets, 4-platform portal, and browser layout/flows."""
+"""Tests for Mavie redesigned website routes, assets, 4-platform portal, and browser layout/flows."""
 from __future__ import annotations
 
 import base64
@@ -146,12 +146,12 @@ class _MinimalCDP:
 class WebsitePortalTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.temp = tempfile.TemporaryDirectory(prefix="vrelio-web-tests-")
+        cls.temp = tempfile.TemporaryDirectory(prefix="mavie-web-tests-")
         cls.service = cloud_admin.CloudService(
             Path(cls.temp.name),
-            admin_email="admin@vrelio.app",
+            admin_email="admin@mavie.app",
             admin_password="AdminStrongPass!2026",
-            admin_gate_key="gate-secret-vrelio",
+            admin_gate_key="gate-secret-mavie",
         )
         cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), cloud_admin.make_handler(cls.service))
         cls.port = cls.httpd.server_address[1]
@@ -177,17 +177,17 @@ class WebsitePortalTests(unittest.TestCase):
     def test_1_static_assets_and_rebrand_integrity(self) -> None:
         website = ROOT / "website"
         self.assertFalse((website / "cineva-mark.svg").exists())
-        self.assertTrue((website / "vrelio-mark.svg").is_file())
+        self.assertTrue((website / "mavie-mark.svg").is_file())
         self.assertTrue((website / "icon.svg").is_file())
 
         for route, ctype_sub, must_have in (
-            ("/", "text/html", ("Vrelio", "Vrelio-Setup.exe", "Vrelio.exe", "Vrelio-Android.apk", "Vrelio-macOS.dmg", "Vrelio-iOS.ipa", "Normal", "Vrelio Pro")),
-            ("/privacy", "text/html", ("Vrelio", "privacy@vrelio.app")),
-            ("/terms", "text/html", ("Vrelio", "legal@vrelio.app")),
+            ("/", "text/html", ("Mavie", "Mavie-Setup.exe", "Mavie.exe", "Mavie-Android.apk", "Mavie-macOS.dmg", "Mavie-iOS.ipa", "Normal", "Mavie Pro")),
+            ("/privacy", "text/html", ("Mavie", "privacy@mavie.app")),
+            ("/terms", "text/html", ("Mavie", "legal@mavie.app")),
             ("/styles.css", "text/css", (".grid-4", "overflow-x: clip", "prefers-reduced-motion")),
-            ("/portal.js", "javascript", ("vrelio_user_token", "/api/v1/auth/verify-email", "/api/v1/auth/reset-password", "/api/v1/devices/")),
-            ("/vrelio-mark.svg", "image/svg+xml", ("vrelioGrad",)),
-            ("/icon.svg", "image/svg+xml", ("vrelioBg", "vrelioRing")),
+            ("/portal.js", "javascript", ("mavie_user_token", "/api/v1/auth/verify-email", "/api/v1/auth/reset-password", "/api/v1/devices/")),
+            ("/mavie-mark.svg", "image/svg+xml", ("mavieGrad",)),
+            ("/icon.svg", "image/svg+xml", ("mavieBg", "mavieRing")),
             ("/robots.txt", "text/plain", ("Disallow: /admin",)),
         ):
             code, body, hdrs = self.get(route)
@@ -205,10 +205,10 @@ class WebsitePortalTests(unittest.TestCase):
         code_blocked, _, _ = self.get("/admin")
         self.assertEqual(code_blocked, 404)
 
-        code_adm, adm_html, _ = self.get("/admin", headers={"X-Admin-Gate": "gate-secret-vrelio"})
+        code_adm, adm_html, _ = self.get("/admin", headers={"X-Admin-Gate": "gate-secret-mavie"})
         self.assertEqual(code_adm, 200)
-        self.assertIn("Vrelio Yönetim Paneli", adm_html)
-        self.assertIn("VRELIO-", adm_html)
+        self.assertIn("Mavie Yönetim Paneli", adm_html)
+        self.assertIn("MAVIE-", adm_html)
         self.assertIn("cfgMacosUrl", adm_html)
         self.assertIn("cfgIosUrl", adm_html)
         self.assertIn("euVerified", adm_html)
@@ -216,7 +216,7 @@ class WebsitePortalTests(unittest.TestCase):
 
         code_js, adm_js, _ = self.get("/admin.js")
         self.assertEqual(code_js, 200)
-        self.assertIn("vrelio_admin_token", adm_js)
+        self.assertIn("mavie_admin_token", adm_js)
         self.assertIn("trialUsers", adm_js)
         self.assertIn("verifiedUsers", adm_js)
         self.assertNotIn("cineva", adm_js.lower())
@@ -226,7 +226,7 @@ class WebsitePortalTests(unittest.TestCase):
         if not chrome:
             self.skipTest("Google Chrome binary not available")
 
-        with tempfile.TemporaryDirectory(prefix="vrelio-chrome-") as prof_dir:
+        with tempfile.TemporaryDirectory(prefix="mavie-chrome-") as prof_dir:
             proc = subprocess.Popen(
                 [
                     chrome,
@@ -372,7 +372,7 @@ class WebsitePortalTests(unittest.TestCase):
                             document.getElementById('closeAccountModal').click();
                             document.getElementById('heroTrialBtn').click();
                             document.getElementById('uName').value = 'Chrome User';
-                            document.getElementById('uEmail').value = 'chrome_e2e@vrelio.app';
+                            document.getElementById('uEmail').value = 'chrome_e2e@mavie.app';
                             document.getElementById('uPass').value = 'ChromePass123!';
                             document.getElementById('userAuthForm').dispatchEvent(new Event('submit', { cancelable: true }));
                         })()""",
@@ -391,7 +391,7 @@ class WebsitePortalTests(unittest.TestCase):
                     self.assertNotEqual(verify_vis["verifyDisplay"], "none")
 
                     outbox = json.loads((Path(self.temp.name) / "email_outbox.json").read_text(encoding="utf-8"))
-                    code = [m for m in outbox if m["recipient"] == "chrome_e2e@vrelio.app" and m["kind"] == "verify_email"][-1]["code"]
+                    code = [m for m in outbox if m["recipient"] == "chrome_e2e@mavie.app" and m["kind"] == "verify_email"][-1]["code"]
                     cdp.call("Runtime.evaluate", {
                         "expression": f"""(() => {{
                             document.getElementById('verifyCodeInput').value = {json.dumps(code)};
@@ -436,14 +436,14 @@ class WebsitePortalTests(unittest.TestCase):
                     # Log back in with verified credentials, register device via API, and test self-service removal
                     cdp.call("Runtime.evaluate", {
                         "expression": """(() => {
-                            document.getElementById('uEmail').value = 'chrome_e2e@vrelio.app';
+                            document.getElementById('uEmail').value = 'chrome_e2e@mavie.app';
                             document.getElementById('uPass').value = 'ChromePass123!';
                             document.getElementById('userAuthForm').dispatchEvent(new Event('submit', { cancelable: true }));
                         })()""",
                     })
                     time.sleep(0.5)
                     token = cdp.call("Runtime.evaluate", {
-                        "expression": "localStorage.getItem('vrelio_user_token')",
+                        "expression": "localStorage.getItem('mavie_user_token')",
                         "returnByValue": True,
                     })["result"]["value"]
                     self.assertTrue(token and token != "undefined")
@@ -487,7 +487,7 @@ class WebsitePortalTests(unittest.TestCase):
                                 authView: document.getElementById('accountLoggedOut').dataset.authView,
                                 tabsDisplay: getComputedStyle(document.getElementById('authViewTabs')).display,
                             };
-                            document.getElementById('forgotEmailInput').value = 'chrome_e2e@vrelio.app';
+                            document.getElementById('forgotEmailInput').value = 'chrome_e2e@mavie.app';
                             document.getElementById('forgotPassForm').dispatchEvent(new Event('submit', { cancelable: true }));
                             return res;
                         })()""",
@@ -504,7 +504,7 @@ class WebsitePortalTests(unittest.TestCase):
                     self.assertEqual(reset_vis["tabsDisplay"], "none")
 
                     outbox2 = json.loads((Path(self.temp.name) / "email_outbox.json").read_text(encoding="utf-8"))
-                    reset_code = [m for m in outbox2 if m["recipient"] == "chrome_e2e@vrelio.app" and m["kind"] == "password_reset"][-1]["code"]
+                    reset_code = [m for m in outbox2 if m["recipient"] == "chrome_e2e@mavie.app" and m["kind"] == "password_reset"][-1]["code"]
                     cdp.call("Runtime.evaluate", {
                         "expression": f"""(() => {{
                             document.getElementById('resetCodeInput').value = {json.dumps(reset_code)};
@@ -522,7 +522,7 @@ class WebsitePortalTests(unittest.TestCase):
 
                     # Admin page before login: #adminLogoutBtn must have computed display === 'none'
                     cdp.events.clear()
-                    cdp.call("Page.navigate", {"url": f"http://127.0.0.1:{self.port}/admin?access=gate-secret-vrelio"})
+                    cdp.call("Page.navigate", {"url": f"http://127.0.0.1:{self.port}/admin?access=gate-secret-mavie"})
                     time.sleep(0.6)
                     adm_pre = cdp.call("Runtime.evaluate", {
                         "expression": """(() => ({
@@ -541,7 +541,7 @@ class WebsitePortalTests(unittest.TestCase):
                     conn_u.request(
                         "POST",
                         "/api/v1/auth/login",
-                        body=json.dumps({"email": "chrome_e2e@vrelio.app", "password": "ChromeNewPass!2026"}),
+                        body=json.dumps({"email": "chrome_e2e@mavie.app", "password": "ChromeNewPass!2026"}),
                         headers={"Content-Type": "application/json"},
                     )
                     u_login_resp = json.loads(conn_u.getresponse().read().decode("utf-8"))
@@ -563,7 +563,7 @@ class WebsitePortalTests(unittest.TestCase):
 
                     cdp.call("Runtime.evaluate", {
                         "expression": """(() => {
-                            document.getElementById('adminEmail').value = 'admin@vrelio.app';
+                            document.getElementById('adminEmail').value = 'admin@mavie.app';
                             document.getElementById('adminPassword').value = 'AdminStrongPass!2026';
                             document.getElementById('adminLoginForm').dispatchEvent(new Event('submit', { cancelable: true }));
                         })()""",
@@ -584,7 +584,7 @@ class WebsitePortalTests(unittest.TestCase):
                     cdp.events.clear()
                     cdp.call("Runtime.evaluate", {
                         "expression": f"""(() => {{
-                            localStorage.setItem('vrelio_admin_token', {json.dumps(user_token)});
+                            localStorage.setItem('mavie_admin_token', {json.dumps(user_token)});
                             document.querySelector('[data-rm-dev="dev-rm-403"]').click();
                         }})()""",
                     })

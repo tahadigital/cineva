@@ -1,4 +1,4 @@
-"""Standard M3U/M3U8 playlist parser and Open-License Demo catalog for Vrelio."""
+"""Standard M3U/M3U8 playlist parser and Open-License Demo catalog for Mavie."""
 from __future__ import annotations
 
 import hashlib

@@ -1,7 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-private struct VrelioBackupDocument: FileDocument {
+private struct MavieBackupDocument: FileDocument {
     static var readableContentTypes: [UTType] { [.json] }
     var data: Data
 
@@ -31,7 +31,7 @@ public struct SettingsView: View {
     @State private var showVideoImporter = false
     @State private var showBackupImporter = false
     @State private var showBackupExporter = false
-    @State private var exportDocument: VrelioBackupDocument?
+    @State private var exportDocument: MavieBackupDocument?
 
     @State private var showAddProfile = false
     @State private var newProfileName = ""
@@ -66,7 +66,7 @@ public struct SettingsView: View {
                 }
                 .padding(16)
             }
-            .background(VrelioTheme.bg.ignoresSafeArea())
+            .background(MavieTheme.bg.ignoresSafeArea())
             .navigationTitle("Ayarlar")
             .onAppear {
                 if m3uURL.isEmpty { m3uURL = store.connection.m3uUrl }
@@ -112,7 +112,7 @@ public struct SettingsView: View {
                 isPresented: $showBackupExporter,
                 document: exportDocument,
                 contentType: .json,
-                defaultFilename: "vrelio-yedek"
+                defaultFilename: "mavie-yedek"
             ) { result in
                 if case .success = result {
                     feedbackMessage = "JSON yedek kaydedildi."
@@ -121,7 +121,7 @@ public struct SettingsView: View {
             .sheet(isPresented: $showAddProfile) {
                 addProfileSheet
             }
-            .alert("Vrelio Pro Plan Gerekli", isPresented: $showProAlert) {
+            .alert("Mavie Pro Plan Gerekli", isPresented: $showProAlert) {
                 Button("Tamam", role: .cancel) {}
             } message: {
                 Text(proAlertMessage)
@@ -143,10 +143,10 @@ public struct SettingsView: View {
                 Label("Açık Sinema ile Hemen Dene (Demo)", systemImage: "sparkles.tv.fill")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(VrelioPrimaryButtonStyle(compact: true))
+            .buttonStyle(MaviePrimaryButtonStyle(compact: true))
             .accessibilityLabel("Açık Sinema Demo Kataloğunu Yükle")
 
-            Divider().overlay(VrelioTheme.border)
+            Divider().overlay(MavieTheme.border)
 
             Text("M3U / M3U8 Oynatma Listesi")
                 .font(.subheadline.weight(.semibold))
@@ -157,7 +157,7 @@ public struct SettingsView: View {
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
                     .padding(10)
-                    .background(VrelioTheme.panelElevated, in: RoundedRectangle(cornerRadius: 10))
+                    .background(MavieTheme.panelElevated, in: RoundedRectangle(cornerRadius: 10))
                     .foregroundStyle(.white)
                 Button("Yükle") {
                     Task {
@@ -165,11 +165,11 @@ public struct SettingsView: View {
                         feedbackMessage = store.statusBanner
                     }
                 }
-                .buttonStyle(VrelioGhostButtonStyle(compact: true))
+                .buttonStyle(MavieGhostButtonStyle(compact: true))
                 .accessibilityLabel("M3U Adresini Yükle")
             }
 
-            Divider().overlay(VrelioTheme.border)
+            Divider().overlay(MavieTheme.border)
 
             Text("Xtream Codes API")
                 .font(.subheadline.weight(.semibold))
@@ -178,19 +178,19 @@ public struct SettingsView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .padding(10)
-                .background(VrelioTheme.panelElevated, in: RoundedRectangle(cornerRadius: 10))
+                .background(MavieTheme.panelElevated, in: RoundedRectangle(cornerRadius: 10))
                 .foregroundStyle(.white)
             TextField("Kullanıcı adı", text: $xtreamUser)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .padding(10)
-                .background(VrelioTheme.panelElevated, in: RoundedRectangle(cornerRadius: 10))
+                .background(MavieTheme.panelElevated, in: RoundedRectangle(cornerRadius: 10))
                 .foregroundStyle(.white)
             SecureField("Parola", text: $xtreamPass)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .padding(10)
-                .background(VrelioTheme.panelElevated, in: RoundedRectangle(cornerRadius: 10))
+                .background(MavieTheme.panelElevated, in: RoundedRectangle(cornerRadius: 10))
                 .foregroundStyle(.white)
 
             Button {
@@ -202,10 +202,10 @@ public struct SettingsView: View {
                 Label("Xtream’e Bağlan", systemImage: "antenna.radiowaves.left.and.right")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(VrelioGhostButtonStyle(compact: true))
+            .buttonStyle(MavieGhostButtonStyle(compact: true))
             .accessibilityLabel("Xtream Sunucusuna Bağlan")
 
-            Divider().overlay(VrelioTheme.border)
+            Divider().overlay(MavieTheme.border)
 
             Button {
                 showVideoImporter = true
@@ -213,33 +213,33 @@ public struct SettingsView: View {
                 Label("Cihazdan Video Dosyası Ekle (.mp4/.mov/.m3u8)", systemImage: "folder.badge.plus")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(VrelioGhostButtonStyle(compact: true))
+            .buttonStyle(MavieGhostButtonStyle(compact: true))
             .accessibilityLabel("Cihazdan Yerel Video Dosyası Seç")
         }
         .padding(16)
-        .vrelioCard()
+        .mavieCard()
     }
 
     private var lanSyncSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Masaüstü Vrelio Sunucusu ile Yerel Ağ Eşitleme")
+            Text("Masaüstü Mavie Sunucusu ile Yerel Ağ Eşitleme")
                 .font(.headline)
                 .foregroundStyle(.white)
-            Text("Aynı Wi-Fi ağındaki Mac veya Windows Vrelio uygulamasının yerel IP adresini ve 6 haneli eşleştirme kodunu girin.")
+            Text("Aynı Wi-Fi ağındaki Mac veya Windows Mavie uygulamasının yerel IP adresini ve 6 haneli eşleştirme kodunu girin.")
                 .font(.caption)
-                .foregroundStyle(VrelioTheme.muted)
+                .foregroundStyle(MavieTheme.muted)
 
             TextField("Yerel adres (ör. 192.168.1.25:8844)", text: $lanAddress)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .padding(10)
-                .background(VrelioTheme.panelElevated, in: RoundedRectangle(cornerRadius: 10))
+                .background(MavieTheme.panelElevated, in: RoundedRectangle(cornerRadius: 10))
                 .foregroundStyle(.white)
 
             TextField("6 haneli eşleştirme kodu", text: $lanPairingCode)
                 .keyboardType(.numberPad)
                 .padding(10)
-                .background(VrelioTheme.panelElevated, in: RoundedRectangle(cornerRadius: 10))
+                .background(MavieTheme.panelElevated, in: RoundedRectangle(cornerRadius: 10))
                 .foregroundStyle(.white)
 
             Button {
@@ -256,11 +256,11 @@ public struct SettingsView: View {
                 Label("Yerel Sunucuyla Eşitle", systemImage: "wifi")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(VrelioGhostButtonStyle(compact: true))
-            .accessibilityLabel("Yerel Vrelio Sunucusuyla Eşitle")
+            .buttonStyle(MavieGhostButtonStyle(compact: true))
+            .accessibilityLabel("Yerel Mavie Sunucusuyla Eşitle")
         }
         .padding(16)
-        .vrelioCard()
+        .mavieCard()
     }
 
     private var profilesSection: some View {
@@ -272,7 +272,7 @@ public struct SettingsView: View {
                 Spacer()
                 Button {
                     if !store.canAddAnotherProfile {
-                        proAlertMessage = "Birden fazla profil oluşturmak Vrelio Pro plan gerektirir."
+                        proAlertMessage = "Birden fazla profil oluşturmak Mavie Pro plan gerektirir."
                         showProAlert = true
                     } else {
                         showAddProfile = true
@@ -280,7 +280,7 @@ public struct SettingsView: View {
                 } label: {
                     Label("Profil Ekle", systemImage: "person.crop.circle.badge.plus")
                 }
-                .buttonStyle(VrelioGhostButtonStyle(compact: true))
+                .buttonStyle(MavieGhostButtonStyle(compact: true))
                 .accessibilityLabel("Yeni Profil Ekle")
             }
 
@@ -288,7 +288,7 @@ public struct SettingsView: View {
                 HStack {
                     Image(systemName: profile.isKids ? "figure.and.child.holdinghands" : "person.circle.fill")
                         .font(.title3)
-                        .foregroundStyle(profile.active ? VrelioTheme.coral : VrelioTheme.muted)
+                        .foregroundStyle(profile.active ? MavieTheme.coral : MavieTheme.muted)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(profile.name)
                             .font(.subheadline.weight(.semibold))
@@ -296,28 +296,28 @@ public struct SettingsView: View {
                         if profile.hasPin {
                             Text("PIN Korumalı")
                                 .font(.caption2)
-                                .foregroundStyle(VrelioTheme.amber)
+                                .foregroundStyle(MavieTheme.amber)
                         }
                     }
                     Spacer()
                     if profile.active {
                         Text("Aktif")
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(VrelioTheme.success)
+                            .foregroundStyle(MavieTheme.success)
                     } else {
                         Button("Seç") {
                             try? store.switchProfile(id: profile.id)
                         }
-                        .buttonStyle(VrelioGhostButtonStyle(compact: true))
+                        .buttonStyle(MavieGhostButtonStyle(compact: true))
                         .accessibilityLabel("\(profile.name) profiline geç")
                     }
                 }
                 .padding(10)
-                .background(VrelioTheme.panelElevated, in: RoundedRectangle(cornerRadius: 12))
+                .background(MavieTheme.panelElevated, in: RoundedRectangle(cornerRadius: 12))
             }
         }
         .padding(16)
-        .vrelioCard()
+        .mavieCard()
     }
 
     private var backupSection: some View {
@@ -328,14 +328,14 @@ public struct SettingsView: View {
             HStack(spacing: 10) {
                 Button {
                     if let data = try? store.exportBackupJSON() {
-                        exportDocument = VrelioBackupDocument(data: data)
+                        exportDocument = MavieBackupDocument(data: data)
                         showBackupExporter = true
                     }
                 } label: {
                     Label("Yedeği Dışa Aktar", systemImage: "square.and.arrow.up")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(VrelioGhostButtonStyle(compact: true))
+                .buttonStyle(MavieGhostButtonStyle(compact: true))
                 .accessibilityLabel("JSON Yedeğini Dışa Aktar")
 
                 Button {
@@ -344,27 +344,27 @@ public struct SettingsView: View {
                     Label("Yedeği İçe Aktar", systemImage: "square.and.arrow.down")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(VrelioGhostButtonStyle(compact: true))
+                .buttonStyle(MavieGhostButtonStyle(compact: true))
                 .accessibilityLabel("JSON Yedeğini İçe Aktar")
             }
         }
         .padding(16)
-        .vrelioCard()
+        .mavieCard()
     }
 
     private var aboutSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            VrelioWordmark(subtitle: "Sürüm 2.1.0 · iOS / iPadOS", markSize: 30)
-            Text("Vrelio, kullanıcı tarafından sağlanan yasal medya kaynakları ve açık lisanslı demo katalogları için geliştirilmiş yerel bir medya oynatıcıdır.")
+            MavieWordmark(subtitle: "Sürüm 2.1.0 · iOS / iPadOS", markSize: 30)
+            Text("Mavie, kullanıcı tarafından sağlanan yasal medya kaynakları ve açık lisanslı demo katalogları için geliştirilmiş yerel bir medya oynatıcıdır.")
                 .font(.caption)
-                .foregroundStyle(VrelioTheme.muted)
-            Text("İletişim: privacy@vrelio.app · legal@vrelio.app")
+                .foregroundStyle(MavieTheme.muted)
+            Text("İletişim: privacy@mavie.app · legal@mavie.app")
                 .font(.caption2)
-                .foregroundStyle(VrelioTheme.muted)
+                .foregroundStyle(MavieTheme.muted)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .vrelioCard()
+        .mavieCard()
     }
 
     private var addProfileSheet: some View {
@@ -390,7 +390,7 @@ public struct SettingsView: View {
                             newProfilePin = ""
                             newProfileKids = false
                             showAddProfile = false
-                        } catch VrelioError.proRequired(let msg) {
+                        } catch MavieError.proRequired(let msg) {
                             showAddProfile = false
                             proAlertMessage = msg
                             showProAlert = true
@@ -408,7 +408,7 @@ public struct SettingsView: View {
     private func statusCard(_ text: String, isError: Bool) -> some View {
         HStack(spacing: 10) {
             Image(systemName: isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                .foregroundStyle(isError ? VrelioTheme.danger : VrelioTheme.success)
+                .foregroundStyle(isError ? MavieTheme.danger : MavieTheme.success)
             Text(text)
                 .font(.subheadline)
                 .foregroundStyle(.white)
@@ -417,7 +417,7 @@ public struct SettingsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill((isError ? VrelioTheme.danger : VrelioTheme.success).opacity(0.14))
+                .fill((isError ? MavieTheme.danger : MavieTheme.success).opacity(0.14))
         )
     }
 }

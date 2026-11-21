@@ -5,17 +5,17 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>tr</string>
     <key>CFBundleDisplayName</key>
-    <string>Vrelio</string>
+    <string>Mavie</string>
     <key>CFBundleExecutable</key>
-    <string>Vrelio</string>
+    <string>Mavie</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
-    <string>app.vrelio.macos</string>
+    <string>app.mavie.macos</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>Vrelio</string>
+    <string>Mavie</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -34,7 +34,7 @@
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSHumanReadableCopyright</key>
-    <string>Copyright © 2026 Vrelio. Tüm hakları saklıdır.</string>
+    <string>Copyright © 2026 Mavie. Tüm hakları saklıdır.</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
 </dict>

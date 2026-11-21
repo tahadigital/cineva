@@ -70,20 +70,20 @@ class LocalMediaUnitTests(unittest.TestCase):
 class ProfilesAndLocalHTTPTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.temp = tempfile.TemporaryDirectory(prefix='vrelio-s1-')
+        cls.temp = tempfile.TemporaryDirectory(prefix='mavie-s1-')
         cls.base = Path(cls.temp.name)
         cls.data = cls.base / 'data'
         cls.media = cls.base / 'videos'
         (cls.media / 'Aile').mkdir(parents=True)
         (cls.media / 'Yetişkin +18').mkdir(parents=True)
-        cls.sample_bytes = b'VRELIO_LOCAL_STREAM_BYTES_0123456789'
+        cls.sample_bytes = b'MAVIE_LOCAL_STREAM_BYTES_0123456789'
         (cls.media / 'Aile' / 'Charlie.2021.mp4').write_bytes(cls.sample_bytes)
-        (cls.media / 'Aile' / 'Charlie.2021.tr.srt').write_text('1\n00:00:00,000 --> 00:00:01,500\nMerhaba Vrelio\n', encoding='utf-8')
+        (cls.media / 'Aile' / 'Charlie.2021.tr.srt').write_text('1\n00:00:00,000 --> 00:00:01,500\nMerhaba Mavie\n', encoding='utf-8')
         (cls.media / 'Yetişkin +18' / 'Gece.Filmi.2024.mp4').write_bytes(b'ADULT_SAMPLE')
 
         cls.data.mkdir(parents=True)
         (cls.data / 'config.json').write_text(json.dumps({'name': 'Test', 'host': ''}), encoding='utf-8')
-        cls.env = {**os.environ, 'VRELIO_DATA_DIR': str(cls.data)}
+        cls.env = {**os.environ, 'MAVIE_DATA_DIR': str(cls.data)}
         subprocess.run([sys.executable, '-c', 'import server; server.initialize()'], cwd=ROOT, env=cls.env, check=True, capture_output=True, timeout=15)
 
         with socket.socket() as probe:
@@ -241,12 +241,12 @@ class ProfilesAndLocalHTTPTests(unittest.TestCase):
         self.assertEqual(code_vtt, 200)
         self.assertIn('text/vtt', hdrs_vtt.get('content-type', ''))
         self.assertIn(b'WEBVTT', vtt_body)
-        self.assertIn(b'Merhaba Vrelio', vtt_body)
+        self.assertIn(b'Merhaba Mavie', vtt_body)
 
     def test_4_normal_cloud_plan_gates_sports_transcode_and_multiview(self):
         normal_user = {
             'id': 'u_norm',
-            'email': 'norm@vrelio.app',
+            'email': 'norm@mavie.app',
             'displayName': 'Normal User',
             'emailVerified': True,
             'plan': 'normal',
@@ -291,11 +291,11 @@ class ProfilesAndLocalHTTPTests(unittest.TestCase):
         t.start()
         try:
             cloud_url = f'http://127.0.0.1:{srv.server_address[1]}'
-            c_reg, _, p_reg = self.req('POST', '/api/cloud/register', {'cloudUrl': cloud_url, 'email': 'norm@vrelio.app', 'password': 'Password123!'})
+            c_reg, _, p_reg = self.req('POST', '/api/cloud/register', {'cloudUrl': cloud_url, 'email': 'norm@mavie.app', 'password': 'Password123!'})
             self.assertEqual(c_reg, 201)
             self.assertTrue(p_reg.get('verificationRequired'))
 
-            c_log, _, p_log = self.req('POST', '/api/cloud/login', {'cloudUrl': cloud_url, 'email': 'norm@vrelio.app', 'password': 'Password123!'})
+            c_log, _, p_log = self.req('POST', '/api/cloud/login', {'cloudUrl': cloud_url, 'email': 'norm@mavie.app', 'password': 'Password123!'})
             self.assertEqual(c_log, 200)
             self.assertTrue(p_log.get('connected'))
             self.assertEqual(p_log.get('effectivePlan'), 'normal')
@@ -331,7 +331,7 @@ class ProfilesAndLocalHTTPTests(unittest.TestCase):
 
         pro_user = {
             'id': 'u_pro',
-            'email': 'pro@vrelio.app',
+            'email': 'pro@mavie.app',
             'displayName': 'Pro User',
             'emailVerified': True,
             'plan': 'pro',
@@ -375,7 +375,7 @@ class ProfilesAndLocalHTTPTests(unittest.TestCase):
         t.start()
         try:
             cloud_url = f'http://127.0.0.1:{srv.server_address[1]}'
-            c_log, _, p_log = self.req('POST', '/api/cloud/login', {'cloudUrl': cloud_url, 'email': 'pro@vrelio.app', 'password': 'Password123!'})
+            c_log, _, p_log = self.req('POST', '/api/cloud/login', {'cloudUrl': cloud_url, 'email': 'pro@mavie.app', 'password': 'Password123!'})
             self.assertEqual(c_log, 200)
             self.assertTrue(p_log.get('isPro'))
 
@@ -438,7 +438,7 @@ class ProfilesAndLocalHTTPTests(unittest.TestCase):
 
         # Cached trial expiry in local SQLite meta must enforce PRO_REQUIRED even before /api/cloud/status refresh.
         with sqlite3.connect(self.data / 'state.sqlite3') as db:
-            db.execute("INSERT OR REPLACE INTO meta VALUES('cloud_auth', ?)", (json.dumps({'cloudUrl': 'https://vrelio.invalid', 'token': 'tok-expired'}),))
+            db.execute("INSERT OR REPLACE INTO meta VALUES('cloud_auth', ?)", (json.dumps({'cloudUrl': 'https://mavie.invalid', 'token': 'tok-expired'}),))
             db.execute("INSERT OR REPLACE INTO meta VALUES('cloud_user', ?)", (json.dumps({
                 'id': 'u_exp', 'plan': 'pro', 'effectivePlan': 'pro', 'isPro': True,
                 'trialActive': True, 'trialEndsAt': '2020-01-01T00:00:00+00:00',

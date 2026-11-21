@@ -3,7 +3,7 @@ import SwiftUI
 
 public struct PreferencesView: View {
     @ObservedObject public var manager: ServerProcessManager
-    @State private var portalURL: String = UserDefaults.standard.string(forKey: "vrelio_portal_url") ?? CloudClient.defaultPortalURL
+    @State private var portalURL: String = UserDefaults.standard.string(forKey: "mavie_portal_url") ?? CloudClient.defaultPortalURL
     @State private var copiedAddress: String?
     public var onClose: () -> Void
 
@@ -15,16 +15,16 @@ public struct PreferencesView: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
-                VrelioWordmark(subtitle: "macOS Sunucu & Tercihler", markSize: 34)
+                MavieWordmark(subtitle: "macOS Sunucu & Tercihler", markSize: 34)
                 Spacer()
                 Button(action: onClose) {
                     Label("Kapat", systemImage: "xmark")
                 }
-                .buttonStyle(VrelioGhostButtonStyle(compact: true))
+                .buttonStyle(MavieGhostButtonStyle(compact: true))
                 .accessibilityLabel("Tercihler Penceresini Kapat")
             }
 
-            Divider().overlay(VrelioTheme.border)
+            Divider().overlay(MavieTheme.border)
 
             VStack(alignment: .leading, spacing: 10) {
                 Text("Yerel Medya Sunucusu")
@@ -33,26 +33,26 @@ public struct PreferencesView: View {
 
                 HStack {
                     Label(manager.healthDetails, systemImage: manager.status.isReady ? "checkmark.seal.fill" : "bolt.horizontal.circle")
-                        .foregroundStyle(manager.status.isReady ? VrelioTheme.success : VrelioTheme.amber)
+                        .foregroundStyle(manager.status.isReady ? MavieTheme.success : MavieTheme.amber)
                     Spacer()
                     Text("Port \(manager.port)")
                         .font(.caption.monospaced())
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
-                        .background(VrelioTheme.panelElevated, in: Capsule())
+                        .background(MavieTheme.panelElevated, in: Capsule())
                         .foregroundStyle(.white)
                 }
 
                 if !manager.executableDescription.isEmpty {
                     Text("Çalışma Modu: \(manager.executableDescription)")
                         .font(.caption)
-                        .foregroundStyle(VrelioTheme.muted)
+                        .foregroundStyle(MavieTheme.muted)
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Yerel Ağ (LAN) Eşleştirme Adresleri")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(VrelioTheme.muted)
+                        .foregroundStyle(MavieTheme.muted)
 
                     ForEach(manager.lanURLs, id: \.self) { url in
                         HStack {
@@ -67,14 +67,14 @@ public struct PreferencesView: View {
                             } label: {
                                 Label(copiedAddress == url ? "Kopyalandı" : "Kopyala", systemImage: copiedAddress == url ? "checkmark" : "doc.on.doc")
                             }
-                            .buttonStyle(VrelioGhostButtonStyle(compact: true))
+                            .buttonStyle(MavieGhostButtonStyle(compact: true))
                             .accessibilityLabel("\(url) adresini kopyala")
                         }
                     }
                 }
             }
             .padding(14)
-            .vrelioCard()
+            .mavieCard()
 
             VStack(alignment: .leading, spacing: 10) {
                 Text("Depolama ve Bulut Portalı")
@@ -83,7 +83,7 @@ public struct PreferencesView: View {
 
                 Text("Veri Klasörü: \(manager.dataDir.path)")
                     .font(.caption)
-                    .foregroundStyle(VrelioTheme.muted)
+                    .foregroundStyle(MavieTheme.muted)
                     .lineLimit(2)
 
                 HStack(spacing: 10) {
@@ -92,7 +92,7 @@ public struct PreferencesView: View {
                     } label: {
                         Label("Veri Klasörünü Aç", systemImage: "folder")
                     }
-                    .buttonStyle(VrelioGhostButtonStyle(compact: true))
+                    .buttonStyle(MavieGhostButtonStyle(compact: true))
                     .accessibilityLabel("Veri Klasörünü Finder ile Aç")
 
                     Button {
@@ -100,7 +100,7 @@ public struct PreferencesView: View {
                     } label: {
                         Label("Günlüğü Aç", systemImage: "doc.text")
                     }
-                    .buttonStyle(VrelioGhostButtonStyle(compact: true))
+                    .buttonStyle(MavieGhostButtonStyle(compact: true))
                     .accessibilityLabel("Sunucu Günlüğünü Aç")
 
                     Button {
@@ -108,7 +108,7 @@ public struct PreferencesView: View {
                     } label: {
                         Label("Sunucuyu Yeniden Başlat", systemImage: "arrow.clockwise")
                     }
-                    .buttonStyle(VrelioPrimaryButtonStyle(compact: true))
+                    .buttonStyle(MaviePrimaryButtonStyle(compact: true))
                     .accessibilityLabel("Yerel Sunucuyu Yeniden Başlat")
                 }
 
@@ -116,18 +116,18 @@ public struct PreferencesView: View {
                     TextField("Bulut Portalı URL", text: $portalURL)
                         .textFieldStyle(.roundedBorder)
                     Button("Kaydet") {
-                        UserDefaults.standard.set(portalURL.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "vrelio_portal_url")
+                        UserDefaults.standard.set(portalURL.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "mavie_portal_url")
                     }
-                    .buttonStyle(VrelioGhostButtonStyle(compact: true))
+                    .buttonStyle(MavieGhostButtonStyle(compact: true))
                     .accessibilityLabel("Bulut Portalı Adresini Kaydet")
                 }
             }
             .padding(14)
-            .vrelioCard()
+            .mavieCard()
         }
         .padding(20)
         .frame(width: 560)
-        .background(VrelioTheme.bg)
+        .background(MavieTheme.bg)
         .preferredColorScheme(.dark)
     }
 }

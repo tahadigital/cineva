@@ -19,7 +19,7 @@ function experience({reduced = false, storage = new Map(), blockedStorage = fals
   const motion = {matches: reduced, addEventListener(_name, callback) { this.callback = callback; }};
   const document = {
     readyState: 'interactive', hidden: false,
-    getElementById: id => id === 'vrelioLaunch' ? (intro.removed ? null : intro) : id === 'main' ? main : null,
+    getElementById: id => id === 'mavieLaunch' ? (intro.removed ? null : intro) : id === 'main' ? main : null,
     addEventListener: (name, callback) => events.set(name, callback),
   };
   class IntersectionObserver {
@@ -97,7 +97,7 @@ test('changing reduced-motion preference immediately dismisses an active intro',
 });
 
 test('idle home refresh does not replay animations, while a real navigation does', () => {
-  const h = experience({storage: new Map([['vrelio:launch:v1', '1']])});
+  const h = experience({storage: new Map([['mavie:launch:v1', '1']])});
   h.advance(10);
   assert.equal(h.animations.length, 1);
   h.replaceCards(); h.mutate(); h.advance(10);
@@ -123,7 +123,7 @@ test('hiding the page dismisses the cover and cancels any remaining timer', () =
 });
 
 test('a runtime reduced-motion change cancels active entrance animations', () => {
-  const h = experience({storage: new Map([['vrelio:launch:v1', '1']])});
+  const h = experience({storage: new Map([['mavie:launch:v1', '1']])});
   h.advance(10);
   h.motion.matches = true; h.motion.callback();
   assert.ok(h.animations.length > 0);

@@ -3,7 +3,7 @@ import SwiftUI
 public struct HomeView: View {
     @ObservedObject public var store: LibraryStore
     public var onPlay: (MediaItem, MediaDetail?) -> Void
-    public var onOpenTab: (VrelioTab) -> Void
+    public var onOpenTab: (MavieTab) -> Void
 
     @State private var surpriseSeriesItem: MediaItem?
     @State private var showSurpriseSeriesDetail = false
@@ -11,7 +11,7 @@ public struct HomeView: View {
     public init(
         store: LibraryStore,
         onPlay: @escaping (MediaItem, MediaDetail?) -> Void,
-        onOpenTab: @escaping (VrelioTab) -> Void
+        onOpenTab: @escaping (MavieTab) -> Void
     ) {
         self.store = store
         self.onPlay = onPlay
@@ -35,7 +35,7 @@ public struct HomeView: View {
                     if let hero = spotlightItem {
                         heroSpotlight(item: hero)
                     } else {
-                        VrelioEmptyStateCard(
+                        MavieEmptyStateCard(
                             systemImage: "sparkles.tv",
                             title: "Kütüphaneniz Henüz Boş",
                             message: "Açık Sinema demo filmleriyle hemen başlayın veya M3U / Xtream kaynağınızı ekleyin.",
@@ -64,7 +64,7 @@ public struct HomeView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
             }
-            .background(VrelioTheme.cinemaBackdrop.ignoresSafeArea())
+            .background(MavieTheme.cinemaBackdrop.ignoresSafeArea())
             .navigationTitle("Ana Sayfa")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(isPresented: $showSurpriseSeriesDetail) {
@@ -74,7 +74,7 @@ public struct HomeView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    VrelioWordmark(markSize: 28)
+                    MavieWordmark(markSize: 28)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -104,7 +104,7 @@ public struct HomeView: View {
                     .foregroundStyle(.white)
                 Text("\(store.items.count) içerik hazır · \(store.sourceMode.displayTitle)")
                     .font(.caption)
-                    .foregroundStyle(VrelioTheme.muted)
+                    .foregroundStyle(MavieTheme.muted)
             }
             Spacer()
             if store.sourceMode != .demo {
@@ -113,12 +113,12 @@ public struct HomeView: View {
                 } label: {
                     Label("Demo Aç", systemImage: "film.fill")
                 }
-                .buttonStyle(VrelioGhostButtonStyle(compact: true))
+                .buttonStyle(MavieGhostButtonStyle(compact: true))
                 .accessibilityLabel("Açık Sinema Demo Kataloğunu Yükle")
             }
         }
         .padding(14)
-        .vrelioCard()
+        .mavieCard()
     }
 
     private func trialBanner(remaining: String) -> some View {
@@ -128,27 +128,27 @@ public struct HomeView: View {
             HStack(spacing: 12) {
                 Image(systemName: "crown.fill")
                     .font(.title3)
-                    .foregroundStyle(VrelioTheme.amber)
+                    .foregroundStyle(MavieTheme.amber)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("3 Günlük Vrelio Pro Deneme Aktif")
+                    Text("3 Günlük Mavie Pro Deneme Aktif")
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(.white)
                     Text("Kalan süre: \(remaining) · Bulut Eşitleme ve 5 Cihaz açık")
                         .font(.caption)
-                        .foregroundStyle(VrelioTheme.muted)
+                        .foregroundStyle(MavieTheme.muted)
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .foregroundStyle(VrelioTheme.muted)
+                    .foregroundStyle(MavieTheme.muted)
             }
             .padding(14)
             .frame(minHeight: 54)
             .background(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(VrelioTheme.coral.opacity(0.16))
+                    .fill(MavieTheme.coral.opacity(0.16))
                     .overlay(
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .strokeBorder(VrelioTheme.amber.opacity(0.45), lineWidth: 1)
+                            .strokeBorder(MavieTheme.amber.opacity(0.45), lineWidth: 1)
                     )
             )
         }
@@ -165,11 +165,11 @@ public struct HomeView: View {
                         if case .success(let image) = phase {
                             image.resizable().scaledToFill()
                         } else {
-                            LinearGradient(colors: [VrelioTheme.panelElevated, VrelioTheme.bgDeep], startPoint: .top, endPoint: .bottom)
+                            LinearGradient(colors: [MavieTheme.panelElevated, MavieTheme.bgDeep], startPoint: .top, endPoint: .bottom)
                         }
                     }
                 } else {
-                    LinearGradient(colors: [VrelioTheme.panelElevated, VrelioTheme.bgDeep], startPoint: .top, endPoint: .bottom)
+                    LinearGradient(colors: [MavieTheme.panelElevated, MavieTheme.bgDeep], startPoint: .top, endPoint: .bottom)
                 }
             }
             .frame(height: 260)
@@ -177,7 +177,7 @@ public struct HomeView: View {
             .clipped()
 
             LinearGradient(
-                colors: [.clear, VrelioTheme.bgDeep.opacity(0.82), VrelioTheme.bgDeep],
+                colors: [.clear, MavieTheme.bgDeep.opacity(0.82), MavieTheme.bgDeep],
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -188,17 +188,17 @@ public struct HomeView: View {
                         .font(.caption.weight(.bold))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
-                        .background(VrelioTheme.coral.opacity(0.85), in: Capsule())
+                        .background(MavieTheme.coral.opacity(0.85), in: Capsule())
                         .foregroundStyle(.white)
                     if !item.year.isEmpty {
                         Text(item.year)
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(VrelioTheme.muted)
+                            .foregroundStyle(MavieTheme.muted)
                     }
                     if item.rating > 0 {
                         Label(String(format: "%.1f", item.rating), systemImage: "star.fill")
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(VrelioTheme.amber)
+                            .foregroundStyle(MavieTheme.amber)
                     }
                 }
 
@@ -210,7 +210,7 @@ public struct HomeView: View {
                 if !item.plot.isEmpty {
                     Text(item.plot)
                         .font(.caption)
-                        .foregroundStyle(VrelioTheme.muted)
+                        .foregroundStyle(MavieTheme.muted)
                         .lineLimit(2)
                 }
 
@@ -221,7 +221,7 @@ public struct HomeView: View {
                         } label: {
                             Label("Bölümleri Seç", systemImage: "play.fill")
                         }
-                        .buttonStyle(VrelioPrimaryButtonStyle(compact: true))
+                        .buttonStyle(MaviePrimaryButtonStyle(compact: true))
                         .accessibilityLabel("\(item.name) bölümlerini aç")
                     } else {
                         Button {
@@ -229,7 +229,7 @@ public struct HomeView: View {
                         } label: {
                             Label(store.progress(for: item) != nil ? "Devam Et" : "Hemen Oynat", systemImage: "play.fill")
                         }
-                        .buttonStyle(VrelioPrimaryButtonStyle(compact: true))
+                        .buttonStyle(MaviePrimaryButtonStyle(compact: true))
                         .accessibilityLabel("\(item.name) içeriğini oynat")
                     }
 
@@ -238,7 +238,7 @@ public struct HomeView: View {
                     } label: {
                         Label("Detaylar", systemImage: "info.circle")
                     }
-                    .buttonStyle(VrelioGhostButtonStyle(compact: true))
+                    .buttonStyle(MavieGhostButtonStyle(compact: true))
                     .accessibilityLabel("\(item.name) detaylarını aç")
                 }
             }
@@ -247,7 +247,7 @@ public struct HomeView: View {
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(VrelioTheme.border, lineWidth: 1)
+                .strokeBorder(MavieTheme.border, lineWidth: 1)
         )
     }
 

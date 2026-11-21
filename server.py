@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Vrelio: local personal media, M3U/Xtream/XMLTV EPG catalog, state and playback service."""
+"""Mavie: local personal media, M3U/Xtream/XMLTV EPG catalog, state and playback service."""
 from __future__ import annotations
 import argparse, base64, collections, contextlib, datetime as dt, hashlib, html, http.cookies
 import ipaddress, json, math, mimetypes, os, re, secrets, signal, socket, sqlite3, sys
@@ -23,7 +23,7 @@ def configure_utf8_stdio():
 configure_utf8_stdio()
 
 ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
-DATA = Path(os.environ.get('VRELIO_DATA_DIR') or os.environ.get('CINEVA_DATA_DIR') or os.environ.get('AKIS_DATA_DIR') or str(ROOT / 'data')).resolve()
+DATA = Path(os.environ.get('MAVIE_DATA_DIR') or os.environ.get('CINEVA_DATA_DIR') or os.environ.get('AKIS_DATA_DIR') or str(ROOT / 'data')).resolve()
 DATA.mkdir(parents=True, exist_ok=True)
 with contextlib.suppress(OSError):
     os.chmod(DATA, 0o700)
@@ -119,7 +119,7 @@ def initialize():
         CREATE TABLE IF NOT EXISTS devices(token_hash TEXT PRIMARY KEY,created_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS profiles(id TEXT PRIMARY KEY,name TEXT NOT NULL,avatar_color TEXT NOT NULL,is_kids INTEGER DEFAULT 0,pin_hash TEXT DEFAULT '',created_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS profile_snapshots(profile_id TEXT PRIMARY KEY,data TEXT NOT NULL);
-        INSERT OR IGNORE INTO profiles VALUES('default','Ana Profil','#FF4B45',0,'',datetime('now'));
+        INSERT OR IGNORE INTO profiles VALUES('default','Ana Profil','#7C3AED',0,'',datetime('now'));
         ''')
     os.chmod(DB, 0o600)
 
@@ -422,7 +422,7 @@ def active_profile():
     with connect() as c:
         row = c.execute('SELECT id,name,avatar_color,is_kids,pin_hash FROM profiles WHERE id=?', (pid,)).fetchone()
     if not row:
-        return {'id': 'default', 'name': 'Ana Profil', 'avatarColor': '#FF4B45', 'isKids': False, 'hasPin': False}
+        return {'id': 'default', 'name': 'Ana Profil', 'avatarColor': '#7C3AED', 'isKids': False, 'hasPin': False}
     return {'id': row['id'], 'name': row['name'], 'avatarColor': row['avatar_color'], 'isKids': bool(row['is_kids']), 'hasPin': bool(row['pin_hash'])}
 
 
@@ -510,7 +510,7 @@ def _cloud_state():
     saved = meta_get('cloud_auth', {})
     if not isinstance(saved, dict):
         saved = {}
-    env_url = (os.environ.get('VRELIO_CLOUD_URL') or os.environ.get('CINEVA_CLOUD_URL') or '').strip()
+    env_url = (os.environ.get('MAVIE_CLOUD_URL') or os.environ.get('CINEVA_CLOUD_URL') or '').strip()
     url = saved.get('cloudUrl') or env_url
     return {'cloudUrl': url, 'token': saved.get('token', ''), 'deviceId': saved.get('deviceId') or meta_get('cloud_device_id') or ''}
 
@@ -525,7 +525,7 @@ def _ensure_cloud_device_id():
 
 def _cloud_request(cloud_url, path, method='GET', payload=None, token=''):
     base = validate_host(cloud_url)
-    headers = {'User-Agent': 'Vrelio-Desktop/3.0', 'Accept': 'application/json'}
+    headers = {'User-Agent': 'Mavie-Desktop/3.0', 'Accept': 'application/json'}
     if token:
         headers['Authorization'] = 'Bearer ' + token
     raw = None
@@ -547,7 +547,7 @@ def _cloud_request(cloud_url, path, method='GET', payload=None, token=''):
         msg = parsed.get('error') or 'Bulut sunucusu isteği reddetti.'
         raise CloudError(msg, status=err.code, data=parsed) from None
     except (urllib.error.URLError, TimeoutError) as err:
-        raise RuntimeError('Vrelio Bulut sunucusuna şu anda ulaşılamıyor.') from err
+        raise RuntimeError('Mavie Bulut sunucusuna şu anda ulaşılamıyor.') from err
 
 
 def _cloud_status_shape(connected, cloud_url, user, cfg):
@@ -574,7 +574,7 @@ def _complete_cloud_session(cloud_url, token, user=None):
     with contextlib.suppress(Exception):
         _cloud_request(cloud_url, '/api/v1/devices/register', method='POST', payload={
             'deviceId': _ensure_cloud_device_id(),
-            'deviceName': socket.gethostname() or 'Vrelio Masaüstü',
+            'deviceName': socket.gethostname() or 'Mavie Masaüstü',
             'platform': _cloud_platform(),
         }, token=token)
     with contextlib.suppress(Exception):
@@ -700,7 +700,7 @@ def cloud_reset_password(d):
 def cloud_delete_device(device_id):
     st = _cloud_state()
     if not st['cloudUrl'] or not st['token']:
-        raise CloudError('Önce Vrelio hesabınızla giriş yapın.', status=401)
+        raise CloudError('Önce Mavie hesabınızla giriş yapın.', status=401)
     did = urllib.parse.quote(str(device_id or '').strip(), safe='')
     if not did:
         raise ValueError('Cihaz kimliği gerekli.')
@@ -715,7 +715,7 @@ def cloud_delete_device(device_id):
 def cloud_sync():
     st = _cloud_state()
     if not st['cloudUrl'] or not st['token']:
-        raise ValueError('Önce Vrelio hesabınızla giriş yapın.')
+        raise ValueError('Önce Mavie hesabınızla giriş yapın.')
     if _linked_normal_user():
         raise CloudError('Bulut eşitleme Pro plan gerektirir.', status=403, data={'code': 'PRO_REQUIRED', 'upgradeRequired': True})
     try:
@@ -747,7 +747,7 @@ def cloud_sync():
 def cloud_redeem(d):
     st = _cloud_state()
     if not st['cloudUrl'] or not st['token']:
-        raise ValueError('Önce Vrelio hesabınızla giriş yapın.')
+        raise ValueError('Önce Mavie hesabınızla giriş yapın.')
     res = _cloud_request(st['cloudUrl'], '/api/v1/licenses/redeem', method='POST', payload={'code': d.get('code', '')}, token=st['token'])
     if isinstance(res.get('user'), dict):
         meta_set('cloud_user', res['user'])
@@ -1329,7 +1329,7 @@ def play_item(iid, mode, start, options=None):
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
-    server_version = 'Vrelio/3.0'
+    server_version = 'Mavie/3.0'
     def setup(self):
         super().setup()
         self.connection.settimeout(35)
@@ -1352,7 +1352,7 @@ class Handler(BaseHTTPRequestHandler):
     def authorized(self):
         try:
             c = http.cookies.SimpleCookie(self.headers.get('Cookie', ''))
-            token = c.get('vrelio_device') or c.get('cineva_device') or c.get('akis_device')
+            token = c.get('mavie_device') or c.get('cineva_device') or c.get('akis_device')
             if not token: return False
             digest = hashlib.sha256(token.value.encode()).hexdigest()
             with connect() as db: return db.execute('SELECT 1 FROM devices WHERE token_hash=?', (digest,)).fetchone() is not None
@@ -1360,7 +1360,7 @@ class Handler(BaseHTTPRequestHandler):
     def device_cookie(self):
         token = secrets.token_urlsafe(32)
         with connect() as c: c.execute('INSERT INTO devices VALUES(?,?)', (hashlib.sha256(token.encode()).hexdigest(), stamp()))
-        return f'vrelio_device={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=31536000'
+        return f'mavie_device={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=31536000'
     def headers_out(self, code, content_type, length=None, extra=None):
         self.send_response(code)
         self.send_header('Content-Type', content_type)
@@ -1419,11 +1419,11 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if not self.guard(): return
             u = urllib.parse.urlsplit(self.path); p = urllib.parse.unquote(u.path); q = urllib.parse.parse_qs(u.query)
-            if p == '/api/health': return self.send_json({'app': 'vrelio', 'ok': True})
+            if p == '/api/health': return self.send_json({'app': 'mavie', 'ok': True})
             if p == '/api/legal':
                 return self.send_json({
-                    'app': 'Vrelio',
-                    'disclaimer': 'Vrelio kişisel bir medya oynatıcı ve kütüphane düzenleyicidir. Telifli içerik barındırmaz veya sağlamaz.',
+                    'app': 'Mavie',
+                    'disclaimer': 'Mavie kişisel bir medya oynatıcı ve kütüphane düzenleyicidir. Telifli içerik barındırmaz veya sağlamaz.',
                     'licenses': ['LibVLC (LGPL-2.1+)', 'hls.js (Apache-2.0)', 'TMDB Discovery (opsiyonel resmi API)'],
                 })
             if p.startswith('/internal/source/'):
@@ -1488,7 +1488,7 @@ class Handler(BaseHTTPRequestHandler):
                 if p.startswith('/api/image'): return self.image(q.get('url', [''])[0])
                 if p.startswith('/api/epg/'): return self.epg(p[len('/api/epg/'):])
                 if p == '/api/export':
-                    return self.send_json(export_state_dict(), extra={'Content-Disposition': 'attachment; filename="vrelio-yedek.json"'})
+                    return self.send_json(export_state_dict(), extra={'Content-Disposition': 'attachment; filename="mavie-yedek.json"'})
                 if p.startswith('/media/'): return self.media(p)
                 return self.send_json({'error': 'Sayfa bulunamadı.'}, 404)
             return self.static(p)
@@ -1527,8 +1527,8 @@ class Handler(BaseHTTPRequestHandler):
                 name = string(d.get('name'), 60).strip()
                 if not name: raise ValueError('Profil adı boş olamaz.')
                 is_kids = bool(d.get('isKids', False))
-                color = str(d.get('avatarColor') or '#FF4B45')
-                if not re.fullmatch(r'#[0-9A-Fa-f]{6}', color): color = '#FF4B45'
+                color = str(d.get('avatarColor') or '#7C3AED')
+                if not re.fullmatch(r'#[0-9A-Fa-f]{6}', color): color = '#7C3AED'
                 raw_pin = str(d.get('pin', '')).strip()
                 if _linked_normal_user():
                     with connect() as c:
@@ -1918,7 +1918,7 @@ def export_state_dict():
 
 
 def merge_state_dict(data):
-    if not isinstance(data, dict) or data.get('version') != 1: raise ValueError('Geçerli bir Vrelio yedeği seçin.')
+    if not isinstance(data, dict) or data.get('version') != 1: raise ValueError('Geçerli bir Mavie yedeği seçin.')
     tables = ('favorites', 'progress', 'playlists', 'playlistItems', 'trackPreferences', 'items')
     if any(not isinstance(data.get(t, []), list) or len(data.get(t, [])) > 100000 for t in tables): raise ValueError('Yedek biçimi veya boyutu geçersiz.')
     metadata = [portable_item_row(r) for r in data.get('items', [])]
@@ -2042,7 +2042,7 @@ def run_server(
             threading.Thread(target=check_account, daemon=True).start()
     if ready_event is not None:
         ready_event.set()
-    print(f'Vrelio hazır: http://localhost:{HTTP_PORT}', flush=True)
+    print(f'Mavie hazır: http://localhost:{HTTP_PORT}', flush=True)
     try:
         server.serve_forever(poll_interval=.3)
     finally:
@@ -2056,7 +2056,7 @@ def run_server(
 
 
 def main():
-    p = argparse.ArgumentParser(description='Vrelio yerel medya sunucusu')
+    p = argparse.ArgumentParser(description='Mavie yerel medya sunucusu')
     p.add_argument('--host', default='0.0.0.0')
     p.add_argument('--port', type=int, default=8844)
     p.add_argument('--parent-pid', type=int, default=None, help='Exit when the owning app process exits')

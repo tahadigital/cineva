@@ -23,28 +23,28 @@ from tests.e2e.runner import (
 
 
 class Tier1BrandAndHygieneTests(unittest.TestCase):
-    """Feature #1 & #2: Brand `Vrelio`, zero unwanted Cineva branding, repo secret hygiene."""
+    """Feature #1 & #2: Brand `Mavie`, zero unwanted Cineva branding, repo secret hygiene."""
 
-    def test_local_server_health_and_vrelio_cookie_branding(self) -> None:
+    def test_local_server_health_and_mavie_cookie_branding(self) -> None:
         srv = LocalMediaServerProcess().start()
         self.addCleanup(srv.stop)
         c = srv.client()
         health = c.get("/api/health")
         self.assertEqual(health.status, 200)
-        self.assertEqual(health.json, {"ok": True, "app": "vrelio"})
+        self.assertEqual(health.json, {"ok": True, "app": "mavie"})
 
         root = c.get("/")
         self.assertEqual(root.status, 200)
-        self.assertIn("vrelio", root.text.lower())
+        self.assertIn("mavie", root.text.lower())
         self.assertNotIn("cineva", root.text.lower())
-        self.assertIn("vrelio_device", c.cookies_dict())
+        self.assertIn("mavie_device", c.cookies_dict())
 
-    def test_cloud_server_health_and_vrelio_license_prefix(self) -> None:
+    def test_cloud_server_health_and_mavie_license_prefix(self) -> None:
         cloud = CloudServerProcess().start()
         self.addCleanup(cloud.stop)
         health = cloud.client().get("/api/v1/health")
         self.assertEqual(health.status, 200)
-        self.assertEqual(health.json, {"ok": True, "service": "vrelio-cloud"})
+        self.assertEqual(health.json, {"ok": True, "service": "mavie-cloud"})
 
         tok = cloud.admin_login()
         lic = cloud.client().post(
@@ -54,38 +54,38 @@ class Tier1BrandAndHygieneTests(unittest.TestCase):
         )
         self.assertIn(lic.status, (200, 201), lic.text)
         code = (lic.json or {}).get("license", {}).get("code", "")
-        self.assertRegex(code, r"^VRELIO-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$")
+        self.assertRegex(code, r"^MAVIE-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$")
 
-    def test_website_pages_use_vrelio_branding_and_emails(self) -> None:
+    def test_website_pages_use_mavie_branding_and_emails(self) -> None:
         for rel in ("website/index.html", "website/admin.html", "website/privacy.html", "website/terms.html"):
             path = REPO_ROOT / rel
             self.assertTrue(path.exists(), f"Missing website file: {rel}")
             content = path.read_text(encoding="utf-8")
-            self.assertIn("Vrelio", content, f"{rel} should display Vrelio branding")
+            self.assertIn("Mavie", content, f"{rel} should display Mavie branding")
             self.assertNotIn("cineva", content.lower(), f"{rel} still contains Cineva branding")
 
         privacy = (REPO_ROOT / "website/privacy.html").read_text(encoding="utf-8")
         terms = (REPO_ROOT / "website/terms.html").read_text(encoding="utf-8")
-        self.assertIn("privacy@vrelio.app", privacy)
-        self.assertIn("legal@vrelio.app", terms)
+        self.assertIn("privacy@mavie.app", privacy)
+        self.assertIn("legal@mavie.app", terms)
 
-    def test_repo_docs_legal_and_windows_configs_rebranded_to_vrelio(self) -> None:
+    def test_repo_docs_legal_and_windows_configs_rebranded_to_mavie(self) -> None:
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("Vrelio", readme)
+        self.assertIn("Mavie", readme)
         self.assertNotIn("Cineva", readme)
 
         for rel in ("legal/PRIVACY_POLICY.md", "legal/TERMS_OF_SERVICE.md"):
             txt = (REPO_ROOT / rel).read_text(encoding="utf-8")
-            self.assertIn("Vrelio", txt)
+            self.assertIn("Mavie", txt)
             self.assertNotIn("Cineva", txt)
 
         win_files = list((REPO_ROOT / "windows").glob("*"))
         self.assertTrue(win_files, "windows/ directory must contain packaging files")
         joined = "\n".join(p.read_text(encoding="utf-8", errors="ignore") for p in win_files if p.is_file())
-        self.assertIn("Vrelio", joined)
+        self.assertIn("Mavie", joined)
         self.assertNotIn("Cineva", joined)
 
-    def test_git_repo_secret_hygiene_and_android_package_vrelio(self) -> None:
+    def test_git_repo_secret_hygiene_and_android_package_mavie(self) -> None:
         tracked = subprocess.check_output(
             ["git", "-C", str(REPO_ROOT), "ls-files"],
             text=True,
@@ -97,7 +97,7 @@ class Tier1BrandAndHygieneTests(unittest.TestCase):
         self.assertEqual(forbidden, [], f"Sensitive or local data files must not be tracked: {forbidden}")
 
         gradle_txt = (REPO_ROOT / "android/app/build.gradle.kts").read_text(encoding="utf-8")
-        self.assertIn("app.vrelio.player", gradle_txt)
+        self.assertIn("app.mavie.player", gradle_txt)
         self.assertNotIn("app.cineva.player", gradle_txt)
 
 
@@ -139,11 +139,11 @@ class Tier1LocalCatalogAndEpgTests(unittest.TestCase):
         self.assertTrue((surprise.json or {}).get("id") or (surprise.json or {}).get("item"))
 
     def test_local_media_directory_scan_and_sidecar_subtitles(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="vrelio_media_") as media_dir:
+        with tempfile.TemporaryDirectory(prefix="mavie_media_") as media_dir:
             mp = Path(media_dir)
             (mp / "Open.Horizon.2025.1080p.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"0" * 64)
             (mp / "Open.Horizon.2025.1080p.en.srt").write_text(
-                "1\n00:00:00,000 --> 00:00:02,000\nHello Vrelio\n",
+                "1\n00:00:00,000 --> 00:00:02,000\nHello Mavie\n",
                 encoding="utf-8",
             )
             res = self.c.post(
@@ -163,7 +163,7 @@ class Tier1LocalCatalogAndEpgTests(unittest.TestCase):
             sub = self.c.get(f"/api/subtitles/{items[0]['id']}/0.vtt")
             self.assertEqual(sub.status, 200)
             self.assertIn("WEBVTT", sub.text)
-            self.assertIn("Hello Vrelio", sub.text)
+            self.assertIn("Hello Mavie", sub.text)
 
     def test_m3u_parse_and_catalog_import_exposes_live_channels(self) -> None:
         playlist = (
@@ -223,10 +223,10 @@ class Tier1PlaybackLifecycleTests(unittest.TestCase):
         self.srv = LocalMediaServerProcess().start()
         self.addCleanup(self.srv.stop)
         self.c = self.srv.paired_client()
-        self.media_dir = tempfile.TemporaryDirectory(prefix="vrelio_play_")
+        self.media_dir = tempfile.TemporaryDirectory(prefix="mavie_play_")
         self.addCleanup(self.media_dir.cleanup)
         sample_file = Path(self.media_dir.name) / "Test.Clip.2025.mp4"
-        sample_file.write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"VRELIO_VIDEO_DATA" * 16)
+        sample_file.write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"MAVIE_VIDEO_DATA" * 16)
         self.assertEqual(
             self.c.post("/api/settings", {"type": "local", "localDir": self.media_dir.name, "name": "PlayTest"}).status,
             200,
@@ -257,7 +257,7 @@ class Tier1PlaybackLifecycleTests(unittest.TestCase):
         sid = play.json["sessionId"]
         stream = self.c.get(url)
         self.assertIn(stream.status, (200, 206))
-        self.assertIn(b"VRELIO_VIDEO_DATA", stream.raw)
+        self.assertIn(b"MAVIE_VIDEO_DATA", stream.raw)
         self.c.delete(f"/api/play/{sid}")
 
     def test_play_ping_persists_watch_progress(self) -> None:
@@ -329,7 +329,7 @@ class Tier1ProfilesPinKidModeTests(unittest.TestCase):
         self.assertEqual(status["profile"]["id"], prof["id"])
 
     def test_kid_mode_filters_adult_and_horror_catalog_items(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="vrelio_kid_") as media_dir:
+        with tempfile.TemporaryDirectory(prefix="mavie_kid_") as media_dir:
             mp = Path(media_dir)
             (mp / "Belgesel").mkdir()
             (mp / "Korku +18").mkdir()
@@ -381,13 +381,13 @@ class Tier1LanPairingTests(unittest.TestCase):
         self.assertRegex(str(st.json.get("pairingCode", "")), r"^\d{6}$")
         self.assertTrue(st.json.get("network", {}).get("localUrl"))
 
-    def test_pair_with_valid_code_sets_vrelio_device_cookie(self) -> None:
+    def test_pair_with_valid_code_sets_mavie_device_cookie(self) -> None:
         code = self.srv.paired_client().get("/api/status").json["pairingCode"]
         mobile = self.srv.client()
         res = mobile.post("/api/pair", {"code": code})
         self.assertEqual(res.status, 200, res.text)
         self.assertEqual((res.json or {}).get("ok"), True)
-        self.assertIn("vrelio_device", mobile.cookies_dict())
+        self.assertIn("mavie_device", mobile.cookies_dict())
 
     def test_paired_cookie_grants_catalog_and_profile_access(self) -> None:
         code = self.srv.paired_client().get("/api/status").json["pairingCode"]
@@ -419,7 +419,7 @@ class Tier1EmailVerifiedRegistrationTests(unittest.TestCase):
     def test_register_creates_unverified_normal_user_without_session_token(self) -> None:
         res = self.cloud.client().post(
             "/api/v1/auth/register",
-            {"email": "newuser@vrelio.app", "password": "StrongPassword123!", "displayName": "New User"},
+            {"email": "newuser@mavie.app", "password": "StrongPassword123!", "displayName": "New User"},
         )
         self.assertEqual(res.status, 201, res.text)
         body = res.json or {}
@@ -428,18 +428,18 @@ class Tier1EmailVerifiedRegistrationTests(unittest.TestCase):
         self.assertFalse(body.get("emailVerified"))
         self.assertIsNone(body.get("token"))
         user = body.get("user", {})
-        self.assertEqual(user.get("email"), "newuser@vrelio.app")
+        self.assertEqual(user.get("email"), "newuser@mavie.app")
         self.assertFalse(user.get("emailVerified"))
         self.assertEqual(user.get("plan"), "normal")
 
     def test_register_writes_verifiable_email_to_outbox_without_response_leak(self) -> None:
         res = self.cloud.client().post(
             "/api/v1/auth/register",
-            {"email": "outbox@vrelio.app", "password": "StrongPassword123!", "displayName": "Outbox"},
+            {"email": "outbox@mavie.app", "password": "StrongPassword123!", "displayName": "Outbox"},
         )
         self.assertEqual(res.status, 201, res.text)
         self.assertEqual((res.json or {}).get("deliveryMode"), "outbox")
-        mail, code, token = self.cloud.find_latest_mail("outbox@vrelio.app")
+        mail, code, token = self.cloud.find_latest_mail("outbox@mavie.app")
         self.assertIsNotNone(mail, "Expected verification email in local outbox")
         self.assertTrue(code or token, "Outbox email must contain 6-digit code or verification token")
         if code:
@@ -450,11 +450,11 @@ class Tier1EmailVerifiedRegistrationTests(unittest.TestCase):
     def test_unverified_user_login_blocked_with_403_email_not_verified(self) -> None:
         self.cloud.client().post(
             "/api/v1/auth/register",
-            {"email": "unverified@vrelio.app", "password": "StrongPassword123!", "displayName": "Unver"},
+            {"email": "unverified@mavie.app", "password": "StrongPassword123!", "displayName": "Unver"},
         )
         login = self.cloud.client().post(
             "/api/v1/auth/login",
-            {"email": "unverified@vrelio.app", "password": "StrongPassword123!"},
+            {"email": "unverified@mavie.app", "password": "StrongPassword123!"},
         )
         self.assertEqual(login.status, 403, login.text)
         body = login.json or {}
@@ -464,16 +464,16 @@ class Tier1EmailVerifiedRegistrationTests(unittest.TestCase):
     def test_resend_verification_dispatches_fresh_outbox_email(self) -> None:
         self.cloud.client().post(
             "/api/v1/auth/register",
-            {"email": "resend@vrelio.app", "password": "StrongPassword123!", "displayName": "Resend"},
+            {"email": "resend@mavie.app", "password": "StrongPassword123!", "displayName": "Resend"},
         )
         before_count = len(self.cloud.read_outbox())
-        resend = self.cloud.client().post("/api/v1/auth/resend-verification", {"email": "resend@vrelio.app"})
+        resend = self.cloud.client().post("/api/v1/auth/resend-verification", {"email": "resend@mavie.app"})
         self.assertEqual(resend.status, 200, resend.text)
         self.assertTrue((resend.json or {}).get("ok"))
         self.assertGreater(len(self.cloud.read_outbox()), before_count)
 
     def test_verify_email_with_outbox_code_activates_account_and_unlocks_login(self) -> None:
-        ver, tok, user = self.cloud.register_and_verify("verified@vrelio.app", "StrongPassword123!", "Verified")
+        ver, tok, user = self.cloud.register_and_verify("verified@mavie.app", "StrongPassword123!", "Verified")
         self.assertEqual(ver.status, 200, ver.text)
         self.assertTrue(tok)
         self.assertTrue((user or {}).get("emailVerified"))
@@ -484,7 +484,7 @@ class Tier1EmailVerifiedRegistrationTests(unittest.TestCase):
 
         login = self.cloud.client().post(
             "/api/v1/auth/login",
-            {"email": "verified@vrelio.app", "password": "StrongPassword123!"},
+            {"email": "verified@mavie.app", "password": "StrongPassword123!"},
         )
         self.assertEqual(login.status, 200, login.text)
         self.assertTrue((login.json or {}).get("token"))
@@ -496,54 +496,54 @@ class Tier1PasswordResetTests(unittest.TestCase):
     def setUp(self) -> None:
         self.cloud = CloudServerProcess().start()
         self.addCleanup(self.cloud.stop)
-        _, self.initial_token, _ = self.cloud.register_and_verify("reset@vrelio.app", "InitialPass123!")
+        _, self.initial_token, _ = self.cloud.register_and_verify("reset@mavie.app", "InitialPass123!")
 
     def test_forgot_password_dispatches_reset_email_to_outbox(self) -> None:
         before = len(self.cloud.read_outbox())
-        resp = self.cloud.client().post("/api/v1/auth/forgot-password", {"email": "reset@vrelio.app"})
+        resp = self.cloud.client().post("/api/v1/auth/forgot-password", {"email": "reset@mavie.app"})
         self.assertEqual(resp.status, 200, resp.text)
         self.assertTrue((resp.json or {}).get("ok"))
         after = self.cloud.read_outbox()
         self.assertGreater(len(after), before)
-        _, code, token = self.cloud.find_latest_mail("reset@vrelio.app")
+        _, code, token = self.cloud.find_latest_mail("reset@mavie.app")
         self.assertTrue(code or token)
         if code:
             self.assertNotIn(code, resp.text)
 
     def test_forgot_password_unknown_email_returns_generic_200(self) -> None:
         before = len(self.cloud.read_outbox())
-        resp = self.cloud.client().post("/api/v1/auth/forgot-password", {"email": "nobody@vrelio.app"})
+        resp = self.cloud.client().post("/api/v1/auth/forgot-password", {"email": "nobody@mavie.app"})
         self.assertEqual(resp.status, 200, resp.text)
         self.assertTrue((resp.json or {}).get("ok"))
         self.assertEqual(len(self.cloud.read_outbox()), before)
 
     def test_verify_reset_code_validates_outbox_code(self) -> None:
-        self.assertEqual(self.cloud.client().post("/api/v1/auth/forgot-password", {"email": "reset@vrelio.app"}).status, 200)
-        _, code, token = self.cloud.find_latest_mail("reset@vrelio.app")
-        payload = {"email": "reset@vrelio.app", "code": code} if code else {"token": token}
+        self.assertEqual(self.cloud.client().post("/api/v1/auth/forgot-password", {"email": "reset@mavie.app"}).status, 200)
+        _, code, token = self.cloud.find_latest_mail("reset@mavie.app")
+        payload = {"email": "reset@mavie.app", "code": code} if code else {"token": token}
         check = self.cloud.client().post("/api/v1/auth/verify-reset-code", payload)
         self.assertEqual(check.status, 200, check.text)
         self.assertTrue((check.json or {}).get("valid"))
 
     def test_reset_password_updates_credentials_for_login(self) -> None:
-        self.cloud.client().post("/api/v1/auth/forgot-password", {"email": "reset@vrelio.app"})
-        _, code, token = self.cloud.find_latest_mail("reset@vrelio.app")
-        payload = {"email": "reset@vrelio.app", "code": code, "newPassword": "UpdatedPass456!"} if code else {"token": token, "newPassword": "UpdatedPass456!"}
+        self.cloud.client().post("/api/v1/auth/forgot-password", {"email": "reset@mavie.app"})
+        _, code, token = self.cloud.find_latest_mail("reset@mavie.app")
+        payload = {"email": "reset@mavie.app", "code": code, "newPassword": "UpdatedPass456!"} if code else {"token": token, "newPassword": "UpdatedPass456!"}
         res = self.cloud.client().post("/api/v1/auth/reset-password", payload)
         self.assertEqual(res.status, 200, res.text)
         self.assertTrue((res.json or {}).get("ok"))
 
         login = self.cloud.client().post(
             "/api/v1/auth/login",
-            {"email": "reset@vrelio.app", "password": "UpdatedPass456!"},
+            {"email": "reset@mavie.app", "password": "UpdatedPass456!"},
         )
         self.assertEqual(login.status, 200, login.text)
 
     def test_reset_password_invalidates_prior_session_tokens(self) -> None:
         self.assertEqual(self.cloud.client().get("/api/v1/me", token=self.initial_token).status, 200)
-        self.cloud.client().post("/api/v1/auth/forgot-password", {"email": "reset@vrelio.app"})
-        _, code, token = self.cloud.find_latest_mail("reset@vrelio.app")
-        payload = {"email": "reset@vrelio.app", "code": code, "newPassword": "UpdatedPass789!"} if code else {"token": token, "newPassword": "UpdatedPass789!"}
+        self.cloud.client().post("/api/v1/auth/forgot-password", {"email": "reset@mavie.app"})
+        _, code, token = self.cloud.find_latest_mail("reset@mavie.app")
+        payload = {"email": "reset@mavie.app", "code": code, "newPassword": "UpdatedPass789!"} if code else {"token": token, "newPassword": "UpdatedPass789!"}
         self.assertEqual(self.cloud.client().post("/api/v1/auth/reset-password", payload).status, 200)
         stale_me = self.cloud.client().get("/api/v1/me", token=self.initial_token)
         self.assertEqual(stale_me.status, 401, stale_me.text)
@@ -559,7 +559,7 @@ class Tier1ThreeDayProTrialTests(unittest.TestCase):
     def test_unverified_signup_starts_without_active_pro_trial(self) -> None:
         reg = self.cloud.client().post(
             "/api/v1/auth/register",
-            {"email": "trial_wait@vrelio.app", "password": "StrongPassword123!", "displayName": "Wait"},
+            {"email": "trial_wait@mavie.app", "password": "StrongPassword123!", "displayName": "Wait"},
         )
         self.assertEqual(reg.status, 201, reg.text)
         user = (reg.json or {}).get("user", {})
@@ -568,7 +568,7 @@ class Tier1ThreeDayProTrialTests(unittest.TestCase):
         self.assertFalse(user.get("isPro", False))
 
     def test_verifying_email_automatically_activates_pro_trial(self) -> None:
-        ver, tok, user = self.cloud.register_and_verify("trial_go@vrelio.app", "StrongPassword123!", "Go")
+        ver, tok, user = self.cloud.register_and_verify("trial_go@mavie.app", "StrongPassword123!", "Go")
         self.assertEqual(ver.status, 200, ver.text)
         self.assertTrue((ver.json or {}).get("trialActivated"))
         self.assertEqual(user.get("effectivePlan"), "pro")
@@ -576,7 +576,7 @@ class Tier1ThreeDayProTrialTests(unittest.TestCase):
         self.assertTrue(user.get("trialActive"))
 
     def test_pro_trial_duration_is_72_hours(self) -> None:
-        _, _, user = self.cloud.register_and_verify("trial_72h@vrelio.app", "StrongPassword123!")
+        _, _, user = self.cloud.register_and_verify("trial_72h@mavie.app", "StrongPassword123!")
         started = parse_iso_dt(user["trialStartedAt"])
         ends = parse_iso_dt(user["trialEndsAt"])
         hours = (ends - started).total_seconds() / 3600.0
@@ -585,7 +585,7 @@ class Tier1ThreeDayProTrialTests(unittest.TestCase):
         self.assertTrue(user.get("expiresAt"))
 
     def test_trial_user_receives_pro_entitlements_and_5_device_limit(self) -> None:
-        _, tok, user = self.cloud.register_and_verify("trial_ent@vrelio.app", "StrongPassword123!")
+        _, tok, user = self.cloud.register_and_verify("trial_ent@mavie.app", "StrongPassword123!")
         self.assertEqual(user.get("maxDevices"), 5)
         feats = user.get("features", {})
         for k in ("cloudSync", "multiView", "unlimitedProfiles", "epgMatch", "advancedTracks"):
@@ -594,7 +594,7 @@ class Tier1ThreeDayProTrialTests(unittest.TestCase):
         self.assertEqual(me.json["user"]["maxDevices"], 5)
 
     def test_trial_is_single_use_and_not_regranted_on_login(self) -> None:
-        _, _, user = self.cloud.register_and_verify("trial_once@vrelio.app", "StrongPassword123!")
+        _, _, user = self.cloud.register_and_verify("trial_once@mavie.app", "StrongPassword123!")
         admin_tok = self.cloud.admin_login()
         self.cloud.client().patch(
             f"/api/v1/admin/users/{user['id']}",
@@ -603,7 +603,7 @@ class Tier1ThreeDayProTrialTests(unittest.TestCase):
         )
         login = self.cloud.client().post(
             "/api/v1/auth/login",
-            {"email": "trial_once@vrelio.app", "password": "StrongPassword123!"},
+            {"email": "trial_once@mavie.app", "password": "StrongPassword123!"},
         )
         self.assertEqual(login.status, 200)
         u2 = login.json["user"]
@@ -641,7 +641,7 @@ class Tier1PlanGatingAndDeviceLimitsTests(unittest.TestCase):
         self.assertEqual(plans.get("pro", {}).get("trialDays"), 3)
 
     def test_normal_user_blocked_from_cloud_sync_with_pro_required(self) -> None:
-        tok, user = self._make_normal_user("norm_sync@vrelio.app")
+        tok, user = self._make_normal_user("norm_sync@mavie.app")
         self.assertEqual(user["effectivePlan"], "normal")
         put_res = self.cloud.client().put(
             "/api/v1/sync",
@@ -653,7 +653,7 @@ class Tier1PlanGatingAndDeviceLimitsTests(unittest.TestCase):
         self.assertTrue((put_res.json or {}).get("upgradeRequired"))
 
     def test_pro_trial_user_can_put_and_get_cloud_sync(self) -> None:
-        _, tok, _ = self.cloud.register_and_verify("pro_sync@vrelio.app", "StrongPassword123!")
+        _, tok, _ = self.cloud.register_and_verify("pro_sync@mavie.app", "StrongPassword123!")
         payload = {"favorites": ["vod:demo_sintel"], "progress": {"vod:demo_sintel": 120}, "playlists": [], "playlistItems": []}
         put_res = self.cloud.client().put("/api/v1/sync", payload, token=tok)
         self.assertEqual(put_res.status, 200, put_res.text)
@@ -662,7 +662,7 @@ class Tier1PlanGatingAndDeviceLimitsTests(unittest.TestCase):
         self.assertIn("vod:demo_sintel", json.dumps(get_res.json))
 
     def test_normal_device_limit_is_1_and_self_delete_frees_slot(self) -> None:
-        tok, _ = self._make_normal_user("norm_dev@vrelio.app")
+        tok, _ = self._make_normal_user("norm_dev@mavie.app")
         d1 = self.cloud.client().post(
             "/api/v1/devices/register",
             {"deviceId": "dev_one", "name": "Phone", "platform": "android"},
@@ -687,14 +687,14 @@ class Tier1PlanGatingAndDeviceLimitsTests(unittest.TestCase):
         self.assertEqual(d2_retry.status, 200, d2_retry.text)
 
     def test_local_server_enforces_pro_gates_when_linked_to_normal_account(self) -> None:
-        self._make_normal_user("local_norm@vrelio.app")
+        self._make_normal_user("local_norm@mavie.app")
         srv = LocalMediaServerProcess(cloud_url=self.cloud.base_url).start()
         self.addCleanup(srv.stop)
         c = srv.paired_client()
 
         login = c.post(
             "/api/cloud/login",
-            {"email": "local_norm@vrelio.app", "password": "StrongPassword123!", "cloudUrl": self.cloud.base_url},
+            {"email": "local_norm@mavie.app", "password": "StrongPassword123!", "cloudUrl": self.cloud.base_url},
         )
         self.assertEqual(login.status, 200, login.text)
 
@@ -714,15 +714,15 @@ class Tier1WebsiteShowcaseAndAdminTests(unittest.TestCase):
         self.cloud = CloudServerProcess().start()
         self.addCleanup(self.cloud.stop)
 
-    def test_website_index_served_with_vrelio_branding(self) -> None:
+    def test_website_index_served_with_mavie_branding(self) -> None:
         res = self.cloud.client().get("/")
         self.assertEqual(res.status, 200)
-        self.assertIn("Vrelio", res.text)
+        self.assertIn("Mavie", res.text)
         self.assertNotIn("cineva", res.text.lower())
 
     def test_website_showcases_all_four_platform_downloads(self) -> None:
         html = self.cloud.client().get("/").text
-        for artifact in ("Vrelio-Setup.exe", "Vrelio.exe", "Vrelio-Android.apk", "Vrelio-macOS.dmg", "Vrelio-iOS.ipa"):
+        for artifact in ("Mavie-Setup.exe", "Mavie.exe", "Mavie-Android.apk", "Mavie-macOS.dmg", "Mavie-iOS.ipa"):
             self.assertIn(artifact, html, f"Website index missing download link for {artifact}")
         for label in ("Windows", "Android", "macOS", "iOS"):
             self.assertIn(label, html)
@@ -732,11 +732,11 @@ class Tier1WebsiteShowcaseAndAdminTests(unittest.TestCase):
         self.assertEqual(cfg.status, 200)
         versions = (cfg.json or {}).get("versions", {})
         for key, expected in (
-            ("windowsInstallerUrl", "Vrelio-Setup.exe"),
-            ("windowsPortableUrl", "Vrelio.exe"),
-            ("androidApkUrl", "Vrelio-Android.apk"),
-            ("macosUrl", "Vrelio-macOS.dmg"),
-            ("iosUrl", "Vrelio-iOS.ipa"),
+            ("windowsInstallerUrl", "Mavie-Setup.exe"),
+            ("windowsPortableUrl", "Mavie.exe"),
+            ("androidApkUrl", "Mavie-Android.apk"),
+            ("macosUrl", "Mavie-macOS.dmg"),
+            ("iosUrl", "Mavie-iOS.ipa"),
         ):
             self.assertIn(expected, str(versions.get(key, "")), f"versions.{key} invalid")
 
@@ -767,7 +767,7 @@ class Tier1WebsiteShowcaseAndAdminTests(unittest.TestCase):
         ov = self.cloud.client().get("/api/v1/admin/overview", headers=self.cloud.admin_headers(tok))
         self.assertEqual(ov.status, 200, ov.text)
         admin_html = (REPO_ROOT / "website/admin.html").read_text(encoding="utf-8")
-        self.assertIn("VRELIO-", admin_html)
+        self.assertIn("MAVIE-", admin_html)
         self.assertNotIn("CINEVA-", admin_html)
 
 
@@ -778,21 +778,21 @@ class Tier1MultiPlatformPackagingAndCiTests(unittest.TestCase):
         desktop_files = list((REPO_ROOT / "desktop").glob("*.py"))
         self.assertTrue(desktop_files)
         desktop_src = "\n".join(p.read_text(encoding="utf-8", errors="ignore") for p in desktop_files)
-        self.assertIn("Vrelio", desktop_src)
+        self.assertIn("Mavie", desktop_src)
         self.assertIn("utf-8", desktop_src.lower())
 
         win_specs = list((REPO_ROOT / "windows").glob("*.spec"))
         win_iss = list((REPO_ROOT / "windows").glob("*.iss"))
         self.assertTrue(win_specs and win_iss, "Windows .spec and .iss files must exist")
         iss_txt = "\n".join(p.read_text(encoding="utf-8", errors="ignore") for p in win_iss)
-        self.assertIn("Vrelio-Setup", iss_txt)
+        self.assertIn("Mavie-Setup", iss_txt)
 
-    def test_android_project_rebranded_to_app_vrelio_player_and_manifest_fixed(self) -> None:
+    def test_android_project_rebranded_to_app_mavie_player_and_manifest_fixed(self) -> None:
         gradle = (REPO_ROOT / "android/app/build.gradle.kts").read_text(encoding="utf-8")
-        self.assertIn('applicationId = "app.vrelio.player"', gradle)
+        self.assertIn('applicationId = "app.mavie.player"', gradle)
 
         main_manifest = (REPO_ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
-        self.assertIn("Vrelio", main_manifest)
+        self.assertIn("Mavie", main_manifest)
         self.assertNotIn("Cineva", main_manifest)
 
         test_manifest = (REPO_ROOT / "android/app/src/androidTest/AndroidManifest.xml").read_text(encoding="utf-8")
@@ -807,8 +807,8 @@ class Tier1MultiPlatformPackagingAndCiTests(unittest.TestCase):
                     if p.is_file() and p.suffix in (".swift", ".plist", ".yml", ".yaml", ".sh", ".pbxproj", ".md"):
                         apple_texts.append(p.read_text(encoding="utf-8", errors="ignore"))
         joined = "\n".join(apple_texts)
-        self.assertIn("app.vrelio.macos", joined)
-        self.assertIn("Vrelio", joined)
+        self.assertIn("app.mavie.macos", joined)
+        self.assertIn("Mavie", joined)
 
     def test_ios_native_app_and_xctest_packaging_present(self) -> None:
         apple_files = []
@@ -822,7 +822,7 @@ class Tier1MultiPlatformPackagingAndCiTests(unittest.TestCase):
             for p in apple_files
             if p.suffix in (".swift", ".plist", ".yml", ".yaml", ".sh", ".pbxproj")
         )
-        self.assertIn("app.vrelio.ios", joined)
+        self.assertIn("app.mavie.ios", joined)
         self.assertTrue("AVPlayer" in joined or "AVKit" in joined, "iOS app must use native AVKit/AVPlayer")
         self.assertTrue(any("Test" in p.name for p in apple_files), "iOS XCTest suite must be present")
 
@@ -831,7 +831,7 @@ class Tier1MultiPlatformPackagingAndCiTests(unittest.TestCase):
         self.assertIn("macos-latest", ci)
         self.assertIn("windows-latest", ci)
         self.assertIn("ubuntu-latest", ci)
-        for asset in ("Vrelio-Setup.exe", "Vrelio.exe", "Vrelio-Android.apk", "Vrelio-macOS.dmg", "Vrelio-iOS.ipa"):
+        for asset in ("Mavie-Setup.exe", "Mavie.exe", "Mavie-Android.apk", "Mavie-macOS.dmg", "Mavie-iOS.ipa"):
             self.assertIn(asset, ci, f"CI release pipeline missing {asset}")
 
 

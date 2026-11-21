@@ -1,12 +1,12 @@
-# Vrelio — Açık Kaynak Lisansları
+# Mavie — Açık Kaynak Lisansları
 
-Vrelio aşağıdaki açık kaynak yazılımlarından ve platform çerçevelerinden yararlanır:
+Mavie aşağıdaki açık kaynak yazılımlarından ve platform çerçevelerinden yararlanır:
 
 - **LibVLC for Android / Desktop (`org.videolan.android:libvlc-all`)**
   - Lisans: GNU Lesser General Public License v2.1 or later (LGPL-2.1+)
   - Telif Hakkı: VideoLAN ve katkıda bulunanlar
   - Kaynak Kod: https://code.videolan.org/videolan/libvlcjni
-  - Vrelio, LibVLC kütüphanesi üzerinde değişiklik yapmadan standart dinamik bağlama ile kullanır.
+  - Mavie, LibVLC kütüphanesi üzerinde değişiklik yapmadan standart dinamik bağlama ile kullanır.
 
 - **hls.js**
   - Lisans: Apache License 2.0 (Copyright Dailymotion / Video-Dev)

@@ -58,7 +58,7 @@ public struct CloudSyncResponse: Codable, Sendable {
 }
 
 public enum CloudSessionKeychain {
-    private static let service = "app.vrelio.cloud"
+    private static let service = "app.mavie.cloud"
     private static let tokenAccount = "session_token"
 
     public static func saveToken(_ token: String) {
@@ -116,7 +116,7 @@ public final class CloudClient: @unchecked Sendable {
             trimmed.removeLast()
         }
         guard !trimmed.isEmpty else {
-            throw VrelioError.invalidURL("Bulut portalı adresi boş olamaz.")
+            throw MavieError.invalidURL("Bulut portalı adresi boş olamaz.")
         }
         if !trimmed.contains("://") {
             trimmed = "https://" + trimmed
@@ -126,20 +126,20 @@ public final class CloudClient: @unchecked Sendable {
               scheme == "http" || scheme == "https",
               let host = components.host,
               !host.isEmpty else {
-            throw VrelioError.invalidURL("Geçerli bir bulut portalı adresi girin.")
+            throw MavieError.invalidURL("Geçerli bir bulut portalı adresi girin.")
         }
         if components.user != nil || components.password != nil {
-            throw VrelioError.validation("Bulut portalı adresinde gömülü kimlik bilgisi kullanılamaz.")
+            throw MavieError.validation("Bulut portalı adresinde gömülü kimlik bilgisi kullanılamaz.")
         }
         if components.query != nil || components.fragment != nil {
-            throw VrelioError.validation("Bulut portalı adresi sorgu parametresi veya # içeremez.")
+            throw MavieError.validation("Bulut portalı adresi sorgu parametresi veya # içeremez.")
         }
         if scheme == "http" && !isLocalOrPrivateHost(host) {
-            throw VrelioError.insecureTransport("Uzak bulut sunucuları için HTTPS zorunludur.")
+            throw MavieError.insecureTransport("Uzak bulut sunucuları için HTTPS zorunludur.")
         }
         components.path = components.path == "/" ? "" : components.path
         guard let url = components.url else {
-            throw VrelioError.invalidURL("Bulut portalı adresi geçersiz.")
+            throw MavieError.invalidURL("Bulut portalı adresi geçersiz.")
         }
         return url
     }
@@ -381,13 +381,13 @@ public final class CloudClient: @unchecked Sendable {
     ) async throws -> T {
         let validated = try Self.validateBaseURL(baseURL)
         guard let url = URL(string: validated.absoluteString + path) else {
-            throw VrelioError.invalidURL("Bulut API adresi geçersiz.")
+            throw MavieError.invalidURL("Bulut API adresi geçersiz.")
         }
         var req = URLRequest(url: url)
         req.httpMethod = method
         req.timeoutInterval = 20
         req.setValue("application/json", forHTTPHeaderField: "Accept")
-        req.setValue("Vrelio/2.1", forHTTPHeaderField: "User-Agent")
+        req.setValue("Mavie/2.1", forHTTPHeaderField: "User-Agent")
         if let token, !token.isEmpty {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
@@ -401,21 +401,21 @@ public final class CloudClient: @unchecked Sendable {
         do {
             (data, response) = try await session.data(for: req)
         } catch {
-            throw VrelioError.network("Bulut sunucusuna bağlanılamadı: \(error.localizedDescription)")
+            throw MavieError.network("Bulut sunucusuna bağlanılamadı: \(error.localizedDescription)")
         }
 
         guard let http = response as? HTTPURLResponse else {
-            throw VrelioError.network("Geçersiz sunucu yanıtı.")
+            throw MavieError.network("Geçersiz sunucu yanıtı.")
         }
 
         if !(200...299).contains(http.statusCode) {
-            throw VrelioError.api(Self.decodeApiError(status: http.statusCode, data: data))
+            throw MavieError.api(Self.decodeApiError(status: http.statusCode, data: data))
         }
 
         do {
             return try decoder.decode(T.self, from: data)
         } catch {
-            throw VrelioError.parsing("Bulut yanıtı ayrıştırılamadı: \(error.localizedDescription)")
+            throw MavieError.parsing("Bulut yanıtı ayrıştırılamadı: \(error.localizedDescription)")
         }
     }
 }

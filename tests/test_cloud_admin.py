@@ -1,4 +1,4 @@
-"""Tests for Vrelio Control Plane, Website download portal, and Admin Dashboard API."""
+"""Tests for Mavie Control Plane, Website download portal, and Admin Dashboard API."""
 from __future__ import annotations
 
 import http.client
@@ -21,10 +21,10 @@ import cloud_admin
 class CloudAdminHTTPTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.temp = tempfile.TemporaryDirectory(prefix='vrelio-cloud-tests-')
+        cls.temp = tempfile.TemporaryDirectory(prefix='mavie-cloud-tests-')
         cls.service = cloud_admin.CloudService(
             Path(cls.temp.name),
-            admin_email='owner@vrelio.app',
+            admin_email='owner@mavie.app',
             admin_password='AdminStrongPass!2026',
             admin_gate_key='test-gate-secret-key',
         )
@@ -72,10 +72,10 @@ class CloudAdminHTTPTests(unittest.TestCase):
     def test_1_static_website_routes_and_download_tracking(self):
         code_h, health = self.req('GET', '/api/v1/health')
         self.assertEqual(code_h, 200)
-        self.assertEqual(health, {'ok': True, 'service': 'vrelio-cloud'})
+        self.assertEqual(health, {'ok': True, 'service': 'mavie-cloud'})
 
         for route, needles in (
-            ('/', ('Vrelio', 'Cineva')),
+            ('/', ('Mavie', 'Cineva')),
             ('/privacy', ('Gizlilik Politikası',)),
             ('/terms', ('Kullanım Koşulları',)),
         ):
@@ -96,7 +96,7 @@ class CloudAdminHTTPTests(unittest.TestCase):
         code_redir, _, redir_hdrs = self.req('GET', '/admin?access=test-gate-secret-key', raw=True, gate=False)
         self.assertEqual(code_redir, 302)
         set_cookie = next((v for k, v in redir_hdrs.items() if k.lower() == 'set-cookie'), '')
-        self.assertIn('vrelio_admin_gate=', set_cookie)
+        self.assertIn('mavie_admin_gate=', set_cookie)
         cookie_pair = set_cookie.split(';', 1)[0]
 
         code_adm, adm_html, _ = self.req('GET', '/admin', raw=True, gate=False, headers={'Cookie': cookie_pair})
@@ -158,7 +158,7 @@ class CloudAdminHTTPTests(unittest.TestCase):
 
         # Login as admin
         code_adm, adm_login = self.req('POST', '/api/v1/auth/login', {
-            'email': 'owner@vrelio.app', 'password': 'AdminStrongPass!2026',
+            'email': 'owner@mavie.app', 'password': 'AdminStrongPass!2026',
         })
         self.assertEqual(code_adm, 200)
         admin_token = adm_login['token']
@@ -181,7 +181,7 @@ class CloudAdminHTTPTests(unittest.TestCase):
         }, token=admin_token)
         self.assertEqual(code_lic, 201)
         lic_code = lic_res['license']['code']
-        self.assertTrue(lic_code.startswith('VRELIO-'))
+        self.assertTrue(lic_code.startswith('MAVIE-'))
 
         code_red, red_res = self.req('POST', '/api/v1/licenses/redeem', {'code': lic_code}, token=user_token)
         self.assertEqual(code_red, 200)
@@ -258,7 +258,7 @@ class CloudAdminHTTPTests(unittest.TestCase):
         self.assertTrue({'license.create', 'license.redeem', 'user.update', 'device.remove', 'user.reset_token', 'config.update'}.issubset(actions))
 
     def test_9_login_rate_limit_blocks_brute_force(self):
-        statuses = [self.req('POST', '/api/v1/auth/login', {'email': 'owner@vrelio.app', 'password': 'wrong'})[0] for _ in range(13)]
+        statuses = [self.req('POST', '/api/v1/auth/login', {'email': 'owner@mavie.app', 'password': 'wrong'})[0] for _ in range(13)]
         self.assertEqual(statuses[:12], [401] * 12)
         self.assertEqual(statuses[12], 429)
 
@@ -268,7 +268,7 @@ class CloudAdminHTTPTests(unittest.TestCase):
         from unittest.mock import patch
 
         # First mint a license key via admin
-        _, adm = self.req('POST', '/api/v1/auth/login', {'email': 'owner@vrelio.app', 'password': 'AdminStrongPass!2026'})
+        _, adm = self.req('POST', '/api/v1/auth/login', {'email': 'owner@mavie.app', 'password': 'AdminStrongPass!2026'})
         _, lic = self.req('POST', '/api/v1/admin/licenses', {'plan': 'pro', 'durationDays': 30, 'maxUses': 1}, token=adm['token'])
 
         # Register and verify desktop user via outbox before server.py login bridge (server.py is updated in M2)
@@ -283,10 +283,10 @@ class CloudAdminHTTPTests(unittest.TestCase):
         self.assertEqual(c_ver, 200)
         self.assertTrue(ver_res['trialActivated'])
 
-        with tempfile.TemporaryDirectory(prefix='vrelio-bridge-') as tmp_srv:
-            spec = importlib.util.spec_from_file_location('_vrelio_cloud_bridge_srv', ROOT / 'server.py')
+        with tempfile.TemporaryDirectory(prefix='mavie-bridge-') as tmp_srv:
+            spec = importlib.util.spec_from_file_location('_mavie_cloud_bridge_srv', ROOT / 'server.py')
             srv = importlib.util.module_from_spec(spec)
-            with patch.dict(os.environ, {'CINEVA_DATA_DIR': tmp_srv, 'VRELIO_DATA_DIR': tmp_srv}):
+            with patch.dict(os.environ, {'CINEVA_DATA_DIR': tmp_srv, 'MAVIE_DATA_DIR': tmp_srv}):
                 spec.loader.exec_module(srv)
                 srv.initialize()
                 cloud_base = f'http://127.0.0.1:{self.port}'

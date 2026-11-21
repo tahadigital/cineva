@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import test from 'node:test';
 import { harness } from './playback_harness.mjs';
 
-test('Vrelio web player markup exposes speed, fit, sleep timer, episode drawer, profile, multiview, and local picker', () => {
+test('Mavie web player markup exposes speed, fit, sleep timer, episode drawer, profile, multiview, and local picker', () => {
   const html = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   const css = fs.readFileSync(new URL('../public/player.css', import.meta.url), 'utf8');
   for (const id of [
@@ -14,8 +14,8 @@ test('Vrelio web player markup exposes speed, fit, sleep timer, episode drawer, 
   ]) {
     assert.ok(html.includes(id), `Expected ${id} in index.html`);
   }
-  assert.doesNotMatch(css, /#e50914/i);
-  assert.match(css, /#ff4b45/i);
+  assert.doesNotMatch(css, /#e50914|#ff4b45|#ff9933/i);
+  assert.match(css, /#7c3aed/i);
 });
 
 test('speed shortcuts, mute shortcut, fit toggle, volume keys, and subtitle scaling operate cleanly', async () => {

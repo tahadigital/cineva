@@ -33,12 +33,12 @@ class Tier4EndToEndScenariosTests(unittest.TestCase):
         # User visits portal & inspects 4-platform download config
         portal = cloud.client().get("/")
         self.assertEqual(portal.status, 200)
-        self.assertIn("Vrelio", portal.text)
+        self.assertIn("Mavie", portal.text)
         cfg = cloud.client().get("/api/v1/app-config").json
         self.assertEqual(cfg["plans"]["pro"]["trialDays"], 3)
 
         # User signs up -> unverified, blocked from login
-        email = "onboard@vrelio.app"
+        email = "onboard@mavie.app"
         pw = "OnboardPass!2026"
         reg = cloud.client().post("/api/v1/auth/register", {"email": email, "password": pw, "displayName": "Taha"})
         self.assertEqual(reg.status, 201)
@@ -61,7 +61,7 @@ class Tier4EndToEndScenariosTests(unittest.TestCase):
         items = local_client.get("/api/catalog").json["items"]
         self.assertGreaterEqual(len(items), 4)
 
-        play = local_client.post("/api/play", {"id": items[0]["id"]})
+        play = local_client.post("/api/play", {"id": items[0]["id"]}, timeout=30.0)
         self.assertEqual(play.status, 200)
         sid = play.json["sessionId"]
         local_client.post(f"/api/play/{sid}/ping", {"position": 65.0})
@@ -78,7 +78,7 @@ class Tier4EndToEndScenariosTests(unittest.TestCase):
     def test_scenario_2_forgotten_password_recovery_and_token_invalidation(self) -> None:
         cloud = CloudServerProcess().start()
         self.addCleanup(cloud.stop)
-        email = "recover@vrelio.app"
+        email = "recover@mavie.app"
         _, active_token, _ = cloud.register_and_verify(email, "OriginalPass123!")
 
         self.assertEqual(cloud.client().get("/api/v1/me", token=active_token).status, 200)
@@ -112,7 +112,7 @@ class Tier4EndToEndScenariosTests(unittest.TestCase):
         srv = LocalMediaServerProcess(cloud_url=cloud.base_url).start()
         self.addCleanup(srv.stop)
 
-        email = "upgrade@vrelio.app"
+        email = "upgrade@mavie.app"
         pw = "UpgradePass123!"
         _, tok, user = cloud.register_and_verify(email, pw)
 
@@ -158,7 +158,7 @@ class Tier4EndToEndScenariosTests(unittest.TestCase):
         self.addCleanup(srv.stop)
         c = srv.paired_client()
 
-        with tempfile.TemporaryDirectory(prefix="vrelio_family_") as media_dir:
+        with tempfile.TemporaryDirectory(prefix="mavie_family_") as media_dir:
             mp = Path(media_dir)
             (mp / "Belgesel").mkdir()
             (mp / "Spor").mkdir()
@@ -219,11 +219,11 @@ class Tier4EndToEndScenariosTests(unittest.TestCase):
         ci_yml = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 
         expected_assets = (
-            ("windowsInstallerUrl", "Vrelio-Setup.exe", "windows-installer"),
-            ("windowsPortableUrl", "Vrelio.exe", "windows-portable"),
-            ("androidApkUrl", "Vrelio-Android.apk", "android-apk"),
-            ("macosUrl", "Vrelio-macOS.dmg", "macos"),
-            ("iosUrl", "Vrelio-iOS.ipa", "ios"),
+            ("windowsInstallerUrl", "Mavie-Setup.exe", "windows-installer"),
+            ("windowsPortableUrl", "Mavie.exe", "windows-portable"),
+            ("androidApkUrl", "Mavie-Android.apk", "android-apk"),
+            ("macosUrl", "Mavie-macOS.dmg", "macos"),
+            ("iosUrl", "Mavie-iOS.ipa", "ios"),
         )
         for cfg_key, asset_name, track_slug in expected_assets:
             self.assertIn(asset_name, cfg["versions"].get(cfg_key, ""))
@@ -244,18 +244,18 @@ class Tier4EndToEndScenariosTests(unittest.TestCase):
                 f"Tracked sensitive/local path found: {f}",
             )
 
-        # 2. Akış Programı source files remain completely untouched (zero Vrelio edits) when present locally
+        # 2. Akış Programı source files remain completely untouched (zero Mavie edits) when present locally
         if AKIS_ROOT.exists():
             for rel in ("server.py", "playback.py", "discovery.py", "sports.py"):
                 src = (AKIS_ROOT / rel).read_text(encoding="utf-8", errors="ignore")
-                self.assertNotIn("vrelio", src.lower(), f"Akış Programı {rel} must stay untouched")
+                self.assertNotIn("mavie", src.lower(), f"Akış Programı {rel} must stay untouched")
 
         # 3. Cloud API responses never leak secrets, password hashes, or tokens
         cloud = CloudServerProcess().start()
         self.addCleanup(cloud.stop)
         reg = cloud.client().post(
             "/api/v1/auth/register",
-            {"email": "sec@vrelio.app", "password": "SecretCheckPassword123!"},
+            {"email": "sec@mavie.app", "password": "SecretCheckPassword123!"},
         )
         self.assertNotIn("passwordHash", reg.text)
         self.assertNotIn("SecretCheckPassword123!", reg.text)
@@ -279,7 +279,7 @@ class Tier4EndToEndScenariosTests(unittest.TestCase):
             self.assertIsNone(srv.proc.poll(), "server.py crashed shortly after startup")
             health = srv.client().get("/api/health")
             self.assertEqual(health.status, 200)
-            self.assertEqual(health.json, {"ok": True, "app": "vrelio"})
+            self.assertEqual(health.json, {"ok": True, "app": "mavie"})
             pid_file = srv.data_dir / "server.pid"
             self.assertTrue(pid_file.exists())
         finally:
@@ -297,7 +297,7 @@ class Tier4EndToEndScenariosTests(unittest.TestCase):
         hdrs = cloud.admin_headers(admin_tok)
 
         # Admin creates user, updates plan, generates licenses, updates announcement, reads audit log
-        _, _, user = cloud.register_and_verify("audited@vrelio.app", "StrongPassword123!")
+        _, _, user = cloud.register_and_verify("audited@mavie.app", "StrongPassword123!")
         patch_res = cloud.client().patch(
             f"/api/v1/admin/users/{user['id']}",
             {"plan": "normal", "adminNote": "E2E audit check"},
@@ -314,12 +314,12 @@ class Tier4EndToEndScenariosTests(unittest.TestCase):
 
         cfg_res = cloud.client().put(
             "/api/v1/admin/config",
-            {"announcement": {"enabled": True, "title": "Vrelio 3.0", "message": "4 Platforms Live", "severity": "info"}},
+            {"announcement": {"enabled": True, "title": "Mavie 3.0", "message": "4 Platforms Live", "severity": "info"}},
             headers=hdrs,
         )
         self.assertEqual(cfg_res.status, 200, cfg_res.text)
         public_cfg = cloud.client().get("/api/v1/app-config").json
-        self.assertEqual(public_cfg["announcement"]["title"], "Vrelio 3.0")
+        self.assertEqual(public_cfg["announcement"]["title"], "Mavie 3.0")
 
         audit = cloud.client().get("/api/v1/admin/audit", headers=hdrs)
         self.assertEqual(audit.status, 200, audit.text)

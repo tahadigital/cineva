@@ -1,8 +1,8 @@
 'use strict';
 (() => {
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const apiBase = () => (localStorage.getItem('vrelio_cloud_api') || '').replace(/\/$/, '');
-  const tokenKey = 'vrelio_user_token';
+  const apiBase = () => (localStorage.getItem('mavie_cloud_api') || '').replace(/\/$/, '');
+  const tokenKey = 'mavie_user_token';
   const GITHUB_DL_BASE = 'https://github.com/tahadigital/cineva/releases/latest/download/';
 
   let configData = null;
@@ -35,11 +35,11 @@
   function resolveDownloadUrls() {
     const v = configData?.versions || {};
     return {
-      'windows-installer': v.windowsInstallerUrl || GITHUB_DL_BASE + 'Vrelio-Setup.exe',
-      'windows-portable': v.windowsPortableUrl || GITHUB_DL_BASE + 'Vrelio.exe',
-      'android-apk': v.androidApkUrl || GITHUB_DL_BASE + 'Vrelio-Android.apk',
-      'macos': v.macosUrl || GITHUB_DL_BASE + 'Vrelio-macOS.dmg',
-      'ios': v.iosUrl || GITHUB_DL_BASE + 'Vrelio-iOS.ipa',
+      'windows-installer': v.windowsInstallerUrl || GITHUB_DL_BASE + 'Mavie-Setup.exe',
+      'windows-portable': v.windowsPortableUrl || GITHUB_DL_BASE + 'Mavie.exe',
+      'android-apk': v.androidApkUrl || GITHUB_DL_BASE + 'Mavie-Android.apk',
+      'macos': v.macosUrl || GITHUB_DL_BASE + 'Mavie-macOS.dmg',
+      'ios': v.iosUrl || GITHUB_DL_BASE + 'Mavie-iOS.ipa',
     };
   }
 
@@ -60,7 +60,7 @@
       primary.onclick = e => { e.preventDefault(); return startDownload('android-apk'); };
       secondary.textContent = 'Windows (.exe)';
       secondary.onclick = e => { e.preventDefault(); return startDownload('windows-installer'); };
-      hint.textContent = 'Android cihaz algılandı — önerilen Vrelio-Android.apk sürümü seçildi.';
+      hint.textContent = 'Android cihaz algılandı — önerilen Mavie-Android.apk sürümü seçildi.';
     } else if (isIos) {
       primary.textContent = 'iOS için İndir (.ipa)';
       primary.onclick = e => { e.preventDefault(); return startDownload('ios'); };
@@ -72,9 +72,9 @@
       primary.onclick = e => { e.preventDefault(); return startDownload('macos'); };
       secondary.textContent = 'Windows (.exe)';
       secondary.onclick = e => { e.preventDefault(); return startDownload('windows-installer'); };
-      hint.textContent = 'macOS algılandı — Apple Silicon & Intel uyumlu Vrelio-macOS.dmg seçildi.';
+      hint.textContent = 'macOS algılandı — Apple Silicon & Intel uyumlu Mavie-macOS.dmg seçildi.';
     } else {
-      primary.textContent = 'Windows için İndir (Vrelio-Setup.exe)';
+      primary.textContent = 'Windows için İndir (Mavie-Setup.exe)';
       primary.onclick = e => { e.preventDefault(); return startDownload('windows-installer'); };
       secondary.textContent = 'Android APK İndir';
       secondary.onclick = e => { e.preventDefault(); return startDownload('android-apk'); };
@@ -177,7 +177,7 @@
         const pct = Math.max(4, Math.min(100, Math.round((rem / totalSpan) * 100)));
         box.innerHTML = `
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-            <strong style="font-size:13px">3 Günlük Ücretsiz Vrelio Pro Denemesi Aktif</strong>
+            <strong style="font-size:13px">3 Günlük Ücretsiz Mavie Pro Denemesi Aktif</strong>
             <span class="badge trial">Deneme</span>
           </div>
           <div class="countdown-pill">${rem > 0 ? esc(formatRemaining(rem)) : 'Deneme süresi doldu'}</div>
@@ -195,7 +195,7 @@
       box.className = 'trial-box expired';
       box.innerHTML = `
         <strong style="font-size:13px">3 Günlük Pro Denemeniz Sona Erdi</strong>
-        <p style="margin:4px 0 0;font-size:12.5px;color:var(--muted)">Hesabınız Normal plana geçti. Bulut eşitleme, 5 cihaz sınırı ve 2×2 Çoklu Ekran için aşağıdan bir VRELIO lisans anahtarı etkinleştirin.</p>
+        <p style="margin:4px 0 0;font-size:12.5px;color:var(--muted)">Hesabınız Normal plana geçti. Bulut eşitleme, 5 cihaz sınırı ve 2×2 Çoklu Ekran için aşağıdan bir MAVIE lisans anahtarı etkinleştirin.</p>
       `;
       return;
     }
@@ -300,7 +300,7 @@
       if (outBox) outBox.hidden = true;
       if (inBox) inBox.hidden = false;
 
-      const planLabels = { normal: 'Normal (Ücretsiz)', pro: 'Vrelio Pro' };
+      const planLabels = { normal: 'Normal (Ücretsiz)', pro: 'Mavie Pro' };
       const planBadgeClass = user.trialActive ? 'trial' : (user.effectivePlan || 'normal');
       const planBadgeLabel = user.trialActive ? 'Pro Deneme (3 Gün)' : (planLabels[user.effectivePlan] || user.effectivePlan);
       const verifiedBadge = user.emailVerified
@@ -510,7 +510,7 @@
         if (cel) {
           cel.hidden = false;
           cel.textContent = res.trialActivated
-            ? 'E-posta doğrulandı! 3 günlük ücretsiz Vrelio Pro denemeniz otomatik başlatıldı.'
+            ? 'E-posta doğrulandı! 3 günlük ücretsiz Mavie Pro denemeniz otomatik başlatıldı.'
             : 'E-posta adresiniz başarıyla doğrulandı.';
         }
         await refreshUserPanel();
@@ -617,7 +617,7 @@
           method: 'POST',
           body: { code: document.getElementById('licenseCodeInput').value.trim() },
         });
-        msg.textContent = `Tebrikler! Planınız "${res.user.effectivePlan === 'pro' ? 'Vrelio Pro' : res.user.plan}" olarak güncellendi.`;
+        msg.textContent = `Tebrikler! Planınız "${res.user.effectivePlan === 'pro' ? 'Mavie Pro' : res.user.plan}" olarak güncellendi.`;
         document.getElementById('licenseCodeInput').value = '';
         await refreshUserPanel();
       } catch (ex) {

@@ -4,7 +4,7 @@
     <domain-config cleartextTrafficPermitted="false">
         <domain includeSubdomains="true">themoviedb.org</domain>
         <domain includeSubdomains="true">tmdb.org</domain>
-        <domain includeSubdomains="true">vrelio.app</domain>
+        <domain includeSubdomains="true">mavie.app</domain>
         <domain includeSubdomains="true">cineva-app.netlify.app</domain>
         <domain includeSubdomains="true">blender.org</domain>
     </domain-config>

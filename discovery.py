@@ -1,4 +1,4 @@
-"""Local catalog discovery and optional official TMDB enrichment for Vrelio.
+"""Local catalog discovery and optional official TMDB enrichment for Mavie.
 
 Viewing history and media source credentials never leave the device.
 """
@@ -61,11 +61,11 @@ def titles(name):
 
 
 def _tmdb_key(explicit=None):
-    return (explicit or os.environ.get('VRELIO_TMDB_API_KEY') or os.environ.get('CINEVA_TMDB_API_KEY') or '').strip()
+    return (explicit or os.environ.get('MAVIE_TMDB_API_KEY') or os.environ.get('CINEVA_TMDB_API_KEY') or '').strip()
 
 
 def get_json(url, timeout=12):
-    request = urllib.request.Request(url, headers={'User-Agent': 'Vrelio/3.0', 'Accept': 'application/json', 'Accept-Encoding': 'gzip'})
+    request = urllib.request.Request(url, headers={'User-Agent': 'Mavie/3.0', 'Accept': 'application/json', 'Accept-Encoding': 'gzip'})
     with urllib.request.urlopen(request, context=TLS, timeout=timeout) as response:
         try:
             raw = response.read(5 * 1024 * 1024 + 1)

@@ -95,7 +95,7 @@ public struct LibraryView: View {
                 }
             }
             .padding(.top, 8)
-            .background(VrelioTheme.bg.ignoresSafeArea())
+            .background(MavieTheme.bg.ignoresSafeArea())
             .navigationTitle("Kütüphane")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -163,8 +163,8 @@ public struct LibraryView: View {
                 .frame(minHeight: 44)
                 .background(
                     Capsule()
-                        .fill(selected ? AnyShapeStyle(VrelioTheme.brandGradient) : AnyShapeStyle(VrelioTheme.panel))
-                        .overlay(Capsule().strokeBorder(VrelioTheme.border, lineWidth: 1))
+                        .fill(selected ? AnyShapeStyle(MavieTheme.brandGradient) : AnyShapeStyle(MavieTheme.panel))
+                        .overlay(Capsule().strokeBorder(MavieTheme.border, lineWidth: 1))
                 )
         }
         .accessibilityLabel("\(name) kategorisini filtrele")
@@ -173,7 +173,7 @@ public struct LibraryView: View {
     private var catalogGrid: some View {
         ScrollView {
             if filteredItems.isEmpty {
-                VrelioEmptyStateCard(
+                MavieEmptyStateCard(
                     systemImage: "film",
                     title: "İçerik Bulunamadı",
                     message: "Seçili filtreye uygun içerik yok veya henüz kaynak yüklenmedi.",
@@ -207,7 +207,7 @@ public struct LibraryView: View {
         ScrollView {
             VStack(spacing: 12) {
                 if store.playlists.isEmpty {
-                    VrelioEmptyStateCard(
+                    MavieEmptyStateCard(
                         systemImage: "text.badge.plus",
                         title: "Henüz Listeniz Yok",
                         message: "Filmleri ve canlı kanalları düzenlemek için yeni bir liste oluşturun.",
@@ -226,7 +226,7 @@ public struct LibraryView: View {
                                         .foregroundStyle(.white)
                                     Text("\(resolved.count) içerik")
                                         .font(.caption)
-                                        .foregroundStyle(VrelioTheme.muted)
+                                        .foregroundStyle(MavieTheme.muted)
                                 }
                                 Spacer()
                                 Button(role: .destructive) {
@@ -234,7 +234,7 @@ public struct LibraryView: View {
                                 } label: {
                                     Label("Sil", systemImage: "trash")
                                 }
-                                .buttonStyle(VrelioGhostButtonStyle(compact: true))
+                                .buttonStyle(MavieGhostButtonStyle(compact: true))
                                 .accessibilityLabel("\(playlist.name) listesini sil")
                             }
                             ForEach(resolved) { item in
@@ -247,14 +247,14 @@ public struct LibraryView: View {
                                             .foregroundStyle(.white)
                                         Spacer()
                                         Image(systemName: "play.circle.fill")
-                                            .foregroundStyle(VrelioTheme.coral)
+                                            .foregroundStyle(MavieTheme.coral)
                                     }
                                     .frame(minHeight: 44)
                                 }
                             }
                         }
                         .padding(14)
-                        .vrelioCard()
+                        .mavieCard()
                     }
                 }
             }

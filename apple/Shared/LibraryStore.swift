@@ -119,7 +119,7 @@ public final class LibraryStore: ObservableObject {
         } else {
             let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
                 ?? FileManager.default.temporaryDirectory
-            baseDir = appSupport.appendingPathComponent("Vrelio", isDirectory: true)
+            baseDir = appSupport.appendingPathComponent("Mavie", isDirectory: true)
         }
         try? FileManager.default.createDirectory(at: baseDir, withIntermediateDirectories: true)
         self.baseDirectory = baseDir
@@ -127,7 +127,7 @@ public final class LibraryStore: ObservableObject {
 
         loadState()
         if profiles.isEmpty {
-            profiles = [UserProfile(id: "default", name: "Ana Profil", avatarColor: "#FF4B45", active: true)]
+            profiles = [UserProfile(id: "default", name: "Ana Profil", avatarColor: "#7C3AED", active: true)]
         }
         if items.isEmpty && sourceMode == .demo {
             loadDemoCatalog(persist: false)
@@ -170,7 +170,7 @@ public final class LibraryStore: ObservableObject {
         account = AccountInfo(
             id: "demo",
             username: "AcikSinema",
-            host: "demo.vrelio.app",
+            host: "demo.mavie.app",
             name: "Açık Sinema / Demo",
             status: "Active",
             maxConnections: 1,
@@ -216,16 +216,16 @@ public final class LibraryStore: ObservableObject {
             guard let url = URL(string: normalized),
                   let scheme = url.scheme?.lowercased(),
                   scheme == "http" || scheme == "https" else {
-                throw VrelioError.invalidURL("Geçerli bir M3U adresi girin.")
+                throw MavieError.invalidURL("Geçerli bir M3U adresi girin.")
             }
             var req = URLRequest(url: url)
             req.timeoutInterval = 25
             let (data, response) = try await URLSession.shared.data(for: req)
             if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                throw VrelioError.network("M3U listesi indirilemedi (HTTP \(http.statusCode)).")
+                throw MavieError.network("M3U listesi indirilemedi (HTTP \(http.statusCode)).")
             }
             guard let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) else {
-                throw VrelioError.parsing("M3U dosyası okunamadı.")
+                throw MavieError.parsing("M3U dosyası okunamadı.")
             }
             importM3uText(text, m3uUrl: normalized)
         } catch {
@@ -372,7 +372,7 @@ public final class LibraryStore: ObservableObject {
                 item: item
             )
         }
-        throw VrelioError.invalidURL("Bu içerik için oynatılabilir yayın adresi bulunamadı.")
+        throw MavieError.invalidURL("Bu içerik için oynatılabilir yayın adresi bulunamadı.")
     }
 
     // MARK: - Favorites, Progress & Playlists
@@ -387,7 +387,7 @@ public final class LibraryStore: ObservableObject {
             favoriteCreatedAt.removeValue(forKey: item.id)
         } else {
             favoriteIds.insert(item.id)
-            favoriteCreatedAt[item.id] = VrelioDateParser.formatISO8601()
+            favoriteCreatedAt[item.id] = MavieDateParser.formatISO8601()
         }
         saveState()
     }
@@ -433,21 +433,21 @@ public final class LibraryStore: ObservableObject {
     // MARK: - Profiles (Pro-Gated >1 or PIN)
 
     @discardableResult
-    public func addProfile(name: String, avatarColor: String = "#FF4B45", isKids: Bool = false, pin: String = "") throws -> UserProfile {
+    public func addProfile(name: String, avatarColor: String = "#7C3AED", isKids: Bool = false, pin: String = "") throws -> UserProfile {
         let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else {
-            throw VrelioError.validation("Profil adı boş olamaz.")
+            throw MavieError.validation("Profil adı boş olamaz.")
         }
         if let user = cloudUser, !user.isPro {
             if profiles.count >= 1 {
-                let msg = "Birden fazla profil oluşturmak Vrelio Pro plan gerektirir."
+                let msg = "Birden fazla profil oluşturmak Mavie Pro plan gerektirir."
                 proUpgradePrompt = msg
-                throw VrelioError.proRequired(msg)
+                throw MavieError.proRequired(msg)
             }
             if !pin.isEmpty {
-                let msg = "PIN korumalı profil özelliği Vrelio Pro plan gerektirir."
+                let msg = "PIN korumalı profil özelliği Mavie Pro plan gerektirir."
                 proUpgradePrompt = msg
-                throw VrelioError.proRequired(msg)
+                throw MavieError.proRequired(msg)
             }
         }
         let hashedPin = pin.isEmpty ? "" : SHA256.hash(data: Data(pin.utf8)).map { String(format: "%02x", $0) }.joined()
@@ -470,7 +470,7 @@ public final class LibraryStore: ObservableObject {
         if target.hasPin {
             let attemptHash = SHA256.hash(data: Data(pinAttempt.utf8)).map { String(format: "%02x", $0) }.joined()
             if attemptHash != target.pinHash {
-                throw VrelioError.validation("Profil PIN kodu hatalı.")
+                throw MavieError.validation("Profil PIN kodu hatalı.")
             }
         }
         for i in profiles.indices {
@@ -551,7 +551,7 @@ public final class LibraryStore: ObservableObject {
         persistToken(resp.token)
         await registerCurrentDeviceIfPossible(token: resp.token, deviceName: deviceName, platform: platform)
         statusBanner = resp.trialActivated
-            ? "E-posta doğrulandı! 3 günlük Vrelio Pro denemeniz başlatıldı."
+            ? "E-posta doğrulandı! 3 günlük Mavie Pro denemeniz başlatıldı."
             : "E-posta doğrulandı ve oturum açıldı."
         saveState()
         return resp
@@ -588,7 +588,7 @@ public final class LibraryStore: ObservableObject {
                 platform: platform
             )
             cloudUser?.devices = devices
-        } catch VrelioError.api(let apiErr) where apiErr.status == 403 && apiErr.code == "DEVICE_LIMIT_REACHED" {
+        } catch MavieError.api(let apiErr) where apiErr.status == 403 && apiErr.code == "DEVICE_LIMIT_REACHED" {
             let limitCount = apiErr.maxDevices ?? cloudUser?.maxDevices ?? 1
             lastError = "Cihaz sınırına ulaşıldı (\(limitCount) cihaz). Bu cihazı eklemek için aşağıdaki listeden bir cihazı kaldırın."
             if cloudUser?.devices == nil,
@@ -636,7 +636,7 @@ public final class LibraryStore: ObservableObject {
 
     public func redeemLicense(code: String) async throws {
         guard let token = cloudToken, !token.isEmpty else {
-            throw VrelioError.validation("Lisans anahtarı kullanmak için önce giriş yapın.")
+            throw MavieError.validation("Lisans anahtarı kullanmak için önce giriş yapın.")
         }
         isBusy = true
         lastError = nil
@@ -659,12 +659,12 @@ public final class LibraryStore: ObservableObject {
 
     public func syncWithCloud() async throws {
         guard let user = cloudUser, let token = cloudToken, !token.isEmpty else {
-            throw VrelioError.validation("Bulut eşitleme için önce giriş yapın.")
+            throw MavieError.validation("Bulut eşitleme için önce giriş yapın.")
         }
         guard user.isPro else {
-            let msg = "Bulut eşitleme özelliği Vrelio Pro plan gerektirir."
+            let msg = "Bulut eşitleme özelliği Mavie Pro plan gerektirir."
             proUpgradePrompt = msg
-            throw VrelioError.proRequired(msg)
+            throw MavieError.proRequired(msg)
         }
         isBusy = true
         lastError = nil
@@ -690,7 +690,7 @@ public final class LibraryStore: ObservableObject {
         let localPayload = buildSyncPayload(limitItems: 500)
         let data = try JSONEncoder().encode(localPayload)
         guard let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw VrelioError.parsing("Yerel yedek verisi JSON nesnesine dönüştürülemedi.")
+            throw MavieError.parsing("Yerel yedek verisi JSON nesnesine dönüştürülemedi.")
         }
         let remoteObj = try await LanSyncClient.merge(address: address, code: pairingCode, localExportDictionary: dict)
         let rawData = try JSONSerialization.data(withJSONObject: remoteObj)
@@ -698,7 +698,7 @@ public final class LibraryStore: ObservableObject {
         do {
             remotePayload = try JSONDecoder().decode(CloudSyncPayload.self, from: rawData)
         } catch {
-            throw VrelioError.parsing("Masaüstü eşitleme verisi ayrıştırılamadı: \(error.localizedDescription)")
+            throw MavieError.parsing("Masaüstü eşitleme verisi ayrıştırılamadı: \(error.localizedDescription)")
         }
         mergeSyncPayload(remotePayload)
         statusBanner = "Yerel ağ sunucusu ile eşitleme tamamlandı."
@@ -740,7 +740,7 @@ public final class LibraryStore: ObservableObject {
             }
         }
 
-        let nowIso = VrelioDateParser.formatISO8601()
+        let nowIso = MavieDateParser.formatISO8601()
         let favRecords = favoriteIds.sorted().map { id in
             SyncFavoriteRecord(itemId: id, createdAt: favoriteCreatedAt[id] ?? nowIso)
         }
@@ -816,8 +816,8 @@ public final class LibraryStore: ObservableObject {
         }
         for pref in payload.trackPreferences {
             if let existing = trackPreferencesByItem[pref.itemId],
-               let existingDate = VrelioDateParser.parseISO8601(existing.updatedAt),
-               let incomingDate = VrelioDateParser.parseISO8601(pref.updatedAt),
+               let existingDate = MavieDateParser.parseISO8601(existing.updatedAt),
+               let incomingDate = MavieDateParser.parseISO8601(pref.updatedAt),
                incomingDate <= existingDate {
                 continue
             }

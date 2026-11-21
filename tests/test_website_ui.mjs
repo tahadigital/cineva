@@ -191,17 +191,17 @@ function runPortalHarness({ userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x6
   };
 }
 
-test("website static files are completely rebranded to Vrelio with zero Cineva strings", () => {
+test("website static files are completely rebranded to Mavie with zero Cineva strings", () => {
   assert.equal(fs.existsSync(path.join(WEBSITE_DIR, "cineva-mark.svg")), false);
-  assert.equal(fs.existsSync(path.join(WEBSITE_DIR, "vrelio-mark.svg")), true);
+  assert.equal(fs.existsSync(path.join(WEBSITE_DIR, "mavie-mark.svg")), true);
   assert.equal(fs.existsSync(path.join(WEBSITE_DIR, "icon.svg")), true);
 
-  const vrelioMark = readWeb("vrelio-mark.svg");
+  const mavieMark = readWeb("mavie-mark.svg");
   const iconSvg = readWeb("icon.svg");
-  assert.match(vrelioMark, /vrelioGrad/);
-  assert.doesNotMatch(vrelioMark, /cineva/i);
-  assert.match(iconSvg, /vrelioBg/);
-  assert.match(iconSvg, /vrelioRing/);
+  assert.match(mavieMark, /mavieGrad/);
+  assert.doesNotMatch(mavieMark, /cineva/i);
+  assert.match(iconSvg, /mavieBg/);
+  assert.match(iconSvg, /mavieRing/);
   assert.doesNotMatch(iconSvg, /cineva/i);
 
   for (const file of ["index.html", "admin.html", "privacy.html", "terms.html", "styles.css", "admin.js", "robots.txt", "netlify.toml"]) {
@@ -215,8 +215,8 @@ test("website static files are completely rebranded to Vrelio with zero Cineva s
   const indexHtml = readWeb("index.html");
   assert.equal(indexHtml.includes('href="/admin"'), false);
   assert.match(readWeb("robots.txt"), /Disallow:\s*\/admin/);
-  assert.match(readWeb("privacy.html"), /privacy@vrelio\.app/);
-  assert.match(readWeb("terms.html"), /legal@vrelio\.app/);
+  assert.match(readWeb("privacy.html"), /privacy@mavie\.app/);
+  assert.match(readWeb("terms.html"), /legal@mavie\.app/);
 });
 
 test("website index.html and styles.css showcase all 4 platforms, Normal vs Pro, and responsive safeguards", () => {
@@ -226,7 +226,7 @@ test("website index.html and styles.css showcase all 4 platforms, Normal vs Pro,
   for (const label of ["Windows", "Android", "macOS", "iOS"]) {
     assert.ok(html.includes(label), `Missing platform label ${label}`);
   }
-  for (const artifact of ["Vrelio-Setup.exe", "Vrelio.exe", "Vrelio-Android.apk", "Vrelio-macOS.dmg", "Vrelio-iOS.ipa"]) {
+  for (const artifact of ["Mavie-Setup.exe", "Mavie.exe", "Mavie-Android.apk", "Mavie-macOS.dmg", "Mavie-iOS.ipa"]) {
     assert.ok(html.includes(artifact), `Missing artifact ${artifact}`);
   }
   for (const target of ["windows-installer", "windows-portable", "android-apk", "macos", "ios"]) {
@@ -234,8 +234,8 @@ test("website index.html and styles.css showcase all 4 platforms, Normal vs Pro,
   }
 
   assert.match(html, /Normal/i);
-  assert.match(html, /Vrelio Pro/);
-  assert.match(html, /VRELIO-XXXX-XXXX-XXXX/);
+  assert.match(html, /Mavie Pro/);
+  assert.match(html, /MAVIE-XXXX-XXXX-XXXX/);
   assert.match(html, /verifyEmailPanel/);
   assert.match(html, /forgotPassPanel/);
   assert.match(html, /resetPassPanel/);
@@ -248,10 +248,10 @@ test("website index.html and styles.css showcase all 4 platforms, Normal vs Pro,
 
 test("portal.js detectPlatform selects Windows, Android, macOS, and iOS primary targets dynamically", async () => {
   const cases = [
-    ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", /Windows/i, "Vrelio-Setup.exe"],
-    ["Mozilla/5.0 (Linux; Android 14; Pixel 8)", /Android/i, "Vrelio-Android.apk"],
-    ["Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5)", /macOS/i, "Vrelio-macOS.dmg"],
-    ["Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X)", /iOS/i, "Vrelio-iOS.ipa"],
+    ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)", /Windows/i, "Mavie-Setup.exe"],
+    ["Mozilla/5.0 (Linux; Android 14; Pixel 8)", /Android/i, "Mavie-Android.apk"],
+    ["Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5)", /macOS/i, "Mavie-macOS.dmg"],
+    ["Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X)", /iOS/i, "Mavie-iOS.ipa"],
   ];
 
   for (const [ua, btnPattern, expectedUrlFile] of cases) {
@@ -301,7 +301,7 @@ test("portal.js handles 201 verificationRequired, 403 EMAIL_NOT_VERIFIED, verify
               androidLatest: "2.1.0",
               macosLatest: "2.1.0",
               iosLatest: "2.1.0",
-              releaseNotes: "Vrelio 2.1.0 hazır.",
+              releaseNotes: "Mavie 2.1.0 hazır.",
             },
             downloads: { "windows-installer": 4, "android-apk": 2, macos: 3, ios: 1 },
             plans: { normal: { maxDevices: 1 }, pro: { maxDevices: 5, trialDays: 3 } },
@@ -316,7 +316,7 @@ test("portal.js handles 201 verificationRequired, 403 EMAIL_NOT_VERIFIED, verify
             ok: true,
             verificationRequired: true,
             emailVerified: false,
-            user: { id: "u1", email: "ali@vrelio.app", displayName: "Ali", emailVerified: false, plan: "normal" },
+            user: { id: "u1", email: "ali@mavie.app", displayName: "Ali", emailVerified: false, plan: "normal" },
           }),
         };
       }
@@ -325,7 +325,7 @@ test("portal.js handles 201 verificationRequired, 403 EMAIL_NOT_VERIFIED, verify
           return {
             ok: false,
             status: 403,
-            json: async () => ({ error: "E-posta doğrulaması gerekli.", code: "EMAIL_NOT_VERIFIED", email: "ali@vrelio.app" }),
+            json: async () => ({ error: "E-posta doğrulaması gerekli.", code: "EMAIL_NOT_VERIFIED", email: "ali@mavie.app" }),
           };
         }
         return { ok: true, status: 200, json: async () => ({ ok: true, token: "tok-verified-2", user: {} }) };
@@ -344,7 +344,7 @@ test("portal.js handles 201 verificationRequired, 403 EMAIL_NOT_VERIFIED, verify
           json: async () => ({
             user: {
               id: "u1",
-              email: "ali@vrelio.app",
+              email: "ali@mavie.app",
               displayName: "Ali",
               emailVerified: true,
               plan: "pro",
@@ -386,10 +386,10 @@ test("portal.js handles 201 verificationRequired, 403 EMAIL_NOT_VERIFIED, verify
   // Register -> 201 verificationRequired -> must NOT set token and must switch to verify view
   await h.tabRegister.trigger("click");
   h.elements.get("uName").value = "Ali";
-  h.elements.get("uEmail").value = "ali@vrelio.app";
+  h.elements.get("uEmail").value = "ali@mavie.app";
   h.elements.get("uPass").value = "StrongPass123!";
   await h.elements.get("userAuthForm").trigger("submit");
-  assert.equal(h.storage.get("vrelio_user_token"), undefined);
+  assert.equal(h.storage.get("mavie_user_token"), undefined);
   assert.equal(h.elements.get("accountLoggedOut").dataset.authView, "verify");
 
   // Unverified login -> 403 EMAIL_NOT_VERIFIED -> verify view
@@ -402,10 +402,10 @@ test("portal.js handles 201 verificationRequired, 403 EMAIL_NOT_VERIFIED, verify
   assert.equal(h.elements.get("resendVerifyBtn").disabled, true);
   h.elements.get("verifyCodeInput").value = "123456";
   await h.elements.get("verifyEmailForm").trigger("submit");
-  assert.equal(h.storage.get("vrelio_user_token"), "tok-verified-1");
+  assert.equal(h.storage.get("mavie_user_token"), "tok-verified-1");
   assert.equal(h.elements.get("accountLoggedIn").hidden, false);
   assert.equal(h.elements.get("uTrialCountdownBox").hidden, false);
-  assert.match(h.elements.get("uTrialCountdownBox").innerHTML, /3 Günlük Ücretsiz Vrelio Pro Denemesi Aktif/);
+  assert.match(h.elements.get("uTrialCountdownBox").innerHTML, /3 Günlük Ücretsiz Mavie Pro Denemesi Aktif/);
   assert.equal(h.devButtons.length, 2);
 
   // Self-service device removal
@@ -415,10 +415,10 @@ test("portal.js handles 201 verificationRequired, 403 EMAIL_NOT_VERIFIED, verify
 
   // Logout & Forgot -> Verify Reset Code -> Reset Password
   await h.elements.get("uLogoutBtn").trigger("click");
-  assert.equal(h.storage.get("vrelio_user_token"), undefined);
+  assert.equal(h.storage.get("mavie_user_token"), undefined);
   await h.elements.get("openForgotBtn").trigger("click");
   assert.equal(h.elements.get("accountLoggedOut").dataset.authView, "forgot");
-  h.elements.get("forgotEmailInput").value = "ali@vrelio.app";
+  h.elements.get("forgotEmailInput").value = "ali@mavie.app";
   await h.elements.get("forgotPassForm").trigger("submit");
   assert.equal(h.elements.get("accountLoggedOut").dataset.authView, "reset");
 
@@ -447,7 +447,7 @@ test("portal.js resets to login view on immediate post-verify logout, handles re
             versions: {
               windowsInstallerUrl: "javascript:alert(1)",
               iosUrl: "//evil.example/payload.ipa",
-              macosUrl: "https://github.com/tahadigital/cineva/releases/latest/download/Vrelio-macOS.dmg",
+              macosUrl: "https://github.com/tahadigital/cineva/releases/latest/download/Mavie-macOS.dmg",
             },
             downloads: {},
             plans: {},
@@ -462,7 +462,7 @@ test("portal.js resets to login view on immediate post-verify logout, handles re
             ok: true,
             verificationRequired: true,
             emailVerified: false,
-            user: { id: "u2", email: "veli@vrelio.app", displayName: "Veli", emailVerified: false, plan: "normal" },
+            user: { id: "u2", email: "veli@mavie.app", displayName: "Veli", emailVerified: false, plan: "normal" },
           }),
         };
       }
@@ -478,7 +478,7 @@ test("portal.js resets to login view on immediate post-verify logout, handles re
           status: 200,
           json: async () => ({
             ok: true,
-            user: { id: "u2", email: "veli@vrelio.app", plan: "pro", effectivePlan: "pro", isPro: true },
+            user: { id: "u2", email: "veli@mavie.app", plan: "pro", effectivePlan: "pro", isPro: true },
           }),
         };
       }
@@ -489,7 +489,7 @@ test("portal.js resets to login view on immediate post-verify logout, handles re
           json: async () => ({
             user: {
               id: "u2",
-              email: "veli@vrelio.app",
+              email: "veli@mavie.app",
               displayName: "Veli",
               emailVerified: true,
               plan: currentPlan,
@@ -525,7 +525,7 @@ test("portal.js resets to login view on immediate post-verify logout, handles re
   // Register -> Verify -> Redeem -> Immediate Logout
   await h.tabRegister.trigger("click");
   h.elements.get("uName").value = "Veli";
-  h.elements.get("uEmail").value = "veli@vrelio.app";
+  h.elements.get("uEmail").value = "veli@mavie.app";
   h.elements.get("uPass").value = "VeliStrong123!";
   await h.elements.get("userAuthForm").trigger("submit");
   assert.equal(h.elements.get("accountLoggedOut").dataset.authView, "verify");
@@ -535,14 +535,14 @@ test("portal.js resets to login view on immediate post-verify logout, handles re
   assert.equal(h.elements.get("accountLoggedIn").hidden, false);
   assert.equal(h.elements.get("uVerifyCelebration").hidden, false);
 
-  h.elements.get("licenseCodeInput").value = "VRELIO-1111-2222-3333";
+  h.elements.get("licenseCodeInput").value = "MAVIE-1111-2222-3333";
   await h.elements.get("redeemForm").trigger("submit");
-  assert.deepEqual(redeemBodies, [{ code: "VRELIO-1111-2222-3333" }]);
-  assert.match(h.elements.get("redeemMsg").textContent, /Vrelio Pro/);
+  assert.deepEqual(redeemBodies, [{ code: "MAVIE-1111-2222-3333" }]);
+  assert.match(h.elements.get("redeemMsg").textContent, /Mavie Pro/);
   assert.equal(h.elements.get("licenseCodeInput").value, "");
 
   await h.elements.get("uLogoutBtn").trigger("click");
-  assert.equal(h.storage.get("vrelio_user_token"), undefined);
+  assert.equal(h.storage.get("mavie_user_token"), undefined);
   assert.equal(h.elements.get("accountLoggedOut").hidden, false);
   assert.equal(h.elements.get("accountLoggedOut").dataset.authView, "login");
   assert.equal(h.elements.get("userAuthForm").hidden, false);

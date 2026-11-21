@@ -65,17 +65,17 @@ public struct CloudAccountView: View {
                 }
                 .padding(16)
             }
-            .background(VrelioTheme.bg.ignoresSafeArea())
+            .background(MavieTheme.bg.ignoresSafeArea())
             .navigationTitle("Bulut & Plan")
             .onAppear {
                 if portalURLInput.isEmpty {
                     portalURLInput = store.portalURL
                 }
             }
-            .alert("Vrelio Pro Plan Gerekli", isPresented: $showUpgradeAlert) {
+            .alert("Mavie Pro Plan Gerekli", isPresented: $showUpgradeAlert) {
                 Button("Tamam", role: .cancel) {}
             } message: {
-                Text("Bulut eşitleme, 5 cihaza kadar kullanım ve çoklu/PIN korumalı profiller için Vrelio Pro planına geçin veya lisans anahtarı girin.")
+                Text("Bulut eşitleme, 5 cihaza kadar kullanım ve çoklu/PIN korumalı profiller için Mavie Pro planına geçin veya lisans anahtarı girin.")
             }
         }
     }
@@ -91,7 +91,7 @@ public struct CloudAccountView: View {
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
                     .padding(10)
-                    .background(VrelioTheme.panelElevated, in: RoundedRectangle(cornerRadius: 10))
+                    .background(MavieTheme.panelElevated, in: RoundedRectangle(cornerRadius: 10))
                     .foregroundStyle(.white)
 
                 Button("Kaydet") {
@@ -105,12 +105,12 @@ public struct CloudAccountView: View {
                         errorMessage = error.localizedDescription
                     }
                 }
-                .buttonStyle(VrelioGhostButtonStyle(compact: true))
+                .buttonStyle(MavieGhostButtonStyle(compact: true))
                 .accessibilityLabel("Bulut Portalı Adresini Kaydet")
             }
         }
         .padding(14)
-        .vrelioCard()
+        .mavieCard()
     }
 
     private var signedOutPanel: some View {
@@ -134,12 +134,12 @@ public struct CloudAccountView: View {
             }
         }
         .padding(16)
-        .vrelioCard()
+        .mavieCard()
     }
 
     private var loginForm: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Vrelio Hesabına Giriş Yap")
+            Text("Mavie Hesabına Giriş Yap")
                 .font(.headline)
                 .foregroundStyle(.white)
 
@@ -156,7 +156,7 @@ public struct CloudAccountView: View {
                         .frame(maxWidth: .infinity)
                 }
             }
-            .buttonStyle(VrelioPrimaryButtonStyle())
+            .buttonStyle(MaviePrimaryButtonStyle())
             .disabled(store.isBusy)
             .accessibilityLabel("Bulut Hesabına Giriş Yap")
 
@@ -166,7 +166,7 @@ public struct CloudAccountView: View {
                     errorMessage = nil
                 }
                 .frame(minHeight: 44)
-                .foregroundStyle(VrelioTheme.amber)
+                .foregroundStyle(MavieTheme.amber)
                 .accessibilityLabel("Şifremi Unuttum Akışını Aç")
 
                 Spacer()
@@ -176,7 +176,7 @@ public struct CloudAccountView: View {
                     errorMessage = nil
                 }
                 .frame(minHeight: 44)
-                .foregroundStyle(VrelioTheme.muted)
+                .foregroundStyle(MavieTheme.muted)
                 .accessibilityLabel("E-posta Doğrulama Ekranını Aç")
             }
             .font(.subheadline.weight(.medium))
@@ -188,9 +188,9 @@ public struct CloudAccountView: View {
             Text("Yeni Hesap Oluştur")
                 .font(.headline)
                 .foregroundStyle(.white)
-            Text("E-posta doğrulamasından sonra 3 günlük Vrelio Pro denemeniz otomatik başlatılır.")
+            Text("E-posta doğrulamasından sonra 3 günlük Mavie Pro denemeniz otomatik başlatılır.")
                 .font(.caption)
-                .foregroundStyle(VrelioTheme.muted)
+                .foregroundStyle(MavieTheme.muted)
 
             inputField(title: "Adınız", text: $displayName, keyboard: .default)
             inputField(title: "E-posta adresi", text: $email, keyboard: .emailAddress)
@@ -206,9 +206,9 @@ public struct CloudAccountView: View {
                         .frame(maxWidth: .infinity)
                 }
             }
-            .buttonStyle(VrelioPrimaryButtonStyle())
+            .buttonStyle(MaviePrimaryButtonStyle())
             .disabled(store.isBusy)
-            .accessibilityLabel("Yeni Vrelio Hesabı Oluştur")
+            .accessibilityLabel("Yeni Mavie Hesabı Oluştur")
         }
     }
 
@@ -219,7 +219,7 @@ public struct CloudAccountView: View {
                 .foregroundStyle(.white)
             Text("E-postanıza gelen 6 haneli kodu girin.")
                 .font(.caption)
-                .foregroundStyle(VrelioTheme.muted)
+                .foregroundStyle(MavieTheme.muted)
 
             inputField(title: "E-posta adresi", text: $email, keyboard: .emailAddress)
             inputField(title: "6 Haneli Doğrulama Kodu", text: $verificationCode, keyboard: .numberPad)
@@ -230,7 +230,7 @@ public struct CloudAccountView: View {
                 Label("E-postayı Doğrula", systemImage: "checkmark.shield.fill")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(VrelioPrimaryButtonStyle())
+            .buttonStyle(MaviePrimaryButtonStyle())
             .disabled(store.isBusy)
             .accessibilityLabel("6 Haneli Kodu Doğrula")
 
@@ -240,7 +240,7 @@ public struct CloudAccountView: View {
                 Label("Kodu Yeniden Gönder", systemImage: "envelope.arrow.triangle.branch")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(VrelioGhostButtonStyle(compact: true))
+            .buttonStyle(MavieGhostButtonStyle(compact: true))
             .disabled(store.isBusy)
             .accessibilityLabel("Doğrulama Kodunu Yeniden Gönder")
         }
@@ -260,12 +260,12 @@ public struct CloudAccountView: View {
                 Label("Sıfırlama Kodu Gönder", systemImage: "paperplane.fill")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(VrelioGhostButtonStyle(compact: true))
+            .buttonStyle(MavieGhostButtonStyle(compact: true))
             .disabled(store.isBusy)
             .accessibilityLabel("Şifre Sıfırlama Kodu Gönder")
 
             if resetCodeSent {
-                Divider().overlay(VrelioTheme.border)
+                Divider().overlay(MavieTheme.border)
                 inputField(title: "6 Haneli Sıfırlama Kodu", text: $resetCode, keyboard: .numberPad)
 
                 Button {
@@ -274,7 +274,7 @@ public struct CloudAccountView: View {
                     Label(resetCodeVerified ? "Kod Doğrulandı" : "Kodu Kontrol Et", systemImage: "checkmark.circle")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(VrelioGhostButtonStyle(compact: true))
+                .buttonStyle(MavieGhostButtonStyle(compact: true))
                 .disabled(store.isBusy)
                 .accessibilityLabel("Sıfırlama Kodunu Doğrula")
 
@@ -286,7 +286,7 @@ public struct CloudAccountView: View {
                     Label("Parolayı Güncelle", systemImage: "key.fill")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(VrelioPrimaryButtonStyle())
+                .buttonStyle(MaviePrimaryButtonStyle())
                 .disabled(store.isBusy)
                 .accessibilityLabel("Yeni Parolayı Kaydet")
             }
@@ -302,11 +302,11 @@ public struct CloudAccountView: View {
                         .foregroundStyle(.white)
                     Text(user.email)
                         .font(.caption)
-                        .foregroundStyle(VrelioTheme.muted)
+                        .foregroundStyle(MavieTheme.muted)
                     HStack(spacing: 8) {
                         Label(user.emailVerified ? "E-posta Doğrulandı" : "Doğrulanmadı", systemImage: user.emailVerified ? "checkmark.seal.fill" : "exclamationmark.triangle")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(user.emailVerified ? VrelioTheme.success : VrelioTheme.warning)
+                            .foregroundStyle(user.emailVerified ? MavieTheme.success : MavieTheme.warning)
                     }
                 }
                 Spacer()
@@ -316,7 +316,7 @@ public struct CloudAccountView: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
                     .background(
-                        user.isPro ? AnyShapeStyle(VrelioTheme.brandGradient) : AnyShapeStyle(VrelioTheme.panelElevated),
+                        user.isPro ? AnyShapeStyle(MavieTheme.brandGradient) : AnyShapeStyle(MavieTheme.panelElevated),
                         in: Capsule()
                     )
             }
@@ -324,14 +324,14 @@ public struct CloudAccountView: View {
             if user.trialActive, let remaining = user.trialRemainingSummary() {
                 HStack(spacing: 10) {
                     Image(systemName: "crown.fill")
-                        .foregroundStyle(VrelioTheme.amber)
+                        .foregroundStyle(MavieTheme.amber)
                     Text("3 Günlük Pro Deneme Aktif · \(remaining)")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.white)
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(VrelioTheme.amber.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
+                .background(MavieTheme.amber.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
             }
 
             HStack(spacing: 10) {
@@ -341,7 +341,7 @@ public struct CloudAccountView: View {
                     Label("Bulutla Eşitle", systemImage: "icloud.and.arrow.up.fill")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(VrelioPrimaryButtonStyle(compact: true))
+                .buttonStyle(MaviePrimaryButtonStyle(compact: true))
                 .accessibilityLabel("Kütüphane ve İzleme İlerlemesini Bulutla Eşitle")
 
                 Button {
@@ -349,7 +349,7 @@ public struct CloudAccountView: View {
                 } label: {
                     Label("Yenile", systemImage: "arrow.clockwise")
                 }
-                .buttonStyle(VrelioGhostButtonStyle(compact: true))
+                .buttonStyle(MavieGhostButtonStyle(compact: true))
                 .accessibilityLabel("Hesap Bilgilerini Yenile")
             }
 
@@ -359,11 +359,11 @@ public struct CloudAccountView: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
                 HStack(spacing: 8) {
-                    inputField(title: "VRELIO-XXXX-XXXX-XXXX", text: $licenseCode, keyboard: .asciiCapable)
+                    inputField(title: "MAVIE-XXXX-XXXX-XXXX", text: $licenseCode, keyboard: .asciiCapable)
                     Button("Uygula") {
                         Task { await performRedeemLicense() }
                     }
-                    .buttonStyle(VrelioGhostButtonStyle(compact: true))
+                    .buttonStyle(MavieGhostButtonStyle(compact: true))
                     .accessibilityLabel("Lisans Anahtarını Uygula")
                 }
             }
@@ -378,14 +378,14 @@ public struct CloudAccountView: View {
                     ForEach(devices) { dev in
                         HStack {
                             Image(systemName: platformIcon(dev.platform))
-                                .foregroundStyle(VrelioTheme.amber)
+                                .foregroundStyle(MavieTheme.amber)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(dev.name)
                                     .font(.subheadline.weight(.medium))
                                     .foregroundStyle(.white)
                                 Text(dev.platform.uppercased())
                                     .font(.caption2)
-                                    .foregroundStyle(VrelioTheme.muted)
+                                    .foregroundStyle(MavieTheme.muted)
                             }
                             Spacer()
                             Button(role: .destructive) {
@@ -393,16 +393,16 @@ public struct CloudAccountView: View {
                             } label: {
                                 Label("Kaldır", systemImage: "trash")
                             }
-                            .buttonStyle(VrelioGhostButtonStyle(compact: true))
+                            .buttonStyle(MavieGhostButtonStyle(compact: true))
                             .accessibilityLabel("\(dev.name) cihazını hesaptan kaldır")
                         }
                         .padding(10)
-                        .background(VrelioTheme.panelElevated, in: RoundedRectangle(cornerRadius: 12))
+                        .background(MavieTheme.panelElevated, in: RoundedRectangle(cornerRadius: 12))
                     }
                 } else {
                     Text("Henüz kayıtlı cihaz listelenmedi.")
                         .font(.caption)
-                        .foregroundStyle(VrelioTheme.muted)
+                        .foregroundStyle(MavieTheme.muted)
                 }
             }
 
@@ -413,11 +413,11 @@ public struct CloudAccountView: View {
                 Label("Çıkış Yap", systemImage: "rectangle.portrait.and.arrow.right")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(VrelioGhostButtonStyle(compact: true))
+            .buttonStyle(MavieGhostButtonStyle(compact: true))
             .accessibilityLabel("Bulut Hesabından Çıkış Yap")
         }
         .padding(16)
-        .vrelioCard()
+        .mavieCard()
     }
 
     private var planComparisonCard: some View {
@@ -436,15 +436,15 @@ public struct CloudAccountView: View {
                     Text("• 1 Profil")
                 }
                 .font(.caption)
-                .foregroundStyle(VrelioTheme.muted)
+                .foregroundStyle(MavieTheme.muted)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
-                .background(VrelioTheme.panelElevated, in: RoundedRectangle(cornerRadius: 12))
+                .background(MavieTheme.panelElevated, in: RoundedRectangle(cornerRadius: 12))
 
                 VStack(alignment: .leading, spacing: 6) {
                     Label("Pro (3 Gün Deneme)", systemImage: "crown.fill")
                         .font(.subheadline.weight(.bold))
-                        .foregroundStyle(VrelioTheme.amber)
+                        .foregroundStyle(MavieTheme.amber)
                     Text("• 5 Cihaza Kadar")
                     Text("• Bulut Eşitleme (/sync)")
                     Text("• Çoklu Profil & PIN Koruma")
@@ -456,13 +456,13 @@ public struct CloudAccountView: View {
                 .padding(12)
                 .background(
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(VrelioTheme.coral.opacity(0.15))
-                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(VrelioTheme.coral.opacity(0.45)))
+                        .fill(MavieTheme.coral.opacity(0.15))
+                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(MavieTheme.coral.opacity(0.45)))
                 )
             }
         }
         .padding(14)
-        .vrelioCard()
+        .mavieCard()
     }
 
     // MARK: - Actions
@@ -477,7 +477,7 @@ public struct CloudAccountView: View {
             } else {
                 feedbackMessage = "Giriş başarılı."
             }
-        } catch VrelioError.api(let apiErr) where apiErr.verificationRequired || apiErr.code == "EMAIL_NOT_VERIFIED" {
+        } catch MavieError.api(let apiErr) where apiErr.verificationRequired || apiErr.code == "EMAIL_NOT_VERIFIED" {
             if let returnedEmail = apiErr.email, !returnedEmail.isEmpty {
                 email = returnedEmail
             }
@@ -577,9 +577,9 @@ public struct CloudAccountView: View {
         do {
             try await store.syncWithCloud()
             feedbackMessage = "Bulut eşitleme tamamlandı."
-        } catch VrelioError.proRequired {
+        } catch MavieError.proRequired {
             showUpgradeAlert = true
-        } catch VrelioError.api(let apiErr) where apiErr.upgradeRequired || apiErr.code == "PRO_REQUIRED" {
+        } catch MavieError.api(let apiErr) where apiErr.upgradeRequired || apiErr.code == "PRO_REQUIRED" {
             showUpgradeAlert = true
         } catch {
             errorMessage = error.localizedDescription
@@ -618,7 +618,7 @@ public struct CloudAccountView: View {
             .autocorrectionDisabled()
             .padding(12)
             .frame(minHeight: 46)
-            .background(VrelioTheme.panelElevated, in: RoundedRectangle(cornerRadius: 10))
+            .background(MavieTheme.panelElevated, in: RoundedRectangle(cornerRadius: 10))
             .foregroundStyle(.white)
     }
 
@@ -628,14 +628,14 @@ public struct CloudAccountView: View {
             .autocorrectionDisabled()
             .padding(12)
             .frame(minHeight: 46)
-            .background(VrelioTheme.panelElevated, in: RoundedRectangle(cornerRadius: 10))
+            .background(MavieTheme.panelElevated, in: RoundedRectangle(cornerRadius: 10))
             .foregroundStyle(.white)
     }
 
     private func bannerCard(text: String, isError: Bool) -> some View {
         HStack(spacing: 10) {
             Image(systemName: isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                .foregroundStyle(isError ? VrelioTheme.danger : VrelioTheme.success)
+                .foregroundStyle(isError ? MavieTheme.danger : MavieTheme.success)
             Text(text)
                 .font(.subheadline)
                 .foregroundStyle(.white)
@@ -644,7 +644,7 @@ public struct CloudAccountView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill((isError ? VrelioTheme.danger : VrelioTheme.success).opacity(0.14))
+                .fill((isError ? MavieTheme.danger : MavieTheme.success).opacity(0.14))
         )
     }
 

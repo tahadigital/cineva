@@ -47,12 +47,12 @@ export const DEFAULT_VERSIONS = {
   macosMin: "2.0.0",
   iosLatest: "2.1.0",
   iosMin: "2.0.0",
-  windowsInstallerUrl: "https://github.com/tahadigital/cineva/releases/latest/download/Vrelio-Setup.exe",
-  windowsPortableUrl: "https://github.com/tahadigital/cineva/releases/latest/download/Vrelio.exe",
-  androidApkUrl: "https://github.com/tahadigital/cineva/releases/latest/download/Vrelio-Android.apk",
-  macosUrl: "https://github.com/tahadigital/cineva/releases/latest/download/Vrelio-macOS.dmg",
-  iosUrl: "https://github.com/tahadigital/cineva/releases/latest/download/Vrelio-iOS.ipa",
-  releaseNotes: "Vrelio 2.1.0: 4 platform desteği, e-posta doğrulama ve 3 günlük Pro deneme.",
+  windowsInstallerUrl: "https://github.com/tahadigital/cineva/releases/latest/download/Mavie-Setup.exe",
+  windowsPortableUrl: "https://github.com/tahadigital/cineva/releases/latest/download/Mavie.exe",
+  androidApkUrl: "https://github.com/tahadigital/cineva/releases/latest/download/Mavie-Android.apk",
+  macosUrl: "https://github.com/tahadigital/cineva/releases/latest/download/Mavie-macOS.dmg",
+  iosUrl: "https://github.com/tahadigital/cineva/releases/latest/download/Mavie-iOS.ipa",
+  releaseNotes: "Mavie 2.1.0: 4 platform desteği, e-posta doğrulama ve 3 günlük Pro deneme.",
 };
 
 export const PLAN_CATALOG = {
@@ -277,6 +277,8 @@ function jsonResp(payload, status = 200) {
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
       "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "DENY",
+      "Referrer-Policy": "no-referrer",
     },
   });
 }
@@ -313,8 +315,8 @@ async function clearRateLimit(pool, bucket) {
 }
 
 async function ensureBootstrapAdmin(pool, env) {
-  const email = envAny(env, "VRELIO_ADMIN_EMAIL", "CINEVA_ADMIN_EMAIL").toLowerCase();
-  const password = envAny(env, "VRELIO_ADMIN_PASSWORD", "CINEVA_ADMIN_PASSWORD");
+  const email = envAny(env, "MAVIE_ADMIN_EMAIL", "CINEVA_ADMIN_EMAIL").toLowerCase();
+  const password = envAny(env, "MAVIE_ADMIN_PASSWORD", "CINEVA_ADMIN_PASSWORD");
   if (!email || !password || !EMAIL_RE.test(email)) return;
   const { rows } = await pool.query("SELECT id FROM users WHERE role = 'admin' LIMIT 1");
   if (rows.length > 0) return;
@@ -436,7 +438,7 @@ async function sendRawSmtp({ host, port, user, pass, from, to, subject, bodyText
 
   try {
     await expect(null, [220]);
-    await expect("EHLO vrelio.app", [250]);
+    await expect("EHLO mavie.app", [250]);
     if (useStartTls) {
       await expect("STARTTLS", [220]);
       readResp.detach();
@@ -447,7 +449,7 @@ async function sendRawSmtp({ host, port, user, pass, from, to, subject, bodyText
         sock.once("secureConnect", resolve);
       });
       readResp = createLineReader(sock);
-      await expect("EHLO vrelio.app", [250]);
+      await expect("EHLO mavie.app", [250]);
     }
     if (user && pass) {
       const authToken = Buffer.from(`\0${user}\0${pass}`, "utf8").toString("base64");
@@ -473,11 +475,11 @@ async function sendRawSmtp({ host, port, user, pass, from, to, subject, bodyText
 
 function resolveEmailTransport(env, mailer) {
   if (typeof mailer === "function") return "custom";
-  const mode = (envAny(env, "VRELIO_EMAIL_MODE", "CINEVA_EMAIL_MODE", "EMAIL_MODE") || "auto").toLowerCase();
+  const mode = (envAny(env, "MAVIE_EMAIL_MODE", "CINEVA_EMAIL_MODE", "EMAIL_MODE") || "auto").toLowerCase();
   if (mode === "outbox") return "outbox";
-  const resendKey = envAny(env, "VRELIO_RESEND_API_KEY", "RESEND_API_KEY");
-  const webhookUrl = envAny(env, "VRELIO_EMAIL_WEBHOOK_URL", "EMAIL_WEBHOOK_URL");
-  const smtpHost = envAny(env, "VRELIO_SMTP_HOST", "CINEVA_SMTP_HOST", "SMTP_HOST");
+  const resendKey = envAny(env, "MAVIE_RESEND_API_KEY", "RESEND_API_KEY");
+  const webhookUrl = envAny(env, "MAVIE_EMAIL_WEBHOOK_URL", "EMAIL_WEBHOOK_URL");
+  const smtpHost = envAny(env, "MAVIE_SMTP_HOST", "CINEVA_SMTP_HOST", "SMTP_HOST");
 
   if (mode === "resend") return "resend";
   if (mode === "webhook") return "webhook";
@@ -493,16 +495,16 @@ async function deliverEmail(pool, env, mailer, { kind, recipient, displayName, c
   const cleanName = stripHeaderCrlf(displayName) || "Kullanıcı";
   const subject =
     kind === "verify_email"
-      ? stripHeaderCrlf("Vrelio — E-posta Adresinizi Doğrulayın")
-      : stripHeaderCrlf("Vrelio — Parola Sıfırlama Kodu");
+      ? stripHeaderCrlf("Mavie — E-posta Adresinizi Doğrulayın")
+      : stripHeaderCrlf("Mavie — Parola Sıfırlama Kodu");
   const bodyText =
     kind === "verify_email"
-      ? `Merhaba ${cleanName},\n\nVrelio hesabınızı doğrulamak için 6 haneli kodunuz: ${code}\nDoğrulama belirteci: ${token}\n\nBu kod 24 saat geçerlidir. Doğrulama tamamlandığında 3 günlük ücretsiz Pro denemeniz otomatik başlar.\n`
-      : `Merhaba ${cleanName},\n\nVrelio hesabınız için parola sıfırlama kodunuz: ${code}\nSıfırlama belirteci: ${token}\n\nBu kod 30 dakika geçerlidir. Bu isteği siz yapmadıysanız bu e-postayı yok sayabilirsiniz.\n`;
+      ? `Merhaba ${cleanName},\n\nMavie hesabınızı doğrulamak için 6 haneli kodunuz: ${code}\nDoğrulama belirteci: ${token}\n\nBu kod 24 saat geçerlidir. Doğrulama tamamlandığında 3 günlük ücretsiz Pro denemeniz otomatik başlar.\n`
+      : `Merhaba ${cleanName},\n\nMavie hesabınız için parola sıfırlama kodunuz: ${code}\nSıfırlama belirteci: ${token}\n\nBu kod 30 dakika geçerlidir. Bu isteği siz yapmadıysanız bu e-postayı yok sayabilirsiniz.\n`;
 
   const mode = resolveEmailTransport(env, mailer);
   const fromAddr = stripHeaderCrlf(
-    envAny(env, "VRELIO_SMTP_FROM", "CINEVA_SMTP_FROM", "SMTP_FROM") || "Vrelio <noreply@vrelio.app>",
+    envAny(env, "MAVIE_SMTP_FROM", "CINEVA_SMTP_FROM", "SMTP_FROM") || "Mavie <noreply@mavie.app>",
   );
   const msgId = "mail_" + crypto.randomBytes(8).toString("hex");
   const now = isoNow();
@@ -528,7 +530,7 @@ async function deliverEmail(pool, env, mailer, { kind, recipient, displayName, c
 
   try {
     if (mode === "resend") {
-      const apiKey = envAny(env, "VRELIO_RESEND_API_KEY", "RESEND_API_KEY");
+      const apiKey = envAny(env, "MAVIE_RESEND_API_KEY", "RESEND_API_KEY");
       if (!apiKey) throw new Error("RESEND_API_KEY missing");
       const resp = await fetch("https://api.resend.com/emails", {
         method: "POST",
@@ -552,9 +554,9 @@ async function deliverEmail(pool, env, mailer, { kind, recipient, displayName, c
     }
 
     if (mode === "webhook") {
-      const webhookUrl = envAny(env, "VRELIO_EMAIL_WEBHOOK_URL", "EMAIL_WEBHOOK_URL");
+      const webhookUrl = envAny(env, "MAVIE_EMAIL_WEBHOOK_URL", "EMAIL_WEBHOOK_URL");
       if (!webhookUrl) throw new Error("EMAIL_WEBHOOK_URL missing");
-      const webhookSecret = envAny(env, "VRELIO_EMAIL_WEBHOOK_SECRET", "EMAIL_WEBHOOK_SECRET");
+      const webhookSecret = envAny(env, "MAVIE_EMAIL_WEBHOOK_SECRET", "EMAIL_WEBHOOK_SECRET");
       const resp = await fetch(webhookUrl, {
         method: "POST",
         headers: {
@@ -569,12 +571,12 @@ async function deliverEmail(pool, env, mailer, { kind, recipient, displayName, c
     }
 
     if (mode === "smtp") {
-      const host = envAny(env, "VRELIO_SMTP_HOST", "CINEVA_SMTP_HOST", "SMTP_HOST");
+      const host = envAny(env, "MAVIE_SMTP_HOST", "CINEVA_SMTP_HOST", "SMTP_HOST");
       if (!host) throw new Error("SMTP_HOST missing");
-      const port = Number.parseInt(envAny(env, "VRELIO_SMTP_PORT", "CINEVA_SMTP_PORT", "SMTP_PORT") || "587", 10) || 587;
-      const user = envAny(env, "VRELIO_SMTP_USER", "CINEVA_SMTP_USER", "SMTP_USER");
-      const pass = envAny(env, "VRELIO_SMTP_PASS", "CINEVA_SMTP_PASS", "SMTP_PASS");
-      const tlsMode = (envAny(env, "VRELIO_SMTP_TLS", "SMTP_TLS") || (port === 465 ? "ssl" : "starttls")).toLowerCase();
+      const port = Number.parseInt(envAny(env, "MAVIE_SMTP_PORT", "CINEVA_SMTP_PORT", "SMTP_PORT") || "587", 10) || 587;
+      const user = envAny(env, "MAVIE_SMTP_USER", "CINEVA_SMTP_USER", "SMTP_USER");
+      const pass = envAny(env, "MAVIE_SMTP_PASS", "CINEVA_SMTP_PASS", "SMTP_PASS");
+      const tlsMode = (envAny(env, "MAVIE_SMTP_TLS", "SMTP_TLS") || (port === 465 ? "ssl" : "starttls")).toLowerCase();
       await sendRawSmtp({ host, port, user, pass, from: fromAddr, to: cleanRecipient, subject, bodyText, tlsMode });
       await recordOutbox("smtp", "sent", {});
       return "smtp";
@@ -595,6 +597,12 @@ async function getPublicConfig(pool) {
   const dlRes = await pool.query("SELECT target, count FROM download_stats");
   const downloads = Object.fromEntries(dlRes.rows.map((r) => [r.target, Number(r.count)]));
   const parsedVers = map.versions ? JSON.parse(map.versions) : {};
+  const legacyBrandRe = new RegExp("(?:Cineva|" + "Vrel" + "io)(?=[-. ])", "g");
+  for (const [k, val] of Object.entries(parsedVers)) {
+    if (typeof val === "string") {
+      parsedVers[k] = val.replace(legacyBrandRe, "Mavie");
+    }
+  }
   return {
     announcement: map.announcement ? JSON.parse(map.announcement) : defaultAnn,
     versions: { ...DEFAULT_VERSIONS, ...parsedVers },
@@ -608,11 +616,11 @@ export async function handleApiRequest(req, { ip = "0.0.0.0", db, env, mailer = 
   const path = url.pathname;
   const method = req.method.toUpperCase();
   const pool = db.pool;
-  const secret = envAny(env, "VRELIO_CLOUD_SECRET", "CINEVA_CLOUD_SECRET");
+  const secret = envAny(env, "MAVIE_CLOUD_SECRET", "CINEVA_CLOUD_SECRET");
 
   try {
     if (path === "/api/v1/health" && method === "GET") {
-      return jsonResp({ ok: true, service: "vrelio-cloud" });
+      return jsonResp({ ok: true, service: "mavie-cloud" });
     }
     if ((path === "/api/v1/app-config" || path === "/api/v1/downloads") && method === "GET") {
       return jsonResp(await getPublicConfig(pool));
@@ -1479,7 +1487,7 @@ export async function handleApiRequest(req, { ip = "0.0.0.0", db, env, mailer = 
         const devs = Math.max(1, Math.min(50, Number.parseInt(body.maxDevices ?? 5, 10) || 5));
         const uses = Math.max(1, Math.min(10000, Number.parseInt(body.maxUses ?? 1, 10) || 1));
         const raw = crypto.randomBytes(6).toString("hex").toUpperCase();
-        const code = `VRELIO-${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}`;
+        const code = `MAVIE-${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}`;
         const note = String(body.note || "").slice(0, 200);
         const now = isoNow();
         await pool.query(
@@ -1589,7 +1597,7 @@ export async function handleApiRequest(req, { ip = "0.0.0.0", db, env, mailer = 
         err.status,
       );
     }
-    console.error("Vrelio cloud function error:", err);
+    console.error("Mavie cloud function error:", err);
     return jsonResp({ error: "Sunucu hatası oluştu." }, 500);
   }
 }

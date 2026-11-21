@@ -100,10 +100,10 @@ dialog.player-dialog:fullscreen {
 .player-dialog #seekRange::-webkit-slider-thumb {
   width: 15px;
   height: 15px;
-  background: #ff4b45;
+  background: #7c3aed;
   box-shadow: none;
 }
-.player-dialog #seekRange::-moz-range-thumb { width: 15px; height: 15px; background: #ff4b45; }
+.player-dialog #seekRange::-moz-range-thumb { width: 15px; height: 15px; background: #7c3aed; }
 .player-dialog #seekTime { white-space: nowrap; font-variant-numeric: tabular-nums; font-size: clamp(10px, 1.3vw, 14px); }
 .player-transport { display: flex; align-items: center; gap: clamp(1px, 1.35vw, 18px); }
 .player-icon {
@@ -218,7 +218,7 @@ dialog.player-dialog:fullscreen {
   color: #eee;
   font-size: 13px;
 }
-.episode-drawer-item.active { background: #ff4b4530; border: 1px solid #ff4b45; color: #fff; }
+.episode-drawer-item.active { background: #7c3aed30; border: 1px solid #7c3aed; color: #fff; }
 .player-osd {
   position: absolute;
   top: 20%;

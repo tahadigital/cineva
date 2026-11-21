@@ -12,7 +12,7 @@ public enum XtreamClient {
     public static func validateBaseURL(_ raw: String) throws -> URL {
         var trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            throw VrelioError.invalidURL("Sunucu adresi boş olamaz.")
+            throw MavieError.invalidURL("Sunucu adresi boş olamaz.")
         }
         if !trimmed.contains("://") {
             trimmed = "http://" + trimmed
@@ -22,10 +22,10 @@ public enum XtreamClient {
               scheme == "http" || scheme == "https",
               let host = url.host,
               !host.isEmpty else {
-            throw VrelioError.invalidURL("Geçerli bir Xtream sunucu adresi girin.")
+            throw MavieError.invalidURL("Geçerli bir Xtream sunucu adresi girin.")
         }
         if url.user != nil || url.password != nil {
-            throw VrelioError.validation("Kullanıcı adı ve parolayı ayrı alanlara girin.")
+            throw MavieError.validation("Kullanıcı adı ve parolayı ayrı alanlara girin.")
         }
         return url
     }
@@ -33,7 +33,7 @@ public enum XtreamClient {
     public static func buildPlayerApiURL(host: String, username: String, password: String, action: String? = nil, extraParams: [String: String] = [:]) throws -> URL {
         let base = try validateBaseURL(host)
         guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else {
-            throw VrelioError.invalidURL("Sunucu adresi ayrıştırılamadı.")
+            throw MavieError.invalidURL("Sunucu adresi ayrıştırılamadı.")
         }
         var path = components.path
         while path.hasSuffix("/") { path.removeLast() }
@@ -50,7 +50,7 @@ public enum XtreamClient {
         }
         components.queryItems = queryItems
         guard let finalURL = components.url else {
-            throw VrelioError.invalidURL("API adresi oluşturulamadı.")
+            throw MavieError.invalidURL("API adresi oluşturulamadı.")
         }
         return finalURL
     }
@@ -67,7 +67,7 @@ public enum XtreamClient {
         }
         let base = try validateBaseURL(host)
         guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else {
-            throw VrelioError.invalidURL("Yayın adresi oluşturulamadı.")
+            throw MavieError.invalidURL("Yayın adresi oluşturulamadı.")
         }
         var path = components.path
         while path.hasSuffix("/") { path.removeLast() }
@@ -82,10 +82,10 @@ public enum XtreamClient {
         case .episode:
             components.path = "\(path)/series/\(username)/\(password)/\(item.providerId).\(safeExt)"
         case .series:
-            throw VrelioError.validation("Dizi öğesi doğrudan oynatılamaz; lütfen bir bölüm seçin.")
+            throw MavieError.validation("Dizi öğesi doğrudan oynatılamaz; lütfen bir bölüm seçin.")
         }
         guard let url = components.url else {
-            throw VrelioError.invalidURL("Yayın URL’si geçersiz.")
+            throw MavieError.invalidURL("Yayın URL’si geçersiz.")
         }
         return url
     }
@@ -94,13 +94,13 @@ public enum XtreamClient {
 
     public static func parseAuth(data: Data) throws -> XtreamAuthResult {
         guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw VrelioError.parsing("Xtream oturum yanıtı JSON nesnesi değil.")
+            throw MavieError.parsing("Xtream oturum yanıtı JSON nesnesi değil.")
         }
         let userInfo = (obj["user_info"] as? [String: Any]) ?? obj
         let authFlag = intValue(userInfo["auth"])
         let status = stringValue(userInfo["status"], default: authFlag == 1 ? "Active" : "")
         if authFlag == 0 && status.lowercased() != "active" {
-            throw VrelioError.validation("Xtream kullanıcı adı veya parola doğrulanamadı.")
+            throw MavieError.validation("Xtream kullanıcı adı veya parola doğrulanamadı.")
         }
         let exp = stringValue(userInfo["exp_date"])
         let maxConn = max(1, intValue(userInfo["max_connections"], default: 1))
@@ -109,7 +109,7 @@ public enum XtreamClient {
 
     public static func parseCategories(data: Data, kind: MediaKind) throws -> [MediaCategory] {
         guard let rows = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-            throw VrelioError.parsing("Kategori listesi beklenilen formatta değil.")
+            throw MavieError.parsing("Kategori listesi beklenilen formatta değil.")
         }
         return rows.compactMap { row in
             let id = stringValue(row["category_id"]).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -127,7 +127,7 @@ public enum XtreamClient {
         seasonNumber: Int = 0
     ) throws -> [MediaItem] {
         guard let rows = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-            throw VrelioError.parsing("İçerik listesi beklenilen formatta değil.")
+            throw MavieError.parsing("İçerik listesi beklenilen formatta değil.")
         }
         return rows.compactMap { row in
             itemFromDictionary(row, kind: kind, categories: categories, parent: parent, seasonNumber: seasonNumber)
@@ -136,7 +136,7 @@ public enum XtreamClient {
 
     public static func parseSeriesDetail(data: Data, series: MediaItem) throws -> MediaDetail {
         guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw VrelioError.parsing("Dizi detayı okunamadı.")
+            throw MavieError.parsing("Dizi detayı okunamadı.")
         }
         let info = (obj["info"] as? [String: Any]) ?? [:]
         var updatedSeries = series
@@ -349,17 +349,17 @@ public enum XtreamClient {
     private static func fetchData(url: URL, session: URLSession) async throws -> Data {
         var req = URLRequest(url: url)
         req.timeoutInterval = 25
-        req.setValue("Vrelio/2.1", forHTTPHeaderField: "User-Agent")
+        req.setValue("Mavie/2.1", forHTTPHeaderField: "User-Agent")
         do {
             let (data, response) = try await session.data(for: req)
             if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                throw VrelioError.network("Xtream sunucusu HTTP \(http.statusCode) döndürdü.")
+                throw MavieError.network("Xtream sunucusu HTTP \(http.statusCode) döndürdü.")
             }
             return data
-        } catch let err as VrelioError {
+        } catch let err as MavieError {
             throw err
         } catch {
-            throw VrelioError.network("Xtream sunucusuna bağlanılamadı: \(error.localizedDescription)")
+            throw MavieError.network("Xtream sunucusuna bağlanılamadı: \(error.localizedDescription)")
         }
     }
 

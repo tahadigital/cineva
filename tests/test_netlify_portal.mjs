@@ -475,7 +475,7 @@ function makeMemoryPool() {
 function makeCaller(db, envMap, ip = "1.2.3.4", mailer = null) {
   return (method, p, body = null, token = "") =>
     handleApiRequest(
-      new Request("https://vrelio.netlify.app" + p, {
+      new Request("https://mavie.netlify.app" + p, {
         method,
         headers: {
           "Content-Type": "application/json",
@@ -494,29 +494,29 @@ test("public index.html hides /admin links and robots.txt disallows admin", () =
   assert.match(robots, /Disallow: \/admin/);
 });
 
-test("admin-gate.ts and website/package.json reflect Vrelio branding with legacy fallback", () => {
+test("admin-gate.ts and website/package.json reflect Mavie branding with legacy fallback", () => {
   const pkg = JSON.parse(fs.readFileSync(path.resolve("website/package.json"), "utf8"));
-  assert.equal(pkg.name, "vrelio-portal");
+  assert.equal(pkg.name, "mavie-portal");
   const gateSrc = fs.readFileSync(path.resolve("website/netlify/edge-functions/admin-gate.ts"), "utf8");
-  assert.match(gateSrc, /vrelio_admin_gate/);
-  assert.match(gateSrc, /VRELIO_ADMIN_GATE_KEY/);
+  assert.match(gateSrc, /mavie_admin_gate/);
+  assert.match(gateSrc, /MAVIE_ADMIN_GATE_KEY/);
   assert.match(gateSrc, /CINEVA_ADMIN_GATE_KEY/);
 });
 
 test("Netlify cloud core health, 4-platform app-config, and iOS download tracking", async () => {
   const db = makeMemoryPool();
-  const call = makeCaller(db, { VRELIO_CLOUD_SECRET: "super-secret-key" });
+  const call = makeCaller(db, { MAVIE_CLOUD_SECRET: "super-secret-key" });
 
   const hRes = await call("GET", "/api/v1/health");
   assert.equal(hRes.status, 200);
-  assert.deepEqual(await hRes.json(), { ok: true, service: "vrelio-cloud" });
+  assert.deepEqual(await hRes.json(), { ok: true, service: "mavie-cloud" });
 
   const cfgRes = await call("GET", "/api/v1/app-config");
   assert.equal(cfgRes.status, 200);
   const cfg = await cfgRes.json();
-  assert.match(cfg.versions.windowsInstallerUrl, /Vrelio-Setup\.exe/);
-  assert.match(cfg.versions.macosUrl, /Vrelio-macOS\.dmg/);
-  assert.match(cfg.versions.iosUrl, /Vrelio-iOS\.ipa/);
+  assert.match(cfg.versions.windowsInstallerUrl, /Mavie-Setup\.exe/);
+  assert.match(cfg.versions.macosUrl, /Mavie-macOS\.dmg/);
+  assert.match(cfg.versions.iosUrl, /Mavie-iOS\.ipa/);
   assert.equal(cfg.plans.normal.maxDevices, 1);
   assert.equal(cfg.plans.pro.maxDevices, 5);
   assert.equal(cfg.plans.pro.trialDays, 3);
@@ -538,9 +538,9 @@ test("Netlify cloud core handles email verification, 3-day Pro trial, trial expi
 
   const db = makeMemoryPool();
   const envMap = {
-    VRELIO_CLOUD_SECRET: "super-secret-key",
-    VRELIO_ADMIN_EMAIL: "boss@vrelio.app",
-    VRELIO_ADMIN_PASSWORD: "BossPassword!2026",
+    MAVIE_CLOUD_SECRET: "super-secret-key",
+    MAVIE_ADMIN_EMAIL: "boss@mavie.app",
+    MAVIE_ADMIN_PASSWORD: "BossPassword!2026",
   };
   const call = makeCaller(db, envMap);
 
@@ -640,8 +640,8 @@ test("Netlify cloud core handles email verification, 3-day Pro trial, trial expi
   assert.equal(delDev.status, 200);
   assert.equal((await delDev.json()).devices.length, 1);
 
-  // Admin login + mint VRELIO-* license + user redeem restores Pro & sync
-  const admLogin = await call("POST", "/api/v1/auth/login", { email: "boss@vrelio.app", password: "BossPassword!2026" });
+  // Admin login + mint MAVIE-* license + user redeem restores Pro & sync
+  const admLogin = await call("POST", "/api/v1/auth/login", { email: "boss@mavie.app", password: "BossPassword!2026" });
   assert.equal(admLogin.status, 200);
   const admJson = await admLogin.json();
   assert.equal(admJson.user.role, "admin");
@@ -649,7 +649,7 @@ test("Netlify cloud core handles email verification, 3-day Pro trial, trial expi
   const licRes = await call("POST", "/api/v1/admin/licenses", { plan: "pro", durationDays: 90, maxUses: 1 }, admJson.token);
   assert.equal(licRes.status, 201);
   const { license } = await licRes.json();
-  assert.ok(license.code.startsWith("VRELIO-"));
+  assert.ok(license.code.startsWith("MAVIE-"));
 
   const redRes = await call("POST", "/api/v1/licenses/redeem", { code: license.code }, userToken);
   assert.equal(redRes.status, 200);
@@ -736,12 +736,12 @@ test("Netlify cloud core handles password reset, 5-attempt lockout, token_versio
 test("Netlify cloud core rejects Object.prototype keys like toString and constructor as invalid plans", async () => {
   const db = makeMemoryPool();
   const call = makeCaller(db, {
-    VRELIO_CLOUD_SECRET: "test-secret",
-    VRELIO_ADMIN_EMAIL: "boss@vrelio.app",
-    VRELIO_ADMIN_PASSWORD: "BossPassword!2026",
+    MAVIE_CLOUD_SECRET: "test-secret",
+    MAVIE_ADMIN_EMAIL: "boss@mavie.app",
+    MAVIE_ADMIN_PASSWORD: "BossPassword!2026",
   });
   const admLogin = await call("POST", "/api/v1/auth/login", {
-    email: "boss@vrelio.app",
+    email: "boss@mavie.app",
     password: "BossPassword!2026",
   });
   assert.equal(admLogin.status, 200);
