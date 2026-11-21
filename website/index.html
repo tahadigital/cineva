@@ -2,9 +2,10 @@
 <html lang="tr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Mavie — 4 Platformda Ücretsiz Kişisel Sinema &amp; Yayın Merkezi</title>
-  <meta name="description" content="Windows, Android, macOS ve iOS için tamamen ücretsiz, hesap gerektirmeyen, gizlilik odaklı kişisel medya merkezi.">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Mavie — Kişisel Medya Merkezi</title>
+  <meta name="description" content="Mavie: Windows, macOS, Android ve iOS için tamamen ücretsiz, hesap gerektirmeyen sade kişisel medya merkezi.">
+  <meta name="theme-color" content="#000000">
   <link rel="icon" type="image/svg+xml" href="/icon.svg">
   <link rel="stylesheet" href="/styles.css">
 </head>
@@ -13,105 +14,77 @@
 
   <header class="topbar">
     <div class="container topbar-inner">
-      <a class="brand" href="/">
-        <img src="/mavie-mark.svg" alt="Mavie" width="32" height="32">
-        <span>mavie<span class="brand-dot">.</span></span>
+      <a class="brand" href="#top" aria-label="Mavie Ana Sayfa">
+        <img src="/mavie-mark.svg" alt="" width="24" height="24">
+        <span>Mavie<span class="brand-dot">.</span></span>
       </a>
-      <nav class="nav-links" aria-label="Üst menü">
+      <nav class="nav-links" aria-label="Ana Menü">
         <a href="#downloads">İndir</a>
-        <a href="#features">Neden Mavie?</a>
+        <a href="#features">Özellikler</a>
         <a href="#free-forever">Tamamen Ücretsiz</a>
-        <a href="#privacy-shield">Gizlilik</a>
+        <a href="/privacy.html">Gizlilik</a>
       </nav>
-      <div class="nav-actions">
-        <a class="btn small" href="#downloads">Ücretsiz İndir</a>
-      </div>
+      <a class="btn small" href="#downloads">İndir</a>
     </div>
   </header>
 
-  <main>
+  <main id="top">
     <section class="hero">
-      <div class="container hero-grid">
-        <div>
-          <span class="eyebrow"><span class="pulse-dot" aria-hidden="true"></span>%100 ÜCRETSİZ · HESAP GEREKTİRMEZ · WINDOWS · ANDROID · MACOS · İOS</span>
-          <div class="hero-brand-display" aria-label="Mavie">Mavie<span class="hero-brand-dot">.</span></div>
-          <p class="hero-slogan">Kişisel sinemanın yeni frekansı — dört ekranda, ücretsiz ve senin kurallarınla.</p>
-          <h1>Tüm medyalarınız, <span class="text-gradient">dört ekranda</span> tek sinema.</h1>
-          <p class="lead">
-            Mavie; bilgisayarınızdaki filmleri, kendi M3U / Xtream listelerinizi ve XMLTV EPG yayın rehberini tek bir akıcı sinema arayüzünde birleştirir. Kayıt yok, abonelik yok, kısıtlama yok — indirin ve anında izlemeye başlayın.
-          </p>
-          <div class="hero-cta-row">
-            <a id="primaryDownloadBtn" class="btn" href="#downloads">Platformun için İndir</a>
-            <a id="secondaryDownloadBtn" class="btn secondary" href="#downloads">Diğer Sürümler</a>
-            <a class="btn ghost" href="#downloads">Tüm 4 Platform</a>
-          </div>
-          <p id="platformHint" class="platform-note">Windows, Android, macOS ve iOS sürümleri ücretsiz ve hazır.</p>
-          <div class="hero-chips" aria-label="Öne çıkan özellikler">
-            <span class="mini-chip">4K HDR &amp; FFmpeg Motoru</span>
-            <span class="mini-chip">Hesapsız &amp; Sınırsız</span>
-            <span class="mini-chip">2×2 Çoklu Ekran</span>
-            <span class="mini-chip">PBKDF2 Profil PIN</span>
-          </div>
+      <div class="container">
+        <span class="hero-kicker">%100 ÜCRETSİZ · HESAPSIZ · 4 PLATFORM</span>
+        <h1 class="hero-brand-display">Mavie<span class="hero-brand-dot">.</span></h1>
+        <p class="hero-slogan">Sinema kalitesinde kişisel medya merkezi. Filmler, diziler, canlı Spor Ekranı ve kendi arşivin — hesap açmadan, tek sahnede.</p>
+        <div class="hero-actions">
+          <a class="btn" id="primaryDownloadBtn" href="#downloads">Ücretsiz İndir</a>
+          <a class="btn secondary" id="secondaryDownloadBtn" href="#downloads">Diğer Platformlar</a>
         </div>
+        <p class="hero-hint" id="platformHint">Windows, macOS, Android ve iOS için hazır · v2.2.0</p>
 
-        <div class="hero-stage" aria-label="Mavie çoklu cihaz önizlemesi">
-          <div class="stage-glow" aria-hidden="true"></div>
-          <div class="desktop-mockup">
-            <div class="mockup-bar">
-              <div class="win-dots" aria-hidden="true"><span></span><span></span><span></span></div>
-              <span style="font-size:12px;color:var(--muted);font-weight:700">Mavie Masaüstü · 4 Platform Yerel Eşitleme</span>
-              <span class="live-pill"><span class="pulse-dot" aria-hidden="true"></span>CANLI · 4K HDR</span>
+        <div class="stage-wrap">
+          <div class="stage-frame" aria-label="Mavie uygulama önizlemesi">
+            <div class="stage-chrome">
+              <div class="stage-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+              <div class="stage-tabs" aria-hidden="true">
+                <span class="active">Ana Sayfa</span>
+                <span>Spor Ekranı</span>
+                <span>Canlı TV</span>
+                <span>Çoklu Ekran</span>
+              </div>
+              <span class="stage-meta">Mavie · Yerel Motor</span>
             </div>
-            <div class="cinema-screen">
-              <div class="cinema-top-meta">
+            <div class="stage-body">
+              <div class="stage-hero-banner">
                 <div>
-                  <p class="cinema-title">Kişisel Sinema Odası</p>
-                  <div class="cinema-sub">Yerel MKV/MP4 · M3U · XMLTV EPG Eşli</div>
+                  <span class="stage-eyebrow">SANA ÖZEL &amp; TÜRKİYE TOP 10</span>
+                  <div class="stage-title">İzlediğine göre şekillenen kütüphane.</div>
+                  <p class="stage-desc">Yerel MKV/MP4 dosyaların, M3U/Xtream kaynakların ve canlı maç takvimi — verilerin yalnızca kendi cihazında kalır.</p>
                 </div>
-                <span class="badge active">Tam Sürüm Ücretsiz</span>
+                <span class="stage-pill">Tam Sürüm · Ücretsiz</span>
               </div>
-              <div class="cinema-center-play">
-                <div class="play-orb" aria-hidden="true">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg>
+              <div class="stage-rails">
+                <div class="stage-tile">
+                  <span class="stage-tile-tag">KEŞİF</span>
+                  <strong>Türkiye’de Popüler</strong>
+                  <span>Haftalık Top 10 &amp; tür sıralaması</span>
                 </div>
-                <div>
-                  <div style="font-size:13px;font-weight:700">Gelişmiş Ses &amp; Altyazı Senkronu</div>
-                  <div style="font-size:11.5px;color:var(--muted)">Otomatik kaldığı yerden devam · 0 ms kayma</div>
+                <div class="stage-tile">
+                  <span class="stage-tile-tag">CANLI SPOR</span>
+                  <strong>Spor Ekranı</strong>
+                  <span>Türkiye saati · tek tıkla kanal aç</span>
                 </div>
-                <div class="cinema-waves" aria-hidden="true" style="margin-left:auto">
-                  <span></span><span></span><span></span><span></span><span></span>
+                <div class="stage-tile">
+                  <span class="stage-tile-tag">OYNATICI</span>
+                  <strong>2×2 Çoklu Ekran</strong>
+                  <span>4 yayın · PiP · ses &amp; altyazı</span>
                 </div>
-              </div>
-              <div>
-                <div class="progress-sweep" aria-hidden="true"></div>
-                <div class="cinema-controls-bar">
-                  <span class="ctrl-pill">2×2 Çoklu Ekran</span>
-                  <span class="ctrl-pill">Altyazı Senkron</span>
-                  <span class="ctrl-pill">EPG Eşli</span>
-                  <span class="ctrl-pill">Sınırsız Cihaz</span>
+                <div class="stage-tile">
+                  <span class="stage-tile-tag">GİZLİLİK</span>
+                  <strong>Sıfır Hesap</strong>
+                  <span>LAN eşitleme &amp; JSON yedek</span>
                 </div>
               </div>
             </div>
           </div>
-
-          <div class="mobile-mockup">
-            <div class="mobile-mockup-head">
-              <span>Mavie Android &amp; iOS</span>
-              <span class="badge active">Hesapsız</span>
-            </div>
-            <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Kaldığın yerden devam et · PiP &amp; LAN eşitleme hazır</div>
-            <div class="progress-sweep" style="margin-bottom:0" aria-hidden="true"></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="container" style="margin-top:26px">
-        <div class="trial-banner">
-          <div>
-            <h2>Hesap Yok, Ücret Yok — Her Özellik Herkese Açık</h2>
-            <p>E-posta kaydı veya abonelik gerekmeden sınırsız profil + PIN kilidi, 2×2 Çoklu Ekran, XMLTV EPG &amp; Spor Rehberi, Yerel Ağ (LAN) eşitleme ve JSON yedekleme özelliklerinin tamamını ücretsiz kullanın.</p>
-          </div>
-          <a class="btn" href="#downloads">Hemen İndir</a>
         </div>
       </div>
     </section>
@@ -119,165 +92,162 @@
     <section id="downloads" class="section">
       <div class="container">
         <div class="section-head">
-          <div>
-            <h2 class="section-title">4 Platform için Mavie'yi İndirin</h2>
-            <p class="section-sub">Windows, Android, macOS ve iOS sürümlerinin tamamı ücretsizdir; hesap açmadan hemen kurulup çalışır.</p>
-          </div>
-          <span class="badge active">v2.2.0 Güncel Sürüm</span>
+          <span class="section-eyebrow">İNDİRME MERKEZİ</span>
+          <h2 class="section-title">4 Platform için Mavie'yi İndirin</h2>
+          <p class="section-sub">Her sürüm tamamen ücretsizdir. Hesap açmadan, reklam görmeden anında kurup kullanın.</p>
         </div>
 
         <div class="grid-4">
           <article class="card platform-card">
             <div>
-              <div class="platform-head">
+              <div class="platform-top">
                 <div class="platform-icon" aria-hidden="true">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.5L10.5 4.4V11.3H3V5.5ZM11.6 4.2L21 2.8V11.3H11.6V4.2ZM3 12.4H10.5V19.4L3 18.3V12.4ZM11.6 12.4H21V21L11.6 19.6V12.4Z"/></svg>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.5L10.5 4.4V11.3H3V5.5ZM11.6 4.2L21 2.8V11.3H11.6V4.2ZM3 12.4H10.5V19.4L3 18.3V12.4ZM11.6 12.4H21V21L11.6 19.6V12.4Z"/></svg>
                 </div>
-                <span class="badge active" id="winVerBadge">Windows 10/11 · v2.2.0</span>
+                <span class="version-tag" id="winVerBadge">Windows 10/11 · v2.2.0</span>
               </div>
               <h3>Windows</h3>
-              <p>Kurulum sihirbazı veya taşınabilir tek dosya sürümü; yerleşik FFmpeg motoru ve yerel sunucu ile anında başlar.</p>
+              <p>Kurulum sihirbazı veya tek dosya taşınabilir sürüm. Dahili FFmpeg motoruyla anında çalışır.</p>
             </div>
             <div>
               <div class="platform-actions">
-                <button class="btn full" data-dl="windows-installer" type="button">Kurulum İndir (Mavie-Setup.exe)</button>
-                <button class="btn secondary full small" data-dl="windows-portable" type="button">Taşınabilir Sürüm (Mavie.exe)</button>
+                <button class="btn full" data-dl="windows-installer" type="button">Mavie-Setup.exe</button>
+                <button class="btn secondary full" data-dl="windows-portable" type="button">Taşınabilir (Mavie.exe)</button>
               </div>
-              <div class="artifact-meta">
-                <span>64-bit Setup &amp; Portable</span>
-                <span>Ücretsiz</span>
-              </div>
+              <p class="artifact-note">64-bit · Tamamen Ücretsiz</p>
             </div>
           </article>
 
           <article class="card platform-card">
             <div>
-              <div class="platform-head">
+              <div class="platform-top">
                 <div class="platform-icon" aria-hidden="true">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 9.48L19.44 6.3A.48.48 0 0 0 19.26 5.64A.48.48 0 0 0 18.6 5.82L16.74 9.04A11.4 11.4 0 0 0 12 8C10.31 8 8.71 8.37 7.26 9.04L5.4 5.82A.48.48 0 0 0 4.74 5.64A.48.48 0 0 0 4.56 6.3L6.4 9.48A9.83 9.83 0 0 0 2 17.5H22A9.83 9.83 0 0 0 17.6 9.48ZM8.5 14.5A1 1 0 1 1 9.5 13.5A1 1 0 0 1 8.5 14.5ZM15.5 14.5A1 1 0 1 1 16.5 13.5A1 1 0 0 1 15.5 14.5Z"/></svg>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M18.7 19.5C17.8 20.7 17 21.9 15.6 21.9C14.3 21.9 13.8 21.1 12.3 21.1C10.8 21.1 10.3 21.9 9 21.9C7.7 21.9 6.7 20.6 5.9 19.4C4.2 16.9 2.9 12.5 4.7 9.4C5.5 7.9 7.1 6.9 8.8 6.9C10.1 6.9 11.3 7.8 12.1 7.8C12.9 7.8 14.3 6.7 15.9 6.9C16.6 6.9 18.4 7.2 19.6 8.9C19.5 9 17.4 10.2 17.4 12.8C17.4 15.9 20.1 16.9 20.1 17C20 17.1 19.7 18.2 18.7 19.5ZM13 3.5C13.7 2.7 14.9 2 15.9 2C16 3.2 15.5 4.4 14.8 5.2C14.1 6.1 12.9 6.7 11.8 6.6C11.7 5.5 12.3 4.3 13 3.5Z"/></svg>
                 </div>
-                <span class="badge active" id="androidVerBadge">Android 8+ · v2.2.0</span>
-              </div>
-              <h3>Android</h3>
-              <p>LibVLC tabanlı donanım hızlandırmalı oynatıcı, çift dokunma sarma, PiP, ekran kilidi ve tablet 2-panelli arayüz.</p>
-            </div>
-            <div>
-              <div class="platform-actions">
-                <button class="btn full" data-dl="android-apk" type="button">APK İndir (Mavie-Android.apk)</button>
-              </div>
-              <div class="artifact-meta">
-                <span>Telefon &amp; Tablet APK</span>
-                <span>Ücretsiz</span>
-              </div>
-            </div>
-          </article>
-
-          <article class="card platform-card">
-            <div>
-              <div class="platform-head">
-                <div class="platform-icon" aria-hidden="true">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5C17.88 20.74 17 21.95 15.66 21.97C14.32 22 13.89 21.18 12.37 21.18C10.84 21.18 10.37 21.95 9.1 22C7.79 22.05 6.8 20.68 5.96 19.47C4.25 17 2.94 12.45 4.7 9.39C5.57 7.87 7.13 6.91 8.82 6.88C10.1 6.86 11.32 7.75 12.1 7.75C12.89 7.75 14.37 6.68 15.92 6.84C16.57 6.87 18.39 7.1 19.56 8.82C19.47 8.88 17.39 10.1 17.41 12.63C17.44 15.65 20.06 16.66 20.09 16.67C20.06 16.74 19.67 18.11 18.71 19.5ZM13 3.5C13.73 2.67 14.94 2.04 15.94 2C16.07 3.17 15.6 4.35 14.9 5.19C14.21 6.04 13.07 6.7 11.95 6.61C11.8 5.46 12.36 4.26 13 3.5Z"/></svg>
-                </div>
-                <span class="badge" id="macosVerBadge">macOS 13+ · v2.2.0</span>
+                <span class="version-tag" id="macosVerBadge">macOS 13+ · v2.2.0</span>
               </div>
               <h3>macOS</h3>
-              <p>Apple Silicon ve Intel Mac uyumlu özgün Mavie.app paketi. Dahili yerel motoruyla kurulumsuz çalışır.</p>
+              <p>Apple Silicon ve Intel uyumlu özgün Mavie.app paketi. Gömülü sunucusuyla sürükle-bırak kurulur.</p>
             </div>
             <div>
               <div class="platform-actions">
-                <button class="btn full" data-dl="macos" type="button">DMG İndir (Mavie-macOS.dmg)</button>
+                <button class="btn full" data-dl="macos" type="button">Mavie-macOS.dmg</button>
               </div>
-              <div class="artifact-meta">
-                <span>Apple Silicon &amp; Intel</span>
-                <span>Ücretsiz</span>
-              </div>
+              <p class="artifact-note">Apple Silicon &amp; Intel · Ücretsiz</p>
             </div>
           </article>
 
           <article class="card platform-card">
             <div>
-              <div class="platform-head">
+              <div class="platform-top">
                 <div class="platform-icon" aria-hidden="true">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H8C6.34 1 5 2.34 5 4V20C5 21.66 6.34 23 8 23H16C17.66 23 19 21.66 19 20V4C19 2.34 17.66 1 16 1ZM12 21.5A1.25 1.25 0 1 1 13.25 20.25A1.25 1.25 0 0 1 12 21.5ZM17 18H7V4H17V18Z"/></svg>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 9.48L19.44 6.3A.5.5 0 0 0 18.58 5.8L16.71 9.04A11.45 11.45 0 0 0 12 8.05C10.33 8.05 8.75 8.4 7.29 9.04L5.42 5.8A.5.5 0 0 0 4.56 6.3L6.4 9.48C3.3 11.25 1.28 14.44 1 18H23C22.72 14.44 20.7 11.25 17.6 9.48ZM7 15.25A1.25 1.25 0 1 1 8.25 14A1.25 1.25 0 0 1 7 15.25ZM17 15.25A1.25 1.25 0 1 1 18.25 14A1.25 1.25 0 0 1 17 15.25Z"/></svg>
                 </div>
-                <span class="badge" id="iosVerBadge">iOS 16+ · v2.2.0</span>
+                <span class="version-tag" id="androidVerBadge">Android 8+ · v2.2.0</span>
               </div>
-              <h3>iOS</h3>
-              <p>iPhone ve iPad için SwiftUI + AVPlayer tabanlı özgün istemci. AirPlay, PiP, Demo/M3U ve LAN sunucu bağlantısı.</p>
+              <h3>Android</h3>
+              <p>LibVLC oynatıcı, telefon ve tablet uyumlu arayüz, PiP, Spor Ekranı ve yerel ağ eşitlemesi.</p>
             </div>
             <div>
               <div class="platform-actions">
-                <button class="btn full" data-dl="ios" type="button">IPA İndir (Mavie-iOS.ipa)</button>
+                <button class="btn full" data-dl="android-apk" type="button">Mavie-Android.apk</button>
               </div>
-              <p class="sideload-note">İmzasız sideload IPA (AltStore / Sideloadly ile yüklenebilir).</p>
-              <div class="artifact-meta">
-                <span>iPhone &amp; iPad</span>
-                <span>Ücretsiz</span>
+              <p class="artifact-note">Evrensel APK · Ücretsiz</p>
+            </div>
+          </article>
+
+          <article class="card platform-card">
+            <div>
+              <div class="platform-top">
+                <div class="platform-icon" aria-hidden="true">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H8C6.34 1 5 2.34 5 4V20C5 21.66 6.34 23 8 23H16C17.66 23 19 21.66 19 20V4C19 2.34 17.66 1 16 1ZM12 21.5A1.25 1.25 0 1 1 13.25 20.25A1.25 1.25 0 0 1 12 21.5ZM17 18H7V4H17V18Z"/></svg>
+                </div>
+                <span class="version-tag" id="iosVerBadge">iOS 16+ · v2.2.0</span>
               </div>
+              <h3>iOS</h3>
+              <p>iPhone ve iPad için SwiftUI + AVPlayer istemcisi. AirPlay, PiP, Spor Ekranı ve kişisel keşif.</p>
+            </div>
+            <div>
+              <div class="platform-actions">
+                <button class="btn full" data-dl="ios" type="button">Mavie-iOS.ipa</button>
+              </div>
+              <p class="artifact-note">Sideload IPA · AltStore</p>
             </div>
           </article>
         </div>
 
-        <div class="release-notes-strip">
-          <span><strong>Sürüm Notları:</strong> <span id="releaseNotesText">Mavie 2.2.0: 4 platformda tamamen ücretsiz ve hesap gerektirmeyen tam deneyim — tüm özellikler herkese açık.</span></span>
-          <span style="color:var(--amber);font-weight:600">GitHub Releases üzerinden doğrudan indirilir</span>
+        <div class="release-bar">
+          <span><strong>Sürüm Notları:</strong> <span id="releaseNotesText">Mavie 2.2.0 — 4 platformda tamamen ücretsiz, hesapsız tam deneyim; Spor Ekranı ve kişisel keşif algoritması dahil.</span></span>
+          <a href="#downloads" data-releases target="_blank" rel="noopener noreferrer" style="color:var(--cyan);font-weight:500">GitHub Releases ›</a>
         </div>
 
-        <div id="downloadNotice" class="card" style="margin-top:16px;border-color:#06b6d455" hidden></div>
+        <div id="downloadNotice" class="download-notice" hidden></div>
       </div>
     </section>
 
     <section id="features" class="section">
       <div class="container">
         <div class="section-head">
-          <div>
-            <h2 class="section-title">Neden Mavie'yi Tercih Etmelisiniz?</h2>
-            <p class="section-sub">Klasik oynatıcıların dağınıklığını ve abonelik engellerini ortadan kaldıran, hız ve gizlilik odaklı sinema mimarisi.</p>
-          </div>
+          <span class="section-eyebrow">TASARIM VE MİMARİ</span>
+          <h2 class="section-title">Neden Mavie'yi Tercih Etmelisiniz?</h2>
+          <p class="section-sub">Gereksiz her şeyi çıkardık. Geriye yalnızca hız, sadelik ve kusursuz izleme deneyimi kaldı.</p>
         </div>
-        <div class="grid-3">
-          <div class="card feature-card">
-            <div class="feature-icon" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+
+        <div class="bento-grid">
+          <article class="bento-card wide featured">
+            <div class="bento-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l2.6 5.3 5.9.9-4.3 4.2 1 5.9L12 16.5 6.8 19.3l1-5.9-4.3-4.2 5.9-.9L12 3z"/></svg>
             </div>
-            <h3>Doğrudan Yerel Medya &amp; Altyazı</h3>
-            <p>Bilgisayardaki film klasörlerinizi veya telefonunuzdaki MKV/MP4 dosyalarını açın; aynı adlı SRT/VTT altyazılar otomatik senkronlanır.</p>
-          </div>
-          <div class="card feature-card">
-            <div class="feature-icon" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <div>
+              <span class="bento-kicker">AKILLI KEŞİF</span>
+              <h3>Türkiye Top 10 &amp; Sana Özel Algoritma</h3>
+              <p>Haftalık popüler listeler kütüphanenle otomatik eşleşir; izleme sürene ve favorilerine göre sevdiğin tür kategorileri en üste taşınır. Geçmişin cihazından asla çıkmaz.</p>
             </div>
-            <h3>Sınırsız Profil &amp; Çocuk Modu</h3>
-            <p>Her kişi için ayrı favoriler ve kaldığı yer. 4–8 haneli PBKDF2 PIN kilidi ve yetişkin/korku filtreli Çocuk Modu tamamen ücretsiz.</p>
-          </div>
-          <div class="card feature-card">
-            <div class="feature-icon" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/></svg>
+          </article>
+
+          <article class="bento-card wide">
+            <div class="bento-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
             </div>
-            <h3>2×2 Çoklu Ekran &amp; PiP</h3>
-            <p>Masaüstü ve Web'de aynı anda 4 canlı yayını tek ızgarada izleyin; Android ve iOS'ta küçük pencerede (PiP) çoklu göreve devam edin.</p>
-          </div>
-          <div class="card feature-card">
-            <div class="feature-icon" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+            <div>
+              <span class="bento-kicker">CANLI PROGRAM</span>
+              <h3>Spor Ekranı &amp; XMLTV EPG</h3>
+              <p>Türkiye saatine göre günün tüm maçlarını, yarışlarını ve kanallarını sıfır ayar ile görüntüle. Listendeki eşleşen kanala dokunup yayını anında aç.</p>
             </div>
-            <h3>Spor Ekranı, EPG &amp; Kişisel Keşif</h3>
-            <p>Türkiye saatine göre canlı Spor Ekranı maç rehberi, XMLTV EPG eşleştirme, haftalık popüler Top 10 listeleri ve izleme geçmişine göre akıllı kategori sıralaması.</p>
-          </div>
-          <div class="card feature-card">
-            <div class="feature-icon" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L4 5v6.09c0 5.05 3.41 9.76 8 10.91 4.59-1.15 8-5.86 8-10.91V5l-8-3z"/></svg>
+          </article>
+
+          <article class="bento-card">
+            <div class="bento-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>
             </div>
-            <h3>Hesapsız &amp; Sıfır-Kayıt Gizlilik</h3>
-            <p>Giriş yapmanız, e-posta paylaşmanız veya harici bir sunucuya bağlanmanız gerekmez. Tüm verileriniz kendi cihazınızda kalır.</p>
-          </div>
-          <div class="card feature-card">
-            <div class="feature-icon" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+            <div>
+              <span class="bento-kicker">ÇOKLU İZLEME</span>
+              <h3>2×2 Çoklu Ekran &amp; PiP</h3>
+              <p>Masaüstünde aynı anda 4 canlı yayını tek ızgarada izle; mobil cihazlarda resim içinde resim (PiP) ile devam et.</p>
             </div>
-            <h3>Yerel Ağ (LAN) &amp; JSON Yedek</h3>
-            <p>Aynı Wi-Fi ağındaki bilgisayar, telefon ve tabletler arasında 6 haneli kodla eşitleyin veya tek tıkla JSON yedek alıp geri yükleyin.</p>
-          </div>
+          </article>
+
+          <article class="bento-card">
+            <div class="bento-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <div>
+              <span class="bento-kicker">AİLE DOSTU</span>
+              <h3>Sınırsız Profil &amp; Çocuk Modu</h3>
+              <p>Herkes için ayrı favoriler ve kaldığı yer. PBKDF2 PIN kilidi ve +18 filtreli Çocuk Modu yerleşik gelir.</p>
+            </div>
+          </article>
+
+          <article class="bento-card">
+            <div class="bento-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2L4 5v6.09c0 5.05 3.41 9.76 8 10.91 4.59-1.15 8-5.86 8-10.91V5l-8-3z"/></svg>
+            </div>
+            <div>
+              <span class="bento-kicker">GİZLİLİK</span>
+              <h3>Sıfır Hesap &amp; Yerel Eşitleme</h3>
+              <p>Kayıt, bulut sunucu veya telemetri yok. Cihazların arasında 6 haneli LAN koduyla ya da JSON yedekle doğrudan eşitle.</p>
+            </div>
+          </article>
         </div>
       </div>
     </section>
@@ -285,53 +255,57 @@
     <section id="free-forever" class="section">
       <div class="container">
         <div class="section-head">
-          <div>
-            <h2 class="section-title">Tamamen Ücretsiz — Kısıtlama Yok</h2>
-            <p class="section-sub">Mavie'de kilitli özellik, cihaz sınırı, üyelik duvarı veya ücretli abonelik yoktur. Tüm araçlar ilk açılıştan itibaren açıktır.</p>
+          <span class="section-eyebrow">ŞEFFAF VE AÇIK</span>
+          <h2 class="section-title">Tamamen Ücretsiz. Sonsuza Dek.</h2>
+          <p class="section-sub">Kilitli özellik, cihaz limiti veya üyelik duvarı yok. Kurduğun anda her şey açık.</p>
+        </div>
+
+        <div class="spec-sheet">
+          <div class="spec-row">
+            <span class="spec-label">Windows, macOS, Android ve iOS Uygulamaları</span>
+            <span class="spec-value">✓ %100 Ücretsiz</span>
           </div>
-          <span class="badge active">%100 Ücretsiz · Sınırsız</span>
+          <div class="spec-row">
+            <span class="spec-label">Hesap, E-posta veya Abonelik Gereksinimi</span>
+            <span class="spec-value">✓ Gerekmez</span>
+          </div>
+          <div class="spec-row">
+            <span class="spec-label">Spor Ekranı, XMLTV EPG &amp; Kişisel Keşif</span>
+            <span class="spec-value">✓ Dahil · Sıfır Ayar</span>
+          </div>
+          <div class="spec-row">
+            <span class="spec-label">Sınırsız Profil, PIN Kilidi &amp; Çocuk Modu</span>
+            <span class="spec-value">✓ Sınırsız</span>
+          </div>
+          <div class="spec-row">
+            <span class="spec-label">2×2 Çoklu Ekran, FFmpeg &amp; Yerel Altyazılar</span>
+            <span class="spec-value">✓ Tam Erişim</span>
+          </div>
+          <div class="spec-row">
+            <span class="spec-label">Yerel Ağ (LAN) Eşitleme &amp; JSON Yedek</span>
+            <span class="spec-value">✓ Tamamen Yerel</span>
+          </div>
         </div>
 
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Özellik</th>
-                <th>Mavie (Tüm Platformlar)</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr><td>Demo, M3U / Xtream ve Yerel Klasör Oynatma</td><td>Ücretsiz &amp; Sınırsız</td></tr>
-              <tr><td>Hesap veya E-posta Kaydı</td><td>Gerekmez — İndir ve Başla</td></tr>
-              <tr><td>Cihaz Sayısı</td><td>Sınırsız Cihaz (Windows, Android, macOS, iOS)</td></tr>
-              <tr><td>Profiller, PBKDF2 PIN Kilidi &amp; Çocuk Modu</td><td>Sınırsız &amp; Ücretsiz</td></tr>
-              <tr><td>2×2 Çoklu Ekran, FFmpeg Dönüştürme &amp; Gelişmiş Altyazı</td><td>Tam Erişim</td></tr>
-              <tr><td>Canlı XMLTV EPG &amp; Spor Rehberi Eşleme</td><td>Tam Erişim</td></tr>
-              <tr><td>Yerel Ağ (LAN) Eşitleme &amp; JSON Kütüphane Yedeği</td><td>Tam Erişim (Çevrimdışı &amp; Özel)</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-
-    <section id="privacy-shield" class="section">
-      <div class="container">
-        <div class="card">
-          <h3>Yerel Öncelikli Gizlilik &amp; Yasal Güvence</h3>
-          <p style="margin-top:8px">
-            Mavie hiçbir hesap sistemi, bulut veritabanı veya kullanıcı takibi içermez. Eklediğiniz medya klasörleri, M3U/Xtream adresleri, favorileriniz, profilleriniz ve izleme geçmişiniz yalnızca kendi cihazınızda saklanır ve hiçbir merkezi sunucuya gönderilmez. Uygulama telifli içerik barındırmaz veya dağıtmaz.
-          </p>
+        <div class="spec-cta">
+          <a class="btn" href="#downloads">Hemen Ücretsiz İndir</a>
         </div>
       </div>
     </section>
   </main>
 
-  <footer class="footer">
-    <div class="container footer-row">
-      <span>© 2026 Mavie — Ücretsiz Kişisel Medya Merkezi</span>
-      <div style="display:flex;gap:16px">
-        <a href="/privacy">Gizlilik Politikası</a>
-        <a href="/terms">Kullanım Koşulları</a>
+  <footer class="site-footer">
+    <div class="container">
+      <p class="footer-legal">
+        Mavie yalnızca kişisel bir medya oynatıcıdır; herhangi bir televizyon kanalı, telifli içerik veya yayın akışı barındırmaz ve satmaz. Tüm verileriniz yalnızca kendi cihazınızda saklanır.
+      </p>
+      <div class="footer-row">
+        <span>© 2026 Mavie. Tüm platformlarda tamamen ücretsiz.</span>
+        <div class="footer-links">
+          <a href="/privacy.html">Gizlilik Politikası</a>
+          <a href="/terms.html">Kullanım Koşulları</a>
+          <a href="#downloads" data-releases target="_blank" rel="noopener noreferrer">GitHub Releases</a>
+        </div>
       </div>
     </div>
   </footer>

@@ -17,6 +17,10 @@ final class MavieMacDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.appearance = NSAppearance(named: .darkAqua)
+        if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+           let iconImage = NSImage(contentsOf: iconURL) {
+            NSApp.applicationIconImage = iconImage
+        }
         buildMenu()
 
         let configuration = WKWebViewConfiguration()
@@ -247,7 +251,7 @@ final class MavieMacDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     }
 
     @objc private func openWebsite() {
-        if let url = URL(string: "https://cineva-app.netlify.app") {
+        if let url = URL(string: "https://maviemovie.netlify.app") {
             NSWorkspace.shared.open(url)
         }
     }

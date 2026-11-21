@@ -28,6 +28,8 @@ public final class ServerProcessManager: ObservableObject {
     private var logHandle: FileHandle?
     private var pollTask: Task<Void, Never>?
     private var shuttingDown = false
+    private var startupRetryCount = 0
+    private var triedPorts: Set<Int> = []
 
     public var baseURL: URL {
         URL(string: "http://127.0.0.1:\(port)/")!
@@ -54,6 +56,12 @@ public final class ServerProcessManager: ObservableObject {
     }
 
     public func start() {
+        startupRetryCount = 0
+        triedPorts = []
+        startInternal(excluding: [])
+    }
+
+    private func startInternal(excluding: Set<Int>) {
         stop()
         shuttingDown = false
         status = .starting
@@ -77,7 +85,8 @@ public final class ServerProcessManager: ObservableObject {
             try handle.seekToEnd()
             logHandle = handle
 
-            let selectedPort = Self.choosePort()
+            let selectedPort = Self.choosePort(excluding: excluding)
+            triedPorts.insert(selectedPort)
             port = selectedPort
             lanURLs = Self.discoverLanURLs(port: selectedPort)
 
@@ -203,7 +212,15 @@ public final class ServerProcessManager: ObservableObject {
             for attempt in 1...120 {
                 if Task.isCancelled || self.shuttingDown { return }
                 if let child = self.process, !child.isRunning {
-                    self.status = .failed("Mavie sunucusu başlatılırken kapandı (çıkış kodu \(child.terminationStatus)). Günlüğü kontrol edin.")
+                    let forcedPort = ProcessInfo.processInfo.environment["MAVIE_PORT"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    if forcedPort.isEmpty && self.startupRetryCount < 2 {
+                        self.startupRetryCount += 1
+                        self.startInternal(excluding: self.triedPorts)
+                        return
+                    }
+                    let tail = self.readLastLogError()
+                    let detail = tail.isEmpty ? "Günlüğü kontrol edin." : tail
+                    self.status = .failed("Mavie sunucusu başlatılırken kapandı (çıkış kodu \(child.terminationStatus)). \(detail)")
                     self.healthDetails = "Çıkış kodu \(child.terminationStatus)"
                     return
                 }
@@ -319,24 +336,38 @@ public final class ServerProcessManager: ObservableObject {
         try? Data().write(to: logFile)
     }
 
-    private static func choosePort() -> Int {
-        if let raw = ProcessInfo.processInfo.environment["MAVIE_PORT"],
+    private func readLastLogError() -> String {
+        guard let text = try? String(contentsOf: logFile, encoding: .utf8) else { return "" }
+        let lines = text.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        if let errLine = lines.last(where: { $0.contains("Error:") || $0.contains("OSError:") || $0.contains("Exception") }) {
+            return String(errLine.prefix(160))
+        }
+        return ""
+    }
+
+    private static func choosePort(excluding: Set<Int> = []) -> Int {
+        if excluding.isEmpty,
+           let raw = ProcessInfo.processInfo.environment["MAVIE_PORT"],
            let parsed = Int(raw.trimmingCharacters(in: .whitespaces)),
            (1024...65535).contains(parsed) {
             return parsed
         }
-        if canBindPort(8844) {
-            return 8844
+        for candidate in 8844...8864 where !excluding.contains(candidate) {
+            if canBindPort(candidate) {
+                return candidate
+            }
         }
-        return allocateEphemeralPort() ?? 8844
+        return allocateEphemeralPort() ?? 8845
     }
 
-    private static func canBindPort(_ port: Int) -> Bool {
+    private static func isLoopbackPortListening(_ port: Int) -> Bool {
         let fd = Darwin.socket(AF_INET, SOCK_STREAM, 0)
         guard fd >= 0 else { return false }
         defer { Darwin.close(fd) }
-        var yes: Int32 = 1
-        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, socklen_t(MemoryLayout<Int32>.size))
+        let flags = fcntl(fd, F_GETFL, 0)
+        if flags >= 0 {
+            _ = fcntl(fd, F_SETFL, flags | O_NONBLOCK)
+        }
         var addr = sockaddr_in()
         addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
         addr.sin_family = sa_family_t(AF_INET)
@@ -344,10 +375,44 @@ public final class ServerProcessManager: ObservableObject {
         addr.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
         let res = withUnsafePointer(to: &addr) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        if res == 0 { return true }
+        if errno != EINPROGRESS { return false }
+        var pfd = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
+        let pr = Darwin.poll(&pfd, 1, 60)
+        guard pr > 0 else { return false }
+        var soErr: Int32 = 0
+        var len = socklen_t(MemoryLayout<Int32>.size)
+        if getsockopt(fd, SOL_SOCKET, SO_ERROR, &soErr, &len) == 0 {
+            return soErr == 0
+        }
+        return false
+    }
+
+    private static func canBindPort(_ port: Int) -> Bool {
+        // 1. Reject immediately if anything is already listening on loopback or wildcard.
+        if isLoopbackPortListening(port) {
+            return false
+        }
+        // 2. Test exact wildcard bind (0.0.0.0) + listen WITHOUT SO_REUSEADDR,
+        // matching how mavie-server binds --host 0.0.0.0.
+        let fd = Darwin.socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        defer { Darwin.close(fd) }
+        var addr = sockaddr_in()
+        addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = UInt16(port).bigEndian
+        addr.sin_addr = in_addr(s_addr: INADDR_ANY.bigEndian)
+        let bindRes = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                 Darwin.bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
             }
         }
-        return res == 0
+        guard bindRes == 0 else { return false }
+        return Darwin.listen(fd, 1) == 0
     }
 
     private static func allocateEphemeralPort() -> Int? {
@@ -358,7 +423,7 @@ public final class ServerProcessManager: ObservableObject {
         addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
         addr.sin_family = sa_family_t(AF_INET)
         addr.sin_port = 0
-        addr.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+        addr.sin_addr = in_addr(s_addr: INADDR_ANY.bigEndian)
         let bindRes = withUnsafePointer(to: &addr) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                 Darwin.bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))

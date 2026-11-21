@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- Store APIs, auth endpoints, and public metadata must strictly use HTTPS. -->
+    <!-- Store APIs, discovery catalogs, sports guide, and website endpoints must strictly use HTTPS. -->
     <domain-config cleartextTrafficPermitted="false">
         <domain includeSubdomains="true">themoviedb.org</domain>
         <domain includeSubdomains="true">tmdb.org</domain>
         <domain includeSubdomains="true">mavie.app</domain>
-        <domain includeSubdomains="true">cineva-app.netlify.app</domain>
+        <domain includeSubdomains="true">maviemovie.netlify.app</domain>
+        <domain includeSubdomains="true">sporekrani.com</domain>
+        <domain includeSubdomains="true">v3-cinemeta.strem.io</domain>
+        <domain includeSubdomains="true">netflix.com</domain>
         <domain includeSubdomains="true">blender.org</domain>
     </domain-config>
     <!-- Local LAN media servers and user-provided stream hosts may require HTTP unless upgraded by provider. -->

@@ -175,11 +175,34 @@ else
     cp "$SCRIPT_DIR/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
 fi
 
-echo "==> 4. Embedding mavie-server and AppIcon.icns into Mavie.app"
+echo "==> 4. Embedding mavie-server, AppIcon.icns, and verifying Info.plist"
 mkdir -p "$APP_BUNDLE/Contents/Resources"
 rm -rf "$APP_BUNDLE/Contents/Resources/mavie-server"
 cp -R "$DIST_DIR/mavie-server" "$APP_BUNDLE/Contents/Resources/mavie-server"
 cp "$BUILD_ROOT/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+
+PLIST="$APP_BUNDLE/Contents/Info.plist"
+set_plist_str() {
+    /usr/libexec/PlistBuddy -c "Set :$1 $2" "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :$1 string $2" "$PLIST"
+}
+set_plist_str CFBundleIconFile AppIcon
+set_plist_str CFBundleIconName AppIcon
+set_plist_str CFBundleDisplayName Mavie
+set_plist_str CFBundleShortVersionString 2.2.0
+set_plist_str CFBundleVersion 220
+/usr/libexec/PlistBuddy -c "Set :NSAppTransportSecurity:NSAllowsArbitraryLoads true" "$PLIST" 2>/dev/null || {
+    /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" "$PLIST" 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" "$PLIST" 2>/dev/null || true
+}
+
+# Strict guard: fail the build immediately if the icon or Info.plist icon binding is missing.
+test -s "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+ICON_VAL="$(/usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "$PLIST")"
+if [ "$ICON_VAL" != "AppIcon" ]; then
+    echo "ERROR: Expected CFBundleIconFile=AppIcon in $PLIST, got '$ICON_VAL'" >&2
+    exit 1
+fi
+touch "$APP_BUNDLE"
 
 echo "==> 5. Ad-hoc signing nested binaries leaf-first and Mavie.app"
 find "$APP_BUNDLE/Contents/Resources/mavie-server" -type f \( -perm +111 -o -name "*.dylib" -o -name "*.so" \) -print0 | while IFS= read -r -d '' bin; do
@@ -188,10 +211,12 @@ done
 codesign --force --deep --sign - "$APP_BUNDLE"
 codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
 
-echo "==> 6. Running macOS bundled server smoke test (--smoke-test)"
+echo "==> 6. Running macOS bundled server smoke tests (--smoke-test + auto port fallback)"
 SMOKE_DATA="$BUILD_ROOT/smoke-data"
 mkdir -p "$SMOKE_DATA"
 MAVIE_DATA_DIR="$SMOKE_DATA" MAVIE_PORT=18846 "$APP_BUNDLE/Contents/MacOS/Mavie" --smoke-test
+# Also verify Mavie starts cleanly without MAVIE_PORT even when default port 8844 is occupied!
+MAVIE_DATA_DIR="$SMOKE_DATA" "$APP_BUNDLE/Contents/MacOS/Mavie" --smoke-test
 
 echo "==> 7. Creating Mavie-macOS.dmg and Mavie-macOS.zip"
 rm -rf "$DMG_STAGE" "$DIST_DIR/Mavie-macOS.dmg" "$DIST_DIR/Mavie-macOS.zip"

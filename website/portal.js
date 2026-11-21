@@ -1,7 +1,9 @@
 'use strict';
 (() => {
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const GITHUB_DL_BASE = 'https://github.com/tahadigital/cineva/releases/latest/download/';
+  const GITHUB_REPO_BASE = 'https://github.com/tahadigital/cineva/';
+  const GITHUB_DL_BASE = GITHUB_REPO_BASE + 'releases/latest/download/';
+  const GITHUB_RELEASES_URL = GITHUB_REPO_BASE + 'releases/latest';
 
   const DOWNLOAD_URLS = {
     'windows-installer': GITHUB_DL_BASE + 'Mavie-Setup.exe',
@@ -81,6 +83,9 @@
 
   document.querySelectorAll('[data-dl]').forEach(btn => {
     btn.addEventListener('click', () => startDownload(btn.dataset.dl));
+  });
+  document.querySelectorAll('[data-releases]').forEach(link => {
+    link.href = GITHUB_RELEASES_URL;
   });
 
   detectPlatform();

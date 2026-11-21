@@ -56,12 +56,31 @@ def show_error_dialog(title: str, message: str) -> None:
             sys.stderr.write(f'{title}: {message}\n')
 
 
+def _can_bind_port(port: int) -> bool:
+    # 1. If loopback accepts a connection, another process is already listening.
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.settimeout(0.08)
+        if probe.connect_ex(('127.0.0.1', port)) == 0:
+            return False
+    # 2. Verify actual wildcard bind (0.0.0.0) + listen without SO_REUSEADDR.
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        if hasattr(socket, 'SO_EXCLUSIVEADDRUSE'):
+            with contextlib.suppress(OSError):
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        try:
+            s.bind(('0.0.0.0', port))
+            s.listen(1)
+            return True
+        except OSError:
+            return False
+
+
 def find_free_port(preferred: int = 8844) -> int:
+    for candidate in range(preferred, min(preferred + 21, 65535)):
+        if _can_bind_port(candidate):
+            return candidate
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        if s.connect_ex(('127.0.0.1', preferred)) != 0:
-            return preferred
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(('127.0.0.1', 0))
+        s.bind(('0.0.0.0', 0))
         return int(s.getsockname()[1])
 
 

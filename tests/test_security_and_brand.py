@@ -331,10 +331,45 @@ class MavieBrandPaletteAndIconsTests(unittest.TestCase):
 
         mac_plist = (ROOT / "apple" / "macOS" / "Info.plist").read_text("utf-8")
         self.assertIn("<string>AppIcon</string>", mac_plist)
+        self.assertIn("<key>CFBundleIconFile</key>", mac_plist)
+        self.assertIn("<key>CFBundleIconName</key>", mac_plist)
         self.assertIn("<string>Mavie</string>", mac_plist)
+        self.assertIn("<key>NSAllowsArbitraryLoads</key>", mac_plist)
+
+        ios_plist = (ROOT / "apple" / "iOS" / "Info.plist").read_text("utf-8")
+        self.assertIn("<key>NSAllowsArbitraryLoads</key>", ios_plist)
+        self.assertIn("<string>audio</string>", ios_plist)
+
+        # Regression guard: XcodeGen `info:` blocks wipe Info.plist and strip CFBundleIconFile!
+        proj_yml = (ROOT / "apple" / "project.yml").read_text("utf-8")
+        self.assertIn("INFOPLIST_FILE: macOS/Info.plist", proj_yml)
+        self.assertIn("INFOPLIST_FILE: iOS/Info.plist", proj_yml)
+        self.assertIn("GENERATE_INFOPLIST_FILE: NO", proj_yml)
+        self.assertNotIn("\n    info:\n", proj_yml)
+
+        mac_asset_dir = ROOT / "apple" / "macOS" / "Assets.xcassets" / "AppIcon.appiconset"
+        self.assertTrue((mac_asset_dir / "Contents.json").is_file())
+        self.assertTrue((mac_asset_dir / "icon_512x512@2x.png").is_file())
+
         mac_script = (ROOT / "apple" / "macOS" / "build_macos.sh").read_text("utf-8")
         self.assertIn("AppIcon.icns", mac_script)
+        self.assertIn("CFBundleIconFile", mac_script)
         self.assertIn("#7C3AED", mac_script)
+
+    def test_04_desktop_port_allocator_skips_occupied_wildcard_port(self) -> None:
+        sys.path.insert(0, str(ROOT / "desktop"))
+        import mavie_desktop
+
+        blocker = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        blocker.bind(("0.0.0.0", 0))
+        blocker.listen(5)
+        try:
+            busy_port = int(blocker.getsockname()[1])
+            chosen = mavie_desktop.find_free_port(busy_port)
+            self.assertNotEqual(chosen, busy_port, "find_free_port must skip a port occupied on 0.0.0.0")
+            self.assertGreater(chosen, 0)
+        finally:
+            blocker.close()
 
 
 if __name__ == "__main__":
