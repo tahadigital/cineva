@@ -1,12 +1,14 @@
-"""Standard XMLTV EPG parser and live program guide matcher for Mavie.
+"""Live Turkish sports schedule (Spor Ekranı) + standard XMLTV EPG parser for Mavie.
 
-Reads user-configured XMLTV (.xml or .xml.gz) program guides cleanly without scraping third-party sites.
+Uses Spor Ekranı automatically with zero setup when no custom XMLTV EPG URL is configured,
+and cleanly parses user-configured XMLTV (.xml / .xml.gz) guides when provided.
 """
 from __future__ import annotations
 
 import datetime as dt
 import functools
 import gzip
+import json
 import re
 import threading
 import time
@@ -18,7 +20,12 @@ try:
     ZONE = ZoneInfo('Europe/Istanbul')
 except ZoneInfoNotFoundError:
     ZONE = dt.timezone(dt.timedelta(hours=3))
+
+SPOREKRANI_SOURCE = 'https://www.sporekrani.com/home/day/'
+SPOREKRANI_MARKER = 'window.__INITIAL_STATE__='
+MAX_SPOREKRANI_PAGE = 4 * 1024 * 1024
 MAX_PAGE = 8 * 1024 * 1024
+SPOREKRANI_FRESH = 5 * 60
 FRESH = 15 * 60
 MAX_STALE = 12 * 60 * 60
 _cache = {}
@@ -28,6 +35,14 @@ _QUALITY_RE = re.compile(r'(?:[\s|\[\]()\-]+(?:fhd|hd|uhd|sd|raw|hevc|h265|4k|10
 _NONALNUM_RE = re.compile(r'[^a-z0-9+]')
 _XMLTV_TS_RE = re.compile(r'^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(?:\s*([+-]\d{4}))?')
 _SPORT_CATEGORY_RE = re.compile(r'\b(sport|sports|spor|futbol|football|soccer|basketbol|basketball|tennis|tenis|motorsport|formula|racing|boxing|ufc|golf)\b', re.I)
+_COMMENTARY_NOISE_RE = re.compile(r'basin toplantisi|spor bulteni|mac (?:onu|sonu|ozel)|tekrar')
+_ALIASES = {
+    'ssport1': 'ssport',
+    'smartsporhd': 'sporsmart',
+    'smartspor': 'sporsmart',
+    'smartspor2': 'sporsmart2',
+    'trtsporstar': 'trtsporyildiz',
+}
 
 
 @functools.lru_cache(maxsize=32000)
@@ -40,7 +55,8 @@ def _ascii(value):
 def channel_key(name):
     text = _REGION_RE.sub('', _ascii(name))
     text = _QUALITY_RE.sub('', text)
-    return _NONALNUM_RE.sub('', text)
+    normalized = _NONALNUM_RE.sub('', text)
+    return _ALIASES.get(normalized, normalized)
 
 
 def match_channels(events, catalog):
@@ -78,6 +94,81 @@ def selected_date(value, today=None, tz=ZONE):
 
 def _label(value, limit=180):
     return ' '.join(value.split())[:limit] if isinstance(value, str) else ''
+
+
+def parse_sporekrani(page, day):
+    """Read only JSON embedded in Spor Ekranı SSR page; never execute scripts.
+
+    Supports both the current normalized schema (`common.eventRows` + `common.eventChannels`)
+    and the legacy inline schema (`common.events`).
+    """
+    try:
+        payload = page.split(SPOREKRANI_MARKER, 1)[1]
+        data, _ = json.JSONDecoder().raw_decode(payload.lstrip())
+        common = data['common']
+        if isinstance(common.get('eventRows'), list):
+            rows = common['eventRows']
+            channel_map = common.get('eventChannels') if isinstance(common.get('eventChannels'), dict) else {}
+        elif isinstance(common.get('events'), list):
+            rows = common['events']
+            channel_map = {}
+        else:
+            raise TypeError
+    except (ValueError, IndexError, TypeError, KeyError):
+        raise RuntimeError('Spor yayın rehberi şu anda okunamadı.') from None
+
+    events, seen = [], set()
+    date = day.isoformat()
+    time_re = re.compile(re.escape(date) + r' (?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d')
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        iid = row.get('id')
+        start = row.get('date_time')
+        sport, title = _label(row.get('sport_name'), 50), _label(row.get('name'))
+        if not isinstance(iid, int) or iid in seen or not sport or not title:
+            continue
+        if not isinstance(start, str) or not time_re.fullmatch(start):
+            continue
+        if _ascii(sport) == 'programlar' or row.get('event_type_name') not in ('match', 'commentary'):
+            continue
+        league = _label(row.get('league_name'))
+        if row.get('event_type_name') == 'commentary' and _COMMENTARY_NOISE_RE.search(_ascii(title)):
+            continue
+        channels = []
+        raw_channels = row.get('channels')
+        for entry in raw_channels if isinstance(raw_channels, list) else []:
+            if isinstance(entry, dict):
+                ch_obj = entry
+            elif isinstance(entry, (int, str)):
+                ch_obj = channel_map.get(str(entry)) or channel_map.get(entry)
+            else:
+                ch_obj = None
+            if not isinstance(ch_obj, dict) or ch_obj.get('active') in (0, '0', False):
+                continue
+            name = _label(ch_obj.get('name'), 100)
+            if channel_key(name) == 'yayinyok':
+                continue
+            if name and name not in channels:
+                channels.append(name)
+        if not channels:
+            continue
+        qualifier = _label(row.get('post_fix'), 90)
+        if qualifier and qualifier not in title:
+            title += ' · ' + qualifier
+        events.append({
+            'id': str(iid),
+            'title': title,
+            'sport': sport,
+            'league': league,
+            'time': start[11:16],
+            'featured': row.get('featured') in (1, '1', True),
+            'channels': channels,
+        })
+        seen.add(iid)
+    if rows and not any(isinstance(row, dict) and str(row.get('date_time', '')).startswith(date + ' ') for row in rows):
+        raise RuntimeError('Spor yayın rehberi seçilen gün için doğrulanamadı.')
+    return sorted(events, key=lambda event: (event['time'], event['id']))
 
 
 def _parse_xmltv_time(raw, target_tz=ZONE):
@@ -157,21 +248,49 @@ def parse_xmltv(raw_payload, day, tz=ZONE):
     return sorted(events, key=lambda e: (e['time'], e['id']))
 
 
-def get_listings(day, fetch, epg_url='', refresh=False, tz=ZONE):
-    source = str(epg_url or '').strip()
-    if not source:
-        return {'date': day.isoformat(), 'timezone': str(tz), 'source': '', 'stale': False, 'events': [], 'configured': False}
+def get_listings(day, fetch, epg_url='', refresh=False, tz=ZONE, source_mode='auto'):
+    mode = str(source_mode or 'auto').strip().lower()
+    epg = str(epg_url or '').strip()
+
+    if mode == 'xmltv' and not epg:
+        return {
+            'date': day.isoformat(),
+            'timezone': str(tz),
+            'source': '',
+            'sourceType': 'xmltv',
+            'stale': False,
+            'events': [],
+            'configured': False,
+        }
+
+    use_xmltv = bool(epg) and mode != 'sporekrani'
+    if use_xmltv:
+        source = epg
+        source_type = 'xmltv'
+        fresh_ttl = FRESH
+    else:
+        source = SPOREKRANI_SOURCE + day.isoformat()
+        source_type = 'sporekrani'
+        fresh_ttl = SPOREKRANI_FRESH
+
     cache_key = (source, day)
     with _lock:
         now = time.time()
         cached = _cache.get(cache_key)
-        if not cached or now - cached[0] >= (15 if refresh else FRESH):
+        if not cached or now - cached[0] >= (15 if refresh else fresh_ttl):
             try:
-                with fetch(source, timeout=15, headers={'User-Agent': 'Mavie/3.0 (XMLTV EPG)'}) as response:
-                    payload = response.read(MAX_PAGE + 1)
-                if len(payload) > MAX_PAGE:
-                    raise RuntimeError('XMLTV rehberi çok büyük.')
-                events = parse_xmltv(payload, day, tz)
+                if use_xmltv:
+                    with fetch(source, timeout=15, headers={'User-Agent': 'Mavie/2.2 (XMLTV EPG)'}) as response:
+                        payload = response.read(MAX_PAGE + 1)
+                    if len(payload) > MAX_PAGE:
+                        raise RuntimeError('XMLTV rehberi çok büyük.')
+                    events = parse_xmltv(payload, day, tz)
+                else:
+                    with fetch(source, timeout=9, headers={'User-Agent': 'Mavie/2.2 (sports schedule)'}) as response:
+                        payload = response.read(MAX_SPOREKRANI_PAGE + 1)
+                    if len(payload) > MAX_SPOREKRANI_PAGE:
+                        raise RuntimeError('Spor yayın rehberi çok büyük.')
+                    events = parse_sporekrani(payload.decode('utf-8', errors='replace'), day)
                 cached = _cache[cache_key] = (time.time(), events)
                 for old in list(_cache):
                     if now - _cache[old][0] > MAX_STALE:
@@ -179,7 +298,12 @@ def get_listings(day, fetch, epg_url='', refresh=False, tz=ZONE):
                 stale = False
             except (OSError, RuntimeError, UnicodeError, ValueError):
                 if not cached or now - cached[0] > MAX_STALE:
-                    raise RuntimeError('XMLTV yayın rehberine ulaşılamadı. Bağlantıyı kontrol edin.') from None
+                    msg = (
+                        'XMLTV yayın rehberine ulaşılamadı. Bağlantıyı kontrol edin.'
+                        if use_xmltv
+                        else 'Spor yayın rehberine ulaşılamadı. Biraz sonra tekrar dene.'
+                    )
+                    raise RuntimeError(msg) from None
                 stale = True
         else:
             stale = False
@@ -187,6 +311,7 @@ def get_listings(day, fetch, epg_url='', refresh=False, tz=ZONE):
         'date': day.isoformat(),
         'timezone': str(tz),
         'source': source,
+        'sourceType': source_type,
         'stale': stale,
         'events': cached[1],
         'configured': True,

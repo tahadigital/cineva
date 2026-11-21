@@ -29,12 +29,18 @@ class DiscoveryTest {
         buildDiscovery(items("catalog"), history, fixture.getJSONObject("feed"), date)
 
     @Test
-    fun personalRecommendationsUseHistoryNotProviderCategories() {
+    fun personalRecommendationsPromoteWatchedGenresAndOrderGenreShelves() {
         val result = result()
         val shelf = result.shelves.first { it.id == "for-you-vod" }
         assertEquals("vod:comedy", shelf.items.first().id)
         assertTrue(shelf.title.startsWith("Sana Özel"))
-        assertTrue(result.shelves.first { it.id == "genre-vod-Comedy" }.items.any { it.id == "vod:comedy" })
+        assertTrue(shelf.subtitle.contains("Komedi"))
+
+        val genreShelves = result.shelves.filter { it.id.startsWith("genre-vod-") }
+        assertEquals("genre-vod-Comedy", genreShelves.first().id)
+        assertTrue(genreShelves.first().subtitle.contains("öne çıkarıldı"))
+        assertEquals("genre-vod-Horror", genreShelves[1].id)
+        assertTrue(genreShelves[1].subtitle.isEmpty())
     }
 
     @Test
@@ -52,11 +58,22 @@ class DiscoveryTest {
     }
 
     @Test
-    fun trendingChartsExpireAndContainZeroScrapedTrademarkNames() {
-        val trending = result().shelves.filter { it.id.startsWith("trending-") }
-        assertEquals(2, trending.size)
-        assertFalse(trending.any { it.subtitle.contains("Netflix", ignoreCase = true) })
-        assertFalse(result(date = LocalDate.of(2026, 12, 1)).shelves.any { it.id.startsWith("trending-") })
+    fun netflixTurkeyTop10ShelfDisplaysAndExpiresWhenStale() {
+        val turkey = result().shelves.filter { it.id.startsWith("turkey-") }
+        assertEquals(2, turkey.size)
+        assertTrue(turkey.first().title.contains("Türkiye’de Popüler"))
+        assertTrue(turkey.first().subtitle.contains("Netflix Türkiye Top 10"))
+        assertFalse(result(date = LocalDate.of(2026, 12, 1)).shelves.any { it.id.startsWith("turkey-") })
+    }
+
+    @Test
+    fun parsesNetflixTudumGraphqlPayload() {
+        val html = """<script>netflix.reactContext.models.graphql = JSON.parse('{"data":{"x":{"top10Video":{"title":"Never Surrender","releaseYear":2026,"videoId":81996126},"top10":{"category":"MOVIES","weeklyRank":1,"weekEndDate":"2026-11-15"}}}}');</script>"""
+        val entries = parseNetflix(html)
+        assertEquals(1, entries.length())
+        assertEquals("vod", entries.getJSONObject(0).getString("kind"))
+        assertEquals("Never Surrender", entries.getJSONObject(0).getString("name"))
+        assertEquals(81996126L, entries.getJSONObject(0).getLong("netflixId"))
     }
 
     @Test
@@ -73,9 +90,12 @@ class DiscoveryTest {
     }
 
     @Test
-    fun genreAliasesKeepEnglishKeysAndInputOrder() {
-        assertEquals(listOf("Sci-Fi", "Comedy", "Crime", "Action", "Thriller"),
-            discoveryGenreSet("Bilim Kurgu,COMEDY/Suç|Aksiyon,Gerilim,Comedy").toList())
+    fun genreAliasesKeepEnglishKeysAndTurkishPlurals() {
+        assertEquals(
+            listOf("Sci-Fi", "Comedy", "Crime", "Action", "Thriller"),
+            discoveryGenreSet("Bilim Kurgu,COMEDY/Suç|Aksiyon,Gerilim,Comedy").toList()
+        )
+        assertEquals(setOf("Drama", "Comedy", "Sci-Fi"), discoveryGenreSet("Dramalar, Komediler, Bilim Kurgu ve Fantastik"))
         assertEquals(discoveryGenres.keys.toList(), discoveryGenreSet(discoveryGenres.values.joinToString(",")).toList())
         assertEquals(discoveryGenres.keys.toList(), discoveryGenreSet(discoveryGenres.keys.joinToString("/")).toList())
     }

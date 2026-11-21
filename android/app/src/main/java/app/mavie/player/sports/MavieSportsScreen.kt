@@ -53,13 +53,15 @@ fun MavieSportsScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var search by rememberSaveable { mutableStateOf("") }
     var category by rememberSaveable { mutableStateOf("") }
+    var sourceModeName by rememberSaveable { mutableStateOf(SportsSourceMode.AUTO.name) }
+    val sourceMode = runCatching { SportsSourceMode.valueOf(sourceModeName) }.getOrDefault(SportsSourceMode.AUTO)
 
-    LaunchedEffect(day, refresh, epgUrl) {
+    LaunchedEffect(day, refresh, epgUrl, sourceMode) {
         result = null
         channels = null
         error = null
         try {
-            result = SportsGuide.load(day, force = refresh != 0, epgUrl = epgUrl)
+            result = SportsGuide.load(day, force = refresh != 0, epgUrl = epgUrl, sourceMode = sourceMode)
             val labels = result?.events.orEmpty().flatMap { it.channels }.distinct()
             channels = try {
                 findChannels(labels)
@@ -103,9 +105,22 @@ fun MavieSportsScreen(
     ) {
         item("intro") {
             Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 10.dp)) {
-                Text("MAVIE REHBER", color = MavieCoral, fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 2.sp)
-                Text("Canlı Yayın & EPG Rehberi", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
-                Text("XMLTV program akışı ve eşleşen canlı yayınlar", color = MavieMuted, fontSize = 13.sp)
+                Text("MAVIE SPOR EKRANI", color = MavieCoral, fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 2.sp)
+                Text("Spor Ekranı", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
+                Text("Türkiye saatine göre günün maçları, yarışları ve canlı kanallar", color = MavieMuted, fontSize = 13.sp)
+                if (epgUrl.isNotBlank()) {
+                    Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val activeType = result?.sourceType ?: if (sourceMode == SportsSourceMode.SPOREKRANI) "sporekrani" else "xmltv"
+                        SportsChip("Spor Ekranı", activeType == "sporekrani") {
+                            category = ""
+                            sourceModeName = SportsSourceMode.SPOREKRANI.name
+                        }
+                        SportsChip("XMLTV EPG", activeType == "xmltv") {
+                            category = ""
+                            sourceModeName = SportsSourceMode.XMLTV.name
+                        }
+                    }
+                }
             }
         }
         item("dates") {
@@ -153,7 +168,7 @@ fun MavieSportsScreen(
                         .border(1.dp, Color(0xFF4C3A8F), Card).padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
-                    Text("ÖNE ÇIKAN YAYIN", color = MavieCoral, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                    Text("ÖNE ÇIKAN KARŞILAŞMA", color = MavieCoral, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                     Text(spotlight.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
                     Text("${spotlight.time} · ${spotlight.league.ifBlank { spotlight.sport }}", color = Color(0xFFDDDDDD), fontSize = 13.sp)
                     ChannelButtons(spotlight, channels, onWatch)
@@ -172,7 +187,7 @@ fun MavieSportsScreen(
                     if (events.isNotEmpty()) OutlinedTextField(
                         value = search, onValueChange = { search = it }, singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("Program veya kanal ara") },
+                        placeholder = { Text("Maç, takım veya kanal ara") },
                         leadingIcon = { Icon(Icons.Outlined.Search, null) },
                         shape = Card,
                     )
@@ -210,6 +225,15 @@ fun MavieSportsScreen(
                         }
                     }
                 }
+            }
+            item("source") {
+                Text(
+                    if (result?.sourceType == "xmltv") "Yayın bilgileri · Kullanıcının XMLTV EPG kaynağı"
+                    else "Yayın bilgileri · Spor Ekranı (Türkiye saati)",
+                    Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    color = MavieMuted,
+                    fontSize = 11.sp,
+                )
             }
         }
     }

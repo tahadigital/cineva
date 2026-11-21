@@ -51,18 +51,25 @@ window.MavieSports = (() => {
     const today = localDate();
     const availableDays = range(today);
     const selected = availableDays.some(day => day.id === params.get('date')) ? params.get('date') : today;
+    const reqSource = ['sporekrani', 'xmltv'].includes(params.get('source')) ? params.get('source') : 'auto';
+    const sourceSuffix = reqSource !== 'auto' ? `&source=${encodeURIComponent(reqSource)}` : '';
+
     main.innerHTML = `<div class="sports-page">
-      <header class="sports-intro"><span class="sports-kicker">${icon('sports')} MAVIE REHBER</span>
-        <h1>Canlı Yayın & EPG Rehberi</h1><p>XMLTV rehberine göre programlar, spor karşılaşmaları ve kanallar.</p>
+      <header class="sports-intro"><span class="sports-kicker">${icon('sports')} MAVIE SPOR EKRANI</span>
+        <h1>Spor Ekranı & Yayın Rehberi</h1><p>Türkiye saatine göre günün maçları, yarışları ve eşleşen IPTV kanalları.</p>
       </header>
-      <nav aria-label="Yayın günü" class="sports-dates">${availableDays.map(day => `<a href="#sports?date=${day.id}"
+      <nav aria-label="Yayın günü" class="sports-dates">${availableDays.map(day => `<a href="#sports?date=${day.id}${sourceSuffix}"
         ${selected === day.id ? 'aria-current="date"' : ''}>${esc(day.label)}</a>`).join('')}</nav>
-      <div class="sports-body" aria-live="polite"><div class="sports-status"><span class="spinner"></span> Yayın akışı yükleniyor…</div></div>
+      <div class="sports-body" aria-live="polite"><div class="sports-status"><span class="spinner"></span> Spor yayın akışı yükleniyor…</div></div>
     </div>`;
     const body = main.querySelector('.sports-body');
     let guide;
     try {
-      const query = new URLSearchParams({date:selected,...(force ? {refresh:'1'} : {})});
+      const query = new URLSearchParams({
+        date: selected,
+        ...(reqSource !== 'auto' ? {source: reqSource} : {}),
+        ...(force ? {refresh: '1'} : {}),
+      });
       guide = await api(`/api/sports?${query}`);
     } catch (error) {
       if (!current()) return;
@@ -72,13 +79,24 @@ window.MavieSports = (() => {
       return;
     }
     if (!current()) return;
-    const {events,channels} = guide;
+    const {events, channels} = guide;
+    const activeSource = guide.sourceType || 'sporekrani';
     remember(Object.values(channels));
     const sports = [...new Set(events.map(event => event.sport))].sort((a,b) => a.localeCompare(b,'tr'));
     const hero = spotlight(events,selected,today);
-    body.innerHTML = `${guide.stale ? '<p class="sports-stale">Son alınan yayın akışı gösteriliyor.</p>' : ''}
+    const sourceSwitch = guide.hasEpg
+      ? `<div class="sports-tabs" aria-label="Rehber kaynağı" style="margin-bottom:12px;">
+          <a class="button small ${activeSource === 'sporekrani' ? '' : 'secondary'}" href="#sports?date=${selected}&source=sporekrani">Spor Ekranı</a>
+          <a class="button small ${activeSource === 'xmltv' ? '' : 'secondary'}" href="#sports?date=${selected}&source=xmltv">XMLTV EPG</a>
+        </div>`
+      : '';
+    const sourceFooter = activeSource === 'xmltv'
+      ? (guide.configured ? 'Yayın bilgileri · Kullanıcının XMLTV EPG kaynağı' : 'Ayarlar bölümünden kendi XMLTV (.xml / .xml.gz) rehber adresini ekleyebilirsin.')
+      : 'Yayın bilgileri · Spor Ekranı (Türkiye saati · Europe/Istanbul) · Kanala tıklayıp IPTV’den anında izle';
+
+    body.innerHTML = `${sourceSwitch}${guide.stale ? '<p class="sports-stale">Son alınan yayın akışı gösteriliyor.</p>' : ''}
       ${hero ? `<article class="sports-spotlight">
-        <div><span class="sports-kicker">ÖNE ÇIKAN YAYIN</span><h2>${esc(hero.title)}</h2>
+        <div><span class="sports-kicker">ÖNE ÇIKAN KARŞILAŞMA</span><h2>${esc(hero.title)}</h2>
         <p>${esc(hero.time)} · ${esc(hero.league || hero.sport)}</p>
         <div class="sports-channels">${broadcastButtons(hero,channels)}</div></div>
       </article>` : ''}
@@ -91,7 +109,7 @@ window.MavieSports = (() => {
           ${sports.map(sport => `<button type="button" data-sport="${esc(sport)}" aria-pressed="false">${esc(sport)}</button>`).join('')}</div>
         </div>` : ''}
         <ul class="sports-events"></ul><p class="sports-status sports-empty" hidden></p>
-        <p class="sports-source">${guide.configured ? 'Yayın bilgileri · Kullanıcının XMLTV EPG kaynağı' : 'Ayarlar bölümünden kendi XMLTV (.xml / .xml.gz) rehber adresini ekleyebilirsin.'}</p>
+        <p class="sports-source">${sourceFooter}</p>
       </section>`;
     body.querySelector('.sports-refresh').onclick = () => render(main,params,current,true);
     const search = body.querySelector('input');

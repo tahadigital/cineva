@@ -569,7 +569,7 @@ def home():
             seen.add(key)
             recent.append(item)
             if len(seen) == 12: break
-    feed = discovery.snapshot(DATA, enabled=bool(provider.config.get('host')))
+    feed = discovery.snapshot(DATA, enabled=provider.mode in ('xtream', 'm3u', 'local'))
     with connect() as c:
         lib_key = (str(DB), tuple(c.execute("SELECT count(*), coalesce(max(added),0), coalesce(max(rowid),0) FROM items WHERE kind IN ('vod','series')").fetchone()))
         hist_key = (
@@ -1185,7 +1185,11 @@ class Handler(BaseHTTPRequestHandler):
                     day = sports.selected_date(q.get('date', [''])[0])
                     epg_url = q.get('epgUrl', [''])[0].strip() or provider.config.get('epgUrl') or provider.config.get('discoveredEpgUrl', '')
                     if epg_url: validate_host(epg_url)
-                    guide = sports.get_listings(day, remote, epg_url=epg_url, refresh=q.get('refresh') == ['1'])
+                    source_mode = q.get('source', ['auto'])[0].strip().lower() or 'auto'
+                    if source_mode not in ('auto', 'sporekrani', 'xmltv'):
+                        raise ValueError('Geçersiz spor rehberi kaynağı.')
+                    guide = sports.get_listings(day, remote, epg_url=epg_url, refresh=q.get('refresh') == ['1'], source_mode=source_mode)
+                    guide['hasEpg'] = bool(epg_url)
                     with connect() as c:
                         channels = c.execute("SELECT id,name FROM items WHERE kind='live' ORDER BY id").fetchall()
                     guide['channels'] = sports.match_channels(guide['events'], channels)

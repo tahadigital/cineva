@@ -74,11 +74,15 @@ public final class LibraryStore: ObservableObject {
     @Published public var isBusy: Bool = false
     @Published public var statusBanner: String?
     @Published public var lastError: String?
+    @Published public private(set) var discoveryFeed: DiscoveryFeedPayload = DiscoveryFeedPayload()
 
     private let baseDirectory: URL
     private let storageURL: URL
+    private let discoveryCacheURL: URL
     private var favoriteCreatedAt: [String: String] = [:]
     private var trackPreferencesByItem: [String: SyncTrackPreferenceRecord] = [:]
+    private var discoveryRefreshAttempt: TimeInterval = 0
+    private var discoveryRefreshing = false
 
     public init(storageDirectory: URL? = nil) {
         let baseDir: URL
@@ -92,13 +96,43 @@ public final class LibraryStore: ObservableObject {
         try? FileManager.default.createDirectory(at: baseDir, withIntermediateDirectories: true)
         self.baseDirectory = baseDir
         self.storageURL = baseDir.appendingPathComponent("library_state.json")
+        self.discoveryCacheURL = baseDir.appendingPathComponent("discovery-public.json")
 
         loadState()
+        if let data = try? Data(contentsOf: discoveryCacheURL),
+           let cached = try? JSONDecoder().decode(DiscoveryFeedPayload.self, from: data) {
+            discoveryFeed = cached
+        }
         if profiles.isEmpty {
             profiles = [UserProfile(id: "default", name: "Ana Profil", avatarColor: "#7C3AED", active: true)]
         }
         if items.isEmpty && sourceMode == .demo {
             loadDemoCatalog(persist: false)
+        }
+    }
+
+    public var discoveryResult: DiscoveryResult {
+        DiscoveryEngine.build(
+            catalog: items,
+            progressByItem: progressByItem,
+            favoriteIds: favoriteIds,
+            feed: discoveryFeed
+        )
+    }
+
+    public func refreshDiscoveryIfNeeded(force: Bool = false) async {
+        guard sourceMode != .demo else { return }
+        let now = Date().timeIntervalSince1970
+        if !force && now - discoveryFeed.updatedAt < 6 * 3600 { return }
+        if discoveryRefreshing || (!force && now - discoveryRefreshAttempt < 900) { return }
+        discoveryRefreshing = true
+        discoveryRefreshAttempt = now
+        defer { discoveryRefreshing = false }
+        if let payload = await DiscoveryEngine.refreshPublicFeed() {
+            discoveryFeed = payload
+            if let data = try? JSONEncoder().encode(payload) {
+                try? data.write(to: discoveryCacheURL, options: [.atomic])
+            }
         }
     }
 

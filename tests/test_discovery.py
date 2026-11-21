@@ -1,5 +1,9 @@
-import copy, datetime as dt, json, unittest
+import copy
+import datetime as dt
+import json
+import unittest
 from pathlib import Path
+
 import discovery
 
 
@@ -11,17 +15,24 @@ class DiscoveryTests(unittest.TestCase):
         f = self.fixture
         return discovery.build(f['catalog'], f['history'] if history is None else history, f['feed'], today)
 
-    def test_watch_history_promotes_matching_genres_without_using_provider_categories(self):
+    def test_watch_history_promotes_matching_genres_and_orders_genre_shelves_by_affinity(self):
         result = self.result()
         row = next(s for s in result['shelves'] if s['id'] == 'for-you-vod')
         self.assertEqual(row['items'][0]['id'], 'vod:comedy')
         self.assertTrue(result['personalized'])
+        self.assertIn('Komedi', result['topGenres'])
+
+        # Watched genre (Comedy) must be promoted ahead of unwatched genres (Horror)
+        genre_shelves = [s for s in result['shelves'] if s['id'].startswith('genre-vod-')]
+        self.assertEqual(genre_shelves[0]['id'], 'genre-vod-Comedy')
+        self.assertIn('öne çıkarıldı', genre_shelves[0]['subtitle'])
+        self.assertEqual(genre_shelves[1]['id'], 'genre-vod-Horror')
+        self.assertEqual(genre_shelves[1]['subtitle'], '')
+
         horror = copy.deepcopy(self.fixture['catalog'][2])
         horror['progress'] = {'position': 1000, 'duration': 1800}
         row = next(s for s in self.result([horror])['shelves'] if s['id'] == 'for-you-vod')
         self.assertNotIn('vod:horror', [i['id'] for i in row['items']])
-        comedy = next(s for s in result['shelves'] if s['id'] == 'genre-vod-Comedy')
-        self.assertIn('vod:comedy', [i['id'] for i in comedy['items']])
 
     def test_showcase_has_both_kinds_and_excludes_future_releases(self):
         result = self.result()
@@ -37,13 +48,44 @@ class DiscoveryTests(unittest.TestCase):
         genres = next(s for s in result['shelves'] if s['id'] == 'genre-vod-Comedy')
         self.assertNotIn('vod:remake', [i['id'] for i in genres['items']])
 
-    def test_trending_ranking_expires_when_stale_and_has_zero_scraped_brand_names(self):
+    def test_netflix_turkey_top10_shelf_and_expiry(self):
         rows = self.result()['shelves']
-        trending = [s for s in rows if s['id'].startswith('trending-')]
-        self.assertEqual(len(trending), 2)
-        self.assertNotIn('Netflix', trending[0]['subtitle'])
+        turkey = [s for s in rows if s['id'].startswith('turkey-')]
+        self.assertEqual(len(turkey), 2)
+        self.assertIn('Türkiye’de Popüler', turkey[0]['title'])
+        self.assertIn('Netflix Türkiye Top 10', turkey[0]['subtitle'])
         stale = self.result(today=dt.date(2026, 12, 1))['shelves']
-        self.assertFalse(any(s['id'].startswith('trending-') for s in stale))
+        self.assertFalse(any(s['id'].startswith('turkey-') for s in stale))
+
+    def test_netflix_entries_parser_extracts_movies_and_series(self):
+        payload = json.dumps({
+            'data': {
+                'a': {
+                    'top10Video': {'title': 'Never Surrender', 'releaseYear': 2026, 'videoId': 81996126},
+                    'top10': {'category': 'MOVIES', 'weeklyRank': 1, 'weekEndDate': '2026-11-15'},
+                },
+                'b': {
+                    'top10Video': {
+                        'title': 'Season 1',
+                        'releaseYear': 2020,
+                        'videoId': 999,
+                        'parentShow': {'title': 'Ethos', 'videoId': 81205319},
+                    },
+                    'top10': {'category': 'TV', 'weeklyRank': 2, 'weekEndDate': '2026-11-15'},
+                },
+            }
+        }).replace("'", "\\'")
+        html = f"<script>netflix.reactContext.models.graphql = JSON.parse('{payload}');</script>"
+        entries = discovery.netflix_entries(html)
+        self.assertEqual(len(entries), 2)
+        by_kind = {e['kind']: e for e in entries}
+        self.assertEqual(by_kind['vod']['name'], 'Never Surrender')
+        self.assertEqual(by_kind['vod']['netflixId'], 81996126)
+        self.assertEqual(by_kind['series']['name'], 'Ethos')
+        self.assertEqual(by_kind['series']['netflixId'], 81205319)
+
+    def test_turkish_plural_genre_aliases_normalize_cleanly(self):
+        self.assertEqual(discovery.genres({'genre': 'Dramalar, Komediler, Bilim Kurgu ve Fantastik'}), ('Drama', 'Comedy', 'Sci-Fi'))
 
     def test_empty_history_uses_honest_nonpersonalized_labels(self):
         result = self.result([])

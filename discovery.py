@@ -1,6 +1,8 @@
-"""Local catalog discovery and optional official TMDB enrichment for Mavie.
+"""Public catalog discovery (Cinemeta, Netflix Türkiye Top 10, optional TMDB) for Mavie.
 
-Viewing history and media source credentials never leave the device.
+Only public catalog/chart metadata is downloaded. Viewing history and media source
+credentials never leave the device; matching and personalized ranking run 100% locally.
+Recommendations never manufacture playable IDs: every item comes from the local library.
 """
 from __future__ import annotations
 
@@ -20,7 +22,15 @@ import unicodedata
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+try:
+    ZONE = ZoneInfo('Europe/Istanbul')
+except ZoneInfoNotFoundError:
+    ZONE = dt.timezone(dt.timedelta(hours=3))
+
+CINEMETA = 'https://v3-cinemeta.strem.io'
+NETFLIX = 'https://www.netflix.com/tudum/top10/turkey'
 TMDB_API = 'https://api.themoviedb.org/3'
 TMDB_IMG = 'https://image.tmdb.org/t/p/w780'
 TMDB_GENRES = {
@@ -36,12 +46,36 @@ GENRES = {
     'Horror': 'Korku', 'Mystery': 'Gizem', 'Romance': 'Romantik',
     'Sci-Fi': 'Bilim Kurgu', 'Thriller': 'Gerilim',
 }
+_EXTRA_GENRE_ALIASES = {
+    'dramalar': 'Drama',
+    'drama': 'Drama',
+    'komediler': 'Comedy',
+    'gerilimler': 'Thriller',
+    'korkular': 'Horror',
+    'korkufilmleri': 'Horror',
+    'belgeseller': 'Documentary',
+    'aksiyonvemacera': 'Action',
+    'bilimkurguvefantastik': 'Sci-Fi',
+    'bilimkurgu': 'Sci-Fi',
+    'scifi': 'Sci-Fi',
+    'sciencefiction': 'Sci-Fi',
+    'sucdizileri': 'Crime',
+    'sucfilmleri': 'Crime',
+    'romantikfilmler': 'Romance',
+    'romantikdiziler': 'Romance',
+    'ailevecocuk': 'Family',
+    'cocukveaile': 'Family',
+    'animasyonlar': 'Animation',
+    'anime': 'Animation',
+    'fantastikfilmler': 'Fantasy',
+    'gizemli': 'Mystery',
+}
 _lock = threading.Lock()
 _running = False
 _attempt = 0
 _memory = None
 TLS = ssl.create_default_context(cafile='/etc/ssl/cert.pem' if Path('/etc/ssl/cert.pem').exists() else None)
-_PREFIX_RE = re.compile(r'^\s*(?:tr|en|us|uk|de|vip)\s*[:|]\s*')
+_PREFIX_RE = re.compile(r'^\s*(?:tr|en|us|uk|de|fr|es|vip)\s*[:|]\s*')
 _TECH_RE = re.compile(r'\b(?:19|20)\d{2}\b|\b(?:tr|en|trsub|eng|turkce|altyazili|dublaj|uhd|fhd|hd|4k|1080p|720p)\b')
 _SPLIT_RE = re.compile(r'\s+[|/]\s+|\s+\([^)]*\)\s*')
 _NONALNUM_RE = re.compile(r'[^a-z0-9]')
@@ -64,8 +98,11 @@ def _tmdb_key(explicit=None):
     return (explicit or os.environ.get('MAVIE_TMDB_API_KEY') or os.environ.get('CINEVA_TMDB_API_KEY') or '').strip()
 
 
-def get_json(url, timeout=12):
-    request = urllib.request.Request(url, headers={'User-Agent': 'Mavie/3.0', 'Accept': 'application/json', 'Accept-Encoding': 'gzip'})
+def get(url, timeout=18):
+    request = urllib.request.Request(
+        url,
+        headers={'User-Agent': 'curl/8.7.1', 'Accept': '*/*', 'Accept-Encoding': 'gzip'},
+    )
     with urllib.request.urlopen(request, context=TLS, timeout=timeout) as response:
         try:
             raw = response.read(5 * 1024 * 1024 + 1)
@@ -77,7 +114,52 @@ def get_json(url, timeout=12):
             raw = gzip.decompress(raw)
         if len(raw) > 10 * 1024 * 1024:
             raise ValueError('Discovery response too large')
-        return json.loads(raw.decode('utf-8'))
+        return raw.decode('utf-8')
+
+
+def get_json(url, timeout=12):
+    return json.loads(get(url, timeout=timeout))
+
+
+def netflix_entries(page):
+    match = re.search(r"netflix\.reactContext\.models\.graphql\s*=\s*JSON\.parse\('(.*?)'\);", page, re.S)
+    if not match:
+        raise ValueError('Netflix chart format changed')
+    data = json.loads(re.sub(r"\\([\\'])", r'\1', match[1]))['data']
+    entries = {}
+    for value in data.values():
+        if not isinstance(value, dict) or not value.get('top10Video'):
+            continue
+        info, chart = value['top10Video'], value['top10']
+        parent = info.get('parentShow') or {}
+        title = parent.get('title') or info.get('title', '')
+        kind = 'series' if chart['category'] != 'MOVIES' else 'vod'
+        entry = {
+            'name': title,
+            'kind': kind,
+            'year': str(info.get('releaseYear') or ''),
+            'rank': chart['weeklyRank'],
+            'week': chart['weekEndDate'],
+            'netflixId': parent.get('videoId') or info.get('videoId'),
+            'source': 'netflix',
+        }
+        entries[kind, title, entry['week']] = entry
+    return list(entries.values())
+
+
+def localize_chart(entry):
+    try:
+        page = get('https://www.netflix.com/tr/title/' + str(entry['netflixId']))
+        blocks = re.findall(r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>', page, re.S)
+        for block in blocks:
+            info = json.loads(block)
+            if isinstance(info, dict) and info.get('name'):
+                entry['aliases'] = [info['name']]
+                entry['genre'] = info.get('genre', '')
+                break
+    except Exception:
+        pass
+    return entry
 
 
 def parse_tmdb_results(rows, media_type, page_offset=0):
@@ -117,40 +199,104 @@ def refresh(directory, api_key=None, language='tr-TR'):
     path = Path(directory) / 'discovery-public.json'
     key_value = _tmdb_key(api_key)
     try:
-        if not key_value:
-            return
+        now = dt.datetime.now(ZONE).date()
+        requests = [
+            (kind, catalog, extra)
+            for kind in ('movie', 'series')
+            for catalog, extra in [('top', ''), ('year', f'/genre={now.year}'), ('year', f'/genre={now.year - 1}')]
+        ]
+        requests += [
+            (kind, 'top', f'/genre={genre}')
+            for kind in ('movie', 'series')
+            for genre in ('Comedy', 'Drama', 'Action', 'Crime', 'Sci-Fi', 'Horror', 'Romance', 'Animation')
+        ]
+
+        def fetch_cinemeta(spec):
+            kind, catalog, extra = spec
+            data = json.loads(get(f'{CINEMETA}/catalog/{kind}/{catalog}{extra}.json'))
+            return kind, catalog, extra, data.get('metas', [])
+
         old = _memory or {}
-        metas = {m['id']: m for m in old.get('metas', []) if m.get('id')}
-        charts = []
-        week_date = dt.datetime.now(dt.timezone.utc).date().isoformat()
-        specs = [('movie', 'trending/movie/week'), ('tv', 'trending/tv/week'), ('movie', 'movie/popular'), ('tv', 'tv/popular')]
-
-        def fetch(spec):
-            mtype, endpoint = spec
-            qs = urllib.parse.urlencode({'api_key': key_value, 'language': language})
-            data = get_json(f'{TMDB_API}/{endpoint}?{qs}')
-            return mtype, endpoint, data.get('results', [])
-
+        metas = {m['id']: m for m in old.get('metas', []) if isinstance(m, dict) and m.get('id')}
         successes = 0
+        has_cinemeta = False
+        has_tmdb = False
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-            for future in [pool.submit(fetch, spec) for spec in specs]:
+            for future in [pool.submit(fetch_cinemeta, spec) for spec in requests]:
                 try:
-                    mtype, endpoint, rows = future.result()
-                    parsed = parse_tmdb_results(rows, mtype)
-                    for item in parsed:
+                    kind, catalog, extra, rows = future.result()
+                    for index, m in enumerate(rows):
+                        if not isinstance(m, dict) or not m.get('id') or not m.get('name'):
+                            continue
+                        item = dict(m)
+                        item['kind'] = 'vod' if kind == 'movie' else 'series'
+                        item['globalRank'] = (
+                            index + 1 if catalog == 'top' and not extra
+                            else metas.get(item['id'], {}).get('globalRank', 999)
+                        )
                         metas[item['id']] = item
-                        if endpoint.startswith('trending/'):
-                            charts.append({**item, 'rank': item['globalRank'], 'week': week_date})
                     successes += 1
+                    has_cinemeta = True
                 except Exception:
                     pass
-        if not successes:
+
+        charts = []
+        for url in (NETFLIX, NETFLIX + '/tv'):
+            try:
+                charts.extend(netflix_entries(get(url)))
+            except Exception:
+                pass
+        if charts:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+                charts = list(pool.map(localize_chart, charts))
+
+        if key_value:
+            week_date = now.isoformat()
+            specs = [
+                ('movie', 'trending/movie/week'),
+                ('tv', 'trending/tv/week'),
+                ('movie', 'movie/popular'),
+                ('tv', 'tv/popular'),
+            ]
+
+            def fetch_tmdb(spec):
+                mtype, endpoint = spec
+                qs = urllib.parse.urlencode({'api_key': key_value, 'language': language})
+                data = get_json(f'{TMDB_API}/{endpoint}?{qs}')
+                return mtype, endpoint, data.get('results', [])
+
+            tmdb_charts = []
+            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+                for future in [pool.submit(fetch_tmdb, spec) for spec in specs]:
+                    try:
+                        mtype, endpoint, rows = future.result()
+                        parsed = parse_tmdb_results(rows, mtype)
+                        for item in parsed:
+                            metas[item['id']] = item
+                            if endpoint.startswith('trending/'):
+                                tmdb_charts.append({**item, 'rank': item['globalRank'], 'week': week_date, 'source': 'tmdb'})
+                        successes += 1
+                        has_tmdb = True
+                    except Exception:
+                        pass
+            if not charts and tmdb_charts:
+                charts = tmdb_charts
+
+        if not successes and not charts:
             return
+        chart_source = (
+            'netflix' if any(c.get('source') == 'netflix' or c.get('netflixId') for c in charts)
+            else ('tmdb' if charts else old.get('chartSource', 'netflix'))
+        )
         result = {
-            'version': 2,
+            'version': 3,
             'updatedAt': time.time(),
             'metas': list(metas.values()),
             'charts': charts or old.get('charts', []),
+            'chartSource': chart_source,
+            'hasCinemeta': has_cinemeta or bool(old.get('hasCinemeta')),
+            'hasTmdb': has_tmdb or bool(old.get('hasTmdb')),
         }
         temp = path.with_suffix('.tmp')
         temp.write_text(json.dumps(result, ensure_ascii=False))
@@ -170,19 +316,33 @@ def snapshot(directory, enabled=True):
                 _memory = json.loads((Path(directory) / 'discovery-public.json').read_text())
             except (OSError, ValueError):
                 _memory = {}
-        if enabled and _tmdb_key() and time.time() - _memory.get('updatedAt', 0) > 21600 and not _running and time.time() - _attempt > 900:
+        if enabled and time.time() - _memory.get('updatedAt', 0) > 21600 and not _running and time.time() - _attempt > 900:
             _running = True
             _attempt = time.time()
             threading.Thread(target=refresh, args=(directory,), daemon=True).start()
         return dict(_memory)
 
 
-_genre_names = {key(k): k for k in GENRES} | {key(v): k for k, v in GENRES.items()}
+_genre_names = (
+    {key(k): k for k in GENRES}
+    | {key(v): k for k, v in GENRES.items()}
+    | _EXTRA_GENRE_ALIASES
+)
 
 
 @functools.lru_cache(maxsize=2000)
 def _genre_set(raw):
-    return frozenset(_genre_names.get(key(v), v.strip()) for v in re.split(r'[,/|]', raw) if v.strip())
+    out = []
+    seen = set()
+    for v in re.split(r'[,/|&]', raw):
+        part = v.strip()
+        if not part:
+            continue
+        canonical = _genre_names.get(key(part))
+        if canonical and canonical not in seen:
+            seen.add(canonical)
+            out.append(canonical)
+    return tuple(out)
 
 
 def genres(item):
@@ -191,7 +351,7 @@ def genres(item):
 
 
 def build(catalog, history, feed, today=None):
-    today = today or dt.datetime.now(dt.timezone.utc).date()
+    today = today or dt.datetime.now(ZONE).date()
     candidates = [dict(i) for i in catalog if i['kind'] in ('vod', 'series')]
     index = {}
     for item in candidates:
@@ -214,7 +374,10 @@ def build(catalog, history, feed, today=None):
             if item:
                 options[item['id']] = item
         year = str(meta.get('year') or meta.get('releaseInfo') or '')[:4]
-        valid = [i for i in options.values() if not year.isdigit() or not str(i.get('year', '')).isdigit() or i['year'] == year or meta['kind'] == 'series']
+        valid = [
+            i for i in options.values()
+            if not year.isdigit() or not str(i.get('year', '')).isdigit() or i['year'] == year or meta['kind'] == 'series'
+        ]
         return max(valid, key=lambda i: (bool(i.get('poster')), i.get('rating', 0)), default=None)
 
     for meta in [*feed.get('metas', []), *feed.get('charts', [])]:
@@ -266,7 +429,11 @@ def build(catalog, history, feed, today=None):
             seeds.append(item)
 
     def score(i):
-        return sum(weights.get(g, 0) for g in genres(i)) + min(10, float(i.get('rating') or 0)) * .08 + 1 / (1 + float(i.get('globalRank', 999)))
+        return (
+            sum(weights.get(g, 0) for g in genres(i))
+            + min(10, float(i.get('rating') or 0)) * .08
+            + 1 / (1 + float(i.get('globalRank', 999)))
+        )
 
     shelves = []
 
@@ -282,8 +449,12 @@ def build(catalog, history, feed, today=None):
     ]
     fresh.sort(key=lambda i: (i.get('releaseDate') or i.get('year', ''), -i.get('globalRank', 999)), reverse=True)
 
-    week = max((e.get('week', '') for e in feed.get('charts', [])), default='')
+    charts = feed.get('charts', [])
+    week = max((e.get('week', '') for e in charts), default='')
     chart_fresh = bool(week and 0 <= (today - dt.date.fromisoformat(week)).days <= 21)
+    is_tmdb_chart = feed.get('chartSource') == 'tmdb' or (
+        bool(charts) and all(c.get('source') == 'tmdb' for c in charts)
+    )
 
     ranked = sorted(candidates, key=score, reverse=True)
     personal_by_kind = {'vod': [], 'series': []}
@@ -300,28 +471,48 @@ def build(catalog, history, feed, today=None):
             if len(bucket) < 20:
                 bucket.append(i)
 
+    top_genre_keys = sorted(weights, key=lambda g: weights[g], reverse=True)
+    top_genre_labels = [GENRES[g] for g in top_genre_keys if g in GENRES][:3]
+
     for kind, label in [('vod', 'Filmler'), ('series', 'Diziler')]:
         if chart_fresh:
             rows, used = [], set()
-            for meta in sorted(feed.get('charts', []), key=lambda m: m.get('rank', 99)):
+            for meta in sorted(charts, key=lambda m: m.get('rank', 99)):
                 if meta['kind'] != kind or meta.get('week') != week:
                     continue
                 item = match(meta)
                 if item and item['id'] not in used:
                     rows.append(item)
                     used.add(item['id'])
-            shelf('trending-' + kind, 'Güncel Popüler ' + label, rows, 'Haftalık trend listesi · ' + week)
+            chart_subtitle = (
+                'Haftalık trend listesi · ' + week
+                if is_tmdb_chart
+                else 'Netflix Türkiye Top 10 · ' + week + ' haftası'
+            )
+            shelf('turkey-' + kind, 'Türkiye’de Popüler ' + label, rows, chart_subtitle)
         shelf('new-' + kind, 'Yeni Çıkan ' + label, [i for i in fresh if i['kind'] == kind], 'Yayın yılı ve çıkış tarihine göre')
+        if seeds:
+            genre_hint = (' · ' + ', '.join(top_genre_labels[:2])) if top_genre_labels else ''
+            personal_sub = seeds[0]['name'] + ' ve izleme geçmişine göre' + genre_hint
+        else:
+            personal_sub = 'Türler ve güncel keşif listeleriyle'
         shelf(
             'for-you-' + kind,
             'Sana Özel ' + label if weights else 'Keşfet: ' + label,
             personal_by_kind[kind],
-            (seeds[0]['name'] + ' ve izleme geçmişine göre') if seeds else 'Türler ve güncel seçkilerle',
+            personal_sub,
         )
 
-    for genre, label in GENRES.items():
+    # Order genre shelves dynamically by the user's watched genre affinity,
+    # keeping canonical GENRES order as tie-breaker for unwatched genres.
+    ordered_genres = sorted(
+        GENRES.items(),
+        key=lambda pair: (-weights.get(pair[0], 0.0), list(GENRES).index(pair[0])),
+    )
+    for genre, label in ordered_genres:
+        promoted_sub = 'İzleme geçmişine göre öne çıkarıldı' if weights.get(genre, 0.0) > 0 else ''
         for kind, name in [('vod', 'Filmleri'), ('series', 'Dizileri')]:
-            shelf('genre-' + kind + '-' + genre, label + ' ' + name, by_genre.get((kind, genre), []))
+            shelf('genre-' + kind + '-' + genre, label + ' ' + name, by_genre.get((kind, genre), []), promoted_sub)
 
     films = [i for i in fresh if i['kind'] == 'vod' and i['id'] not in watched and i.get('poster')][:4]
     shows = [i for i in fresh if i['kind'] == 'series' and i['id'] not in watched and i.get('poster')][:4]
@@ -331,5 +522,17 @@ def build(catalog, history, feed, today=None):
         fallback_series = [i for i in ranked if i['kind'] == 'series' and i.get('poster')][:4]
         showcase = [i for pair in __import__('itertools').zip_longest(fallback_vod, fallback_series) for i in pair if i]
 
-    sources = [{'name': 'TMDB', 'url': 'https://www.themoviedb.org'}] if feed.get('metas') or feed.get('charts') else []
-    return {'shelves': shelves, 'showcase': showcase, 'updatedAt': feed.get('updatedAt'), 'sources': sources, 'personalized': bool(weights)}
+    sources = [
+        {'name': 'Cinemeta', 'url': CINEMETA + '/manifest.json'},
+        {'name': 'Netflix Türkiye Top 10', 'url': NETFLIX},
+    ]
+    if feed.get('hasTmdb') or is_tmdb_chart:
+        sources.append({'name': 'TMDB', 'url': 'https://www.themoviedb.org'})
+    return {
+        'shelves': shelves,
+        'showcase': showcase,
+        'updatedAt': feed.get('updatedAt'),
+        'sources': sources,
+        'personalized': bool(weights),
+        'topGenres': top_genre_labels,
+    }

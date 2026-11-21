@@ -19,10 +19,11 @@ public struct HomeView: View {
     }
 
     private var spotlightItem: MediaItem? {
-        store.continueWatchingItems.first ?? store.recentMovies.first ?? store.items.first
+        store.discoveryResult.showcase.first ?? store.continueWatchingItems.first ?? store.recentMovies.first ?? store.items.first
     }
 
     public var body: some View {
+        let discovery = store.discoveryResult
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
@@ -42,19 +43,29 @@ public struct HomeView: View {
                     }
 
                     if !store.continueWatchingItems.isEmpty {
-                        carouselSection(title: "İzlemeye Devam Et", items: Array(store.continueWatchingItems.prefix(12)))
+                        carouselSection(title: "İzlemeye Devam Et", subtitle: "", items: Array(store.continueWatchingItems.prefix(12)))
+                    }
+
+                    ForEach(discovery.shelves) { shelf in
+                        carouselSection(title: shelf.title, subtitle: shelf.subtitle, items: shelf.items)
                     }
 
                     if !store.favoriteItems.isEmpty {
-                        carouselSection(title: "Favorilerim", items: Array(store.favoriteItems.prefix(12)))
+                        carouselSection(title: "Favorilerim", subtitle: "", items: Array(store.favoriteItems.prefix(12)))
                     }
 
                     if !store.recentMovies.isEmpty {
-                        carouselSection(title: "Filmler", items: Array(store.recentMovies.prefix(12)))
+                        carouselSection(title: "Filmler", subtitle: "", items: Array(store.recentMovies.prefix(12)))
                     }
 
                     if !store.recentSeries.isEmpty {
-                        carouselSection(title: "Diziler", items: Array(store.recentSeries.prefix(12)))
+                        carouselSection(title: "Diziler", subtitle: "", items: Array(store.recentSeries.prefix(12)))
+                    }
+
+                    if !discovery.shelves.isEmpty {
+                        Text("Keşif: Cinemeta ve Netflix Türkiye Top 10 listeleri yerel kütüphanen ve izleme geçmişinle eşleştirilir.")
+                            .font(.caption2)
+                            .foregroundStyle(MavieTheme.muted)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -63,6 +74,9 @@ public struct HomeView: View {
             .background(MavieTheme.cinemaBackdrop.ignoresSafeArea())
             .navigationTitle("Ana Sayfa")
             .navigationBarTitleDisplayMode(.inline)
+            .task(id: store.sourceMode) {
+                await store.refreshDiscoveryIfNeeded()
+            }
             .navigationDestination(isPresented: $showSurpriseSeriesDetail) {
                 if let seriesItem = surpriseSeriesItem {
                     DetailView(store: store, item: seriesItem, onPlay: onPlay)
@@ -212,11 +226,18 @@ public struct HomeView: View {
         )
     }
 
-    private func carouselSection(title: String, items: [MediaItem]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.title3.weight(.bold))
-                .foregroundStyle(.white)
+    private func carouselSection(title: String, subtitle: String = "", items: [MediaItem]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.white)
+                if !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(MavieTheme.muted)
+                }
+            }
 
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 14) {

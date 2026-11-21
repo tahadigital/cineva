@@ -4,6 +4,7 @@ import android.content.Context
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Semaphore
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
@@ -15,12 +16,38 @@ import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
 import kotlin.math.pow
 
+private val IstanbulZone: ZoneId = ZoneId.of("Europe/Istanbul")
+
 internal val discoveryGenres = linkedMapOf(
     "Action" to "Aksiyon", "Adventure" to "Macera", "Animation" to "Animasyon",
     "Comedy" to "Komedi", "Crime" to "Suç", "Documentary" to "Belgesel",
     "Drama" to "Dram", "Family" to "Aile", "Fantasy" to "Fantastik",
     "Horror" to "Korku", "Mystery" to "Gizem", "Romance" to "Romantik",
     "Sci-Fi" to "Bilim Kurgu", "Thriller" to "Gerilim",
+)
+private val extraGenreAliases = mapOf(
+    "dramalar" to "Drama",
+    "drama" to "Drama",
+    "komediler" to "Comedy",
+    "gerilimler" to "Thriller",
+    "korkular" to "Horror",
+    "korkufilmleri" to "Horror",
+    "belgeseller" to "Documentary",
+    "aksiyonvemacera" to "Action",
+    "bilimkurguvefantastik" to "Sci-Fi",
+    "bilimkurgu" to "Sci-Fi",
+    "scifi" to "Sci-Fi",
+    "sciencefiction" to "Sci-Fi",
+    "sucdizileri" to "Crime",
+    "sucfilmleri" to "Crime",
+    "romantikfilmler" to "Romance",
+    "romantikdiziler" to "Romance",
+    "ailevecocuk" to "Family",
+    "cocukveaile" to "Family",
+    "animasyonlar" to "Animation",
+    "anime" to "Animation",
+    "fantastikfilmler" to "Fantasy",
+    "gizemli" to "Mystery",
 )
 private val tmdbGenres = mapOf(
     28 to "Action", 12 to "Adventure", 16 to "Animation", 35 to "Comedy", 80 to "Crime",
@@ -32,18 +59,26 @@ private val discoveryPrefix = Regex("^\\s*(?:tr|en|us|uk|de|fr|es|vip)\\s*[:|]\\
 private val discoveryTechnicalLabels = Regex("\\b(?:19|20)\\d{2}\\b|\\b(?:tr|en|trsub|eng|turkce|altyazili|dublaj|uhd|fhd|hd|4k|1080p|720p)\\b")
 private val discoveryNonAlphanumeric = Regex("[^a-z0-9]")
 private val discoveryTitleSeparator = Regex("\\s+[|/]\\s+|\\s+\\([^)]*\\)\\s*")
-private val discoveryGenreSeparator = Regex("[,/|]")
+private val discoveryGenreSeparator = Regex("[,/|&]")
+
 internal fun discoveryKey(value: String): String = fold(value)
     .replace(discoveryPrefix, "")
     .replace(discoveryTechnicalLabels, " ")
     .replace(discoveryNonAlphanumeric, "")
-private fun discoveryTitles(name: String) = (listOf(name) + name.split(discoveryTitleSeparator)).map(::discoveryKey).filter { it.length >= 2 }.toSet()
+
+private fun discoveryTitles(name: String) =
+    (listOf(name) + name.split(discoveryTitleSeparator)).map(::discoveryKey).filter { it.length >= 2 }.toSet()
+
 private val discoveryGenreAliases = buildMap<String, String> {
     for ((english, turkish) in discoveryGenres) {
         putIfAbsent(discoveryKey(english), english)
         putIfAbsent(discoveryKey(turkish), english)
     }
+    for ((alias, english) in extraGenreAliases) {
+        putIfAbsent(alias, english)
+    }
 }
+
 internal fun discoveryGenreSet(value: String): Set<String> {
     if (value.isBlank()) return emptySet()
     return value.split(discoveryGenreSeparator).mapNotNull { discoveryGenreAliases[discoveryKey(it)] }.toSet()
@@ -52,10 +87,15 @@ internal fun discoveryGenreSet(value: String): Set<String> {
 data class RecommendationShelf(val id: String, val title: String, val subtitle: String, val items: List<MediaItem>)
 data class DiscoveryResult(val shelves: List<RecommendationShelf> = emptyList(), val showcase: List<MediaItem> = emptyList(), val updatedAt: Long = 0)
 
-/** Local discovery & optional official TMDB feed. Never scrapes third-party sites. */
+/** Downloads only public discovery catalogs (Cinemeta + Netflix Türkiye Top 10 + optional TMDB).
+ * Viewing history and IPTV credentials never leave the device. */
 internal class DiscoveryFeed(context: Context, private val tmdbApiKey: String = "") {
     private val file = File(context.filesDir, "discovery-public.json")
-    private val client = OkHttpClient.Builder().connectTimeout(12, TimeUnit.SECONDS).readTimeout(18, TimeUnit.SECONDS).callTimeout(25, TimeUnit.SECONDS).build()
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(12, TimeUnit.SECONDS)
+        .readTimeout(18, TimeUnit.SECONDS)
+        .callTimeout(25, TimeUnit.SECONDS)
+        .build()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _updates = MutableStateFlow(0L)
     val updates = _updates.asStateFlow()
@@ -65,14 +105,16 @@ internal class DiscoveryFeed(context: Context, private val tmdbApiKey: String = 
 
     @Synchronized fun snapshot(): JSONObject {
         val now = System.currentTimeMillis()
-        if (tmdbApiKey.isNotBlank() && now - data.optDouble("updatedAt", 0.0) * 1000 > 6 * 3600000 && job?.isActive != true && now - attempt > 900000) {
+        if (now - data.optDouble("updatedAt", 0.0) * 1000 > 6 * 3600000 && job?.isActive != true && now - attempt > 900000) {
             attempt = now
             job = scope.launch { refresh() }
         }
         return data
     }
 
-    private fun get(url: String): String = client.newCall(Request.Builder().url(url).header("User-Agent", "Mavie/2.1").build()).execute().use {
+    private fun get(url: String): String = client.newCall(
+        Request.Builder().url(url).header("User-Agent", "Mozilla/5.0 Mavie/2.2").build()
+    ).execute().use {
         if (!it.isSuccessful) error("Discovery unavailable")
         val body = it.body ?: error("Empty discovery")
         body.byteStream().use { stream ->
@@ -89,39 +131,157 @@ internal class DiscoveryFeed(context: Context, private val tmdbApiKey: String = 
     }
 
     private suspend fun refresh() = coroutineScope {
-        if (tmdbApiKey.isBlank()) return@coroutineScope
-        val week = LocalDate.now(ZoneId.of("UTC")).toString()
-        val specs = listOf("movie" to "trending/movie/week", "tv" to "trending/tv/week")
-        val results = specs.map { (type, endpoint) ->
+        val year = LocalDate.now(IstanbulZone).year
+        val specs = listOf("movie", "series").flatMap { kind ->
+            listOf(Triple(kind, "top", ""), Triple(kind, "year", "/genre=$year"), Triple(kind, "year", "/genre=${year - 1}")) +
+                listOf("Comedy", "Drama", "Action", "Crime", "Sci-Fi", "Horror", "Romance", "Animation")
+                    .map { Triple(kind, "top", "/genre=$it") }
+        }
+        val gate = Semaphore(4)
+        val cinemetaResults = specs.map { (kind, catalog, extra) ->
             async {
-                runCatching {
-                    val json = JSONObject(get("https://api.themoviedb.org/3/$endpoint?api_key=$tmdbApiKey&language=tr-TR"))
-                    type to json.optJSONArray("results")
-                }.getOrNull()
+                gate.acquire()
+                try {
+                    runCatching {
+                        Triple(
+                            kind,
+                            catalog == "top" && extra.isEmpty(),
+                            JSONObject(get("https://v3-cinemeta.strem.io/catalog/$kind/$catalog$extra.json")).getJSONArray("metas"),
+                        )
+                    }.getOrNull()
+                } finally {
+                    gate.release()
+                }
             }
         }.awaitAll().filterNotNull()
-        val metas = JSONArray()
-        val charts = JSONArray()
-        for ((type, rows) in results) {
-            if (rows == null) continue
+
+        val metas = linkedMapOf<String, JSONObject>()
+        data.optJSONArray("metas")?.let { a ->
+            for (i in 0 until a.length()) a.optJSONObject(i)?.let { metas[it.optString("id")] = it }
+        }
+        for ((kind, top, rows) in cinemetaResults) {
             for (i in 0 until rows.length()) {
-                val row = rows.optJSONObject(i) ?: continue
-                val id = row.optLong("id")
-                if (id <= 0) continue
-                val parsed = normalizeTmdbItem(row, type, i + 1, week)
-                metas.put(parsed)
-                charts.put(parsed)
+                val raw = rows.optJSONObject(i) ?: continue
+                val id = raw.optString("id")
+                if (id.isBlank()) continue
+                val m = JSONObject()
+                for (key in listOf("id", "imdb_id", "moviedb_id", "name", "genres", "genre", "year", "releaseInfo", "released", "poster", "background")) {
+                    if (raw.has(key)) m.put(key, raw.opt(key))
+                }
+                m.put("kind", if (kind == "movie") "vod" else "series")
+                m.put("globalRank", if (top) i + 1 else metas[id]?.optInt("globalRank", 999) ?: 999)
+                metas[id] = m
             }
         }
-        if (metas.length() == 0) return@coroutineScope
-        val updated = JSONObject().put("version", 2).put("updatedAt", System.currentTimeMillis() / 1000.0)
-            .put("metas", metas).put("charts", charts)
+
+        val charts = JSONArray()
+        for (url in listOf("https://www.netflix.com/tudum/top10/turkey", "https://www.netflix.com/tudum/top10/turkey/tv")) {
+            runCatching { parseNetflix(get(url)) }.getOrNull()?.let { a ->
+                for (i in 0 until a.length()) charts.put(a.getJSONObject(i))
+            }
+        }
+        val localizedCharts = (0 until charts.length()).map { index ->
+            async {
+                gate.acquire()
+                try {
+                    val entry = charts.getJSONObject(index)
+                    runCatching {
+                        val html = get("https://www.netflix.com/tr/title/${entry.optLong("netflixId")}")
+                        val block = Regex("""<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>""", RegexOption.DOT_MATCHES_ALL)
+                            .find(html)?.groupValues?.get(1)
+                        if (block != null) {
+                            val info = JSONObject(block)
+                            if (info.optString("name").isNotBlank()) {
+                                entry.put("aliases", JSONArray().put(info.optString("name")))
+                            }
+                            if (info.optString("genre").isNotBlank()) {
+                                entry.put("genre", info.optString("genre"))
+                            }
+                        }
+                    }
+                    entry
+                } finally {
+                    gate.release()
+                }
+            }
+        }.awaitAll()
+
+        val tmdbCharts = mutableListOf<JSONObject>()
+        if (tmdbApiKey.isNotBlank()) {
+            val week = LocalDate.now(IstanbulZone).toString()
+            val tmdbResults = listOf("movie" to "trending/movie/week", "tv" to "trending/tv/week").map { (type, endpoint) ->
+                async {
+                    runCatching {
+                        val json = JSONObject(get("https://api.themoviedb.org/3/$endpoint?api_key=$tmdbApiKey&language=tr-TR"))
+                        type to json.optJSONArray("results")
+                    }.getOrNull()
+                }
+            }.awaitAll().filterNotNull()
+            for ((type, rows) in tmdbResults) {
+                if (rows == null) continue
+                for (i in 0 until rows.length()) {
+                    val row = rows.optJSONObject(i) ?: continue
+                    val id = row.optLong("id")
+                    if (id <= 0) continue
+                    val parsed = normalizeTmdbItem(row, type, i + 1, week)
+                    metas[parsed.optString("id")] = parsed
+                    tmdbCharts.add(parsed)
+                }
+            }
+        }
+
+        val finalCharts = when {
+            localizedCharts.isNotEmpty() -> JSONArray(localizedCharts)
+            tmdbCharts.isNotEmpty() -> JSONArray(tmdbCharts)
+            else -> data.optJSONArray("charts") ?: JSONArray()
+        }
+        val chartSource = when {
+            localizedCharts.isNotEmpty() -> "netflix"
+            tmdbCharts.isNotEmpty() -> "tmdb"
+            else -> data.optString("chartSource", "netflix")
+        }
+        if (cinemetaResults.isEmpty() && localizedCharts.isEmpty() && tmdbCharts.isEmpty()) return@coroutineScope
+        val updated = JSONObject()
+            .put("version", 3)
+            .put("updatedAt", System.currentTimeMillis() / 1000.0)
+            .put("metas", JSONArray(metas.values.toList()))
+            .put("charts", finalCharts)
+            .put("chartSource", chartSource)
         val temp = File(file.path + ".tmp")
         temp.writeText(updated.toString())
         if (!temp.renameTo(file)) return@coroutineScope
         data = updated
         _updates.value = System.currentTimeMillis()
     }
+}
+
+internal fun parseNetflix(html: String): JSONArray {
+    val raw = Regex("""netflix\.reactContext\.models\.graphql\s*=\s*JSON\.parse\('(.*?)'\);""", RegexOption.DOT_MATCHES_ALL)
+        .find(html)?.groupValues?.get(1) ?: error("Chart format changed")
+    val decoded = raw.replace(Regex("""\\([\\'])""")) { it.groupValues[1] }
+    val data = JSONObject(decoded).getJSONObject("data")
+    val result = JSONArray()
+    val seen = hashSetOf<Triple<String, String, String>>()
+    for (key in data.keys()) {
+        val value = data.optJSONObject(key) ?: continue
+        val info = value.optJSONObject("top10Video") ?: continue
+        val chart = value.optJSONObject("top10") ?: continue
+        val kind = if (chart.optString("category") == "MOVIES") "vod" else "series"
+        val title = info.optJSONObject("parentShow")?.optString("title")?.ifBlank { null } ?: info.optString("title")
+        val week = chart.optString("weekEndDate")
+        if (!seen.add(Triple(kind, title, week))) continue
+        result.put(
+            JSONObject()
+                .put("kind", kind)
+                .put("name", title)
+                .put("year", info.optInt("releaseYear").takeIf { it > 0 }?.toString().orEmpty())
+                .put("rank", chart.optInt("weeklyRank"))
+                .put("week", week)
+                .put("netflixId", info.optJSONObject("parentShow")?.optLong("videoId")?.takeIf { it > 0 } ?: info.optLong("videoId"))
+                .put("source", "netflix")
+        )
+    }
+    return result
 }
 
 internal fun normalizeTmdbItem(row: JSONObject, mediaType: String, rank: Int = 999, week: String = ""): JSONObject {
@@ -145,13 +305,14 @@ internal fun normalizeTmdbItem(row: JSONObject, mediaType: String, rank: Int = 9
         .put("globalRank", rank)
         .put("rank", rank)
         .put("week", week)
+        .put("source", "tmdb")
 }
 
 internal fun buildDiscovery(
     catalog: List<MediaItem>,
     history: List<MediaItem>,
     feed: JSONObject,
-    today: LocalDate = LocalDate.now(ZoneId.of("UTC")),
+    today: LocalDate = LocalDate.now(IstanbulZone),
     checkCancelled: () -> Unit = {},
 ): DiscoveryResult {
     checkCancelled()
@@ -187,7 +348,7 @@ internal fun buildDiscovery(
             val g = meta.optJSONArray("genres")?.let { a -> (0 until a.length()).joinToString(",") { a.optString(it) } }
                 ?: meta.optString("genre")
             if (discoveryGenreSet(g).isNotEmpty()) extraGenres[item.id] = discoveryGenreSet(g).joinToString(",")
-            meta.optString("released").takeIf { it.length >= 10 }?.let { releaseDates[item.id] = it.take(10) }
+            meta.optString("released").takeIf { it.length >= 10 && it != "null" }?.let { releaseDates[item.id] = it.take(10) }
             meta.optInt("globalRank", 0).takeIf { it > 0 }?.let { ranks[item.id] = it }
         }
     }
@@ -216,7 +377,7 @@ internal fun buildDiscovery(
         if ((p?.positionSeconds ?: 0.0) < 60 && p?.completed != true && !entry.isFavorite) continue
         var affinity = 1.0 + minOf(1.0, (p?.positionSeconds ?: 0.0) / maxOf(1.0, p?.durationSeconds ?: 0.0)) + if (entry.isFavorite) 2.0 else 0.0
         val days = p?.updatedAt?.takeIf { it > 0 }?.let {
-            val d = java.time.Instant.ofEpochMilli(it).atZone(ZoneId.of("UTC")).toLocalDate()
+            val d = java.time.Instant.ofEpochMilli(it).atZone(IstanbulZone).toLocalDate()
             ChronoUnit.DAYS.between(d, today).coerceAtLeast(0).toDouble()
         } ?: 30.0
         affinity *= 0.5.pow(days / 90.0)
@@ -235,8 +396,12 @@ internal fun buildDiscovery(
     }.sortedWith(compareByDescending<MediaItem> { releaseDates[it.id] ?: it.year }.thenBy { ranks[it.id] ?: 999 })
 
     val charts = feed.optJSONArray("charts") ?: JSONArray()
-    val latestWeek = (0 until charts.length()).mapNotNull { charts.optJSONObject(it)?.optString("week")?.takeIf { w -> w.length >= 10 } }.maxOrNull()
+    val chartObjs = (0 until charts.length()).mapNotNull { charts.optJSONObject(it) }
+    val latestWeek = chartObjs.mapNotNull { it.optString("week").takeIf { w -> w.length >= 10 } }.maxOrNull()
     val chartFresh = latestWeek != null && runCatching { ChronoUnit.DAYS.between(LocalDate.parse(latestWeek), today) in 0..21 }.getOrDefault(false)
+    val isTmdbChart = feed.optString("chartSource") == "tmdb" ||
+        (chartObjs.isNotEmpty() && chartObjs.all { it.optString("source") == "tmdb" })
+
     val ranked = pool.sortedByDescending(::score)
     val personalByKind = hashMapOf(MediaKind.VOD to mutableListOf<MediaItem>(), MediaKind.SERIES to mutableListOf<MediaItem>())
     val byGenre = HashMap<Pair<MediaKind, String>, MutableList<MediaItem>>()
@@ -253,6 +418,7 @@ internal fun buildDiscovery(
         }
     }
 
+    val topGenreLabels = weights.entries.sortedByDescending { it.value }.mapNotNull { discoveryGenres[it.key] }.take(2)
     val shelves = mutableListOf<RecommendationShelf>()
     fun shelf(id: String, title: String, subtitle: String, rows: List<MediaItem>) {
         if (rows.isNotEmpty()) shelves.add(RecommendationShelf(id, title, subtitle, rows.take(20)))
@@ -261,23 +427,29 @@ internal fun buildDiscovery(
         checkCancelled()
         if (chartFresh) {
             val used = hashSetOf<String>()
-            val rows = (0 until charts.length()).mapNotNull { charts.optJSONObject(it) }
+            val rows = chartObjs
                 .filter { it.optString("week") == latestWeek && ((it.optString("kind") == "series") == (kind == MediaKind.SERIES)) }
                 .sortedBy { it.optInt("rank", 99) }
                 .mapNotNull { meta -> match(meta)?.takeIf { used.add(it.id) } }
-            shelf("trending-${kind.key}", "Güncel Popüler $label", "Haftalık trend listesi · $latestWeek", rows)
+            val chartSubtitle = if (isTmdbChart) "Haftalık trend listesi · $latestWeek" else "Netflix Türkiye Top 10 · $latestWeek haftası"
+            shelf("turkey-${kind.key}", "Türkiye’de Popüler $label", chartSubtitle, rows)
         }
         shelf("new-${kind.key}", "Yeni Çıkan $label", "Yayın yılı ve çıkış tarihine göre", fresh.filter { it.kind == kind })
+        val genreHint = if (topGenreLabels.isNotEmpty()) " · ${topGenreLabels.joinToString(", ")}" else ""
         shelf(
             "for-you-${kind.key}",
             if (weights.isNotEmpty()) "Sana Özel $label" else "Keşfet: $label",
-            seeds.firstOrNull()?.let { "${it.name} ve izleme geçmişine göre" } ?: "Türler ve güncel seçkilerle",
+            seeds.firstOrNull()?.let { "${it.name} ve izleme geçmişine göre$genreHint" } ?: "Türler ve güncel keşif listeleriyle",
             personalByKind[kind].orEmpty(),
         )
     }
-    for ((genre, label) in discoveryGenres) {
+    val orderedGenres = discoveryGenres.entries.sortedWith(
+        compareByDescending<Map.Entry<String, String>> { weights[it.key] ?: 0.0 }
+    )
+    for ((genre, label) in orderedGenres) {
+        val promoted = if ((weights[genre] ?: 0.0) > 0.0) "İzleme geçmişine göre öne çıkarıldı" else ""
         for ((kind, name) in listOf(MediaKind.VOD to "Filmleri", MediaKind.SERIES to "Dizileri")) {
-            shelf("genre-${kind.key}-$genre", "$label $name", "", byGenre[kind to genre].orEmpty())
+            shelf("genre-${kind.key}-$genre", "$label $name", promoted, byGenre[kind to genre].orEmpty())
         }
     }
     val films = fresh.filter { it.kind == MediaKind.VOD && it.id !in watched && it.poster.isNotBlank() }.take(4)
@@ -290,5 +462,5 @@ internal fun buildDiscovery(
             shows.getOrNull(i)?.let(::add)
         }
     }
-    return DiscoveryResult(shelves, showcase, feed.optDouble("updatedAt", 0.0).toLong())
+    return DiscoveryResult(shelves, showcase, (feed.optDouble("updatedAt", 0.0) * 1000).toLong())
 }

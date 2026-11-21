@@ -364,7 +364,7 @@ private fun HomeContent(
             MediaRow(shelf.title, shelf.items, onMedia, onFavorite, null, subtitle = shelf.subtitle)
         }
         if (state.recommendations.isNotEmpty()) item("discovery-credit") {
-            Text("Keşif: Kişisel kütüphane ve izleme geçmişin üzerinden hazırlanır", Modifier.padding(horizontal = 20.dp), color = Color.Gray, fontSize = 11.sp)
+            Text("Keşif: Cinemeta ve Netflix Türkiye Top 10 listeleri yerel kütüphanen ve izleme geçmişinle eşleştirilir", Modifier.padding(horizontal = 20.dp), color = Color.Gray, fontSize = 11.sp)
         }
         if (state.items.isNotEmpty()) item("movies") {
             MediaRow("Kütüphanene Yeni Eklenen Filmler", state.items, onMedia, onFavorite, { onTab(LibraryTab.FILMS) })

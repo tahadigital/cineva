@@ -19,7 +19,8 @@ Hazır kurulum dosyalarını her zaman en güncel haliyle ücretsiz olarak GitHu
 - **4 Platform Desteği:** Windows Masaüstü, Android (Telefon & Tablet 2-panelli arayüz), macOS (Native `.app`/`.dmg`) ve iOS / iPadOS (Native SwiftUI + AVKit).
 - **Gelişmiş Oynatıcı:** LibVLC / AVKit / hls.js / FFmpeg motoru, PiP (resim içinde resim), oynatma hızı, ekran oranı, uyku zamanlayıcısı, çoklu ses/altyazı seçimi ve zaman kaydırma.
 - **Yerel Medya & Sınırsız Profiller:** Bilgisayardaki yerel video klasörlerini tarama, sürükle-bırak oynatma, PBKDF2 PIN korumalı sınırsız profiller ve Çocuk Modu.
-- **2×2 Çoklu Ekran & Canlı EPG / Spor Rehberi:** Web/Masaüstü arayüzünde aynı anda 4 canlı yayını tek ızgarada izleme ve XMLTV EPG kanal eşleştirme.
+- **Keşif, Netflix Türkiye Top 10 & Kişisel Öneri Algoritması:** Cinemeta + Netflix Türkiye Top 10 listelerini yerel kütüphanenle otomatik eşleştirir; izleme sürene, tamamlama oranına ve favorilerine göre *Sana Özel* rafları üretir ve sevdiğin tür kategorilerini otomatik öne çıkarır (izleme geçmişi cihaz dışına çıkmaz).
+- **2×2 Çoklu Ekran & Canlı Spor Ekranı / XMLTV EPG:** Web/Masaüstü arayüzünde aynı anda 4 canlı yayını tek ızgarada izleme; tüm 4 platformda sıfır ayar ile çalışan **Spor Ekranı** maç rehberi, kanal eşleştirme ve isteğe bağlı XMLTV EPG desteği.
 - **Yerel Ağ (LAN) Eşitleme & JSON Yedek:** Aynı Wi-Fi ağındaki cihazlar arasında 6 haneli kodla veya JSON dosyasıyla çevrimdışı kütüphane aktarımı.
 
 ## Kaynaktan Çalıştırma

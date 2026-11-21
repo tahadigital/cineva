@@ -345,4 +345,51 @@ final class MavieIOSTests: XCTestCase {
         XCTAssertEqual(store.progressByItem["vod:demo_bbb"]?.positionSeconds, 42.0)
         XCTAssertEqual(store.playlists.first(where: { $0.id == "pl_legacy" })?.itemIds, ["vod:demo_bbb"])
     }
+
+    func testDiscoveryEngineNetflixTop10AndPersonalizedGenreOrder() {
+        let watchedShow = MediaItem(id: "series:gibi", providerId: "gibi", name: "Gibi", kind: .series, year: "2021", genres: "Komedi")
+        let comedyMovie = MediaItem(id: "vod:comedy", providerId: "c1", name: "New Comedy |2026| TR", kind: .vod, poster: "https://example.com/c.jpg", year: "2026", rating: 7.5)
+        let horrorMovie = MediaItem(id: "vod:horror", providerId: "h1", name: "New Horror (2026)", kind: .vod, poster: "https://example.com/h.jpg", year: "2026", rating: 8.5)
+        let feed = DiscoveryFeedPayload(
+            updatedAt: 1_793_900_000,
+            metas: [
+                DiscoveryFeedEntry(id: "tt1", kind: "vod", name: "New Comedy", genres: ["Comedy"], year: "2026", released: "2026-10-01", globalRank: 5),
+                DiscoveryFeedEntry(id: "tt2", kind: "vod", name: "New Horror", genres: ["Horror"], year: "2026", released: "2026-10-02", globalRank: 1),
+            ],
+            charts: [
+                DiscoveryFeedEntry(id: "nf1", kind: "vod", name: "New Comedy", year: "2026", rank: 1, week: "2026-11-01", netflixId: 123, source: "netflix")
+            ]
+        )
+        let cal = Calendar(identifier: .gregorian)
+        let today = cal.date(from: DateComponents(timeZone: DiscoveryEngine.istanbulTimeZone, year: 2026, month: 11, day: 6))!
+        let progress = [
+            "series:gibi": WatchProgress(itemId: "series:gibi", positionSeconds: 1200, durationSeconds: 1800, completed: false, updatedAt: today.timeIntervalSince1970 - 86400)
+        ]
+        let result = DiscoveryEngine.build(
+            catalog: [watchedShow, comedyMovie, horrorMovie],
+            progressByItem: progress,
+            favoriteIds: [],
+            feed: feed,
+            today: today
+        )
+        XCTAssertTrue(result.personalized)
+        XCTAssertEqual(result.shelves.first(where: { $0.id == "turkey-vod" })?.title, "Türkiye’de Popüler Filmler")
+        XCTAssertEqual(result.shelves.first(where: { $0.id == "for-you-vod" })?.items.first?.id, "vod:comedy")
+        let genreShelves = result.shelves.filter { $0.id.hasPrefix("genre-vod-") }
+        XCTAssertEqual(genreShelves.first?.id, "genre-vod-Comedy")
+        XCTAssertTrue(genreShelves.first?.subtitle.contains("öne çıkarıldı") == true)
+    }
+
+    func testSportsGuideServiceParsesModernSporekraniAndMatchesAliases() throws {
+        let html = """
+        <html><script>window.__INITIAL_STATE__={"common":{"eventChannels":{"10":{"id":10,"name":"S Sport 1","active":1},"11":{"id":11,"name":"Yayın Yok","active":1}},"eventRows":[{"id":501,"sport_name":"Basketbol","league_name":"EuroLeague","event_type_name":"match","name":"Fenerbahçe Beko - Real Madrid","post_fix":"Canlı","date_time":"2026-11-21 20:45:00","channels":[10,11],"featured":1}]}}</script></html>
+        """
+        let events = try SportsGuideService.parseSporekrani(page: html, dayIso: "2026-11-21")
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(events[0].title, "Fenerbahçe Beko - Real Madrid · Canlı")
+        XCTAssertEqual(events[0].channels, ["S Sport 1"])
+        let live = [MediaItem(id: "live:ssport", providerId: "1", name: "TR: S Sport FHD", kind: .live)]
+        let matches = SportsChannels.matchChannels(events: events, liveItems: live)
+        XCTAssertEqual(matches["S Sport 1"]?.id, "live:ssport")
+    }
 }

@@ -45,8 +45,8 @@ class SportsAppProofTest {
         val play = hasContentDescription("${event.title} · $channel kanalını aç")
         val list = rule.onNodeWithTag("sportsGuide")
         val directory = File(context.getExternalFilesDir(null), "proofs").apply { mkdirs() }
-        rule.waitUntil(30_000) { rule.onAllNodesWithText("Rehber").fetchSemanticsNodes().isNotEmpty() }
-        rule.onNodeWithText("Rehber").performClick()
+        rule.waitUntil(30_000) { rule.onAllNodesWithText("Spor").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Spor").performClick()
         rule.waitUntil(25_000) { rule.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty() }
         rule.onNode(hasSetTextAction()).performTextInput(event.title)
         rule.waitUntil(35_000) { runCatching { list.performScrollToNode(play) }.isSuccess }
@@ -56,7 +56,7 @@ class SportsAppProofTest {
         rule.onAllNodes(play).onFirst().assertIsEnabled().performClick()
         rule.waitUntil(45_000) { rule.onAllNodesWithContentDescription("Duraklat").fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithContentDescription("Oynatıcıdan çık").performClick()
-        rule.waitUntil(20_000) { rule.onAllNodesWithText("Canlı Yayın & EPG Rehberi").fetchSemanticsNodes().isNotEmpty() }
+        rule.waitUntil(20_000) { rule.onAllNodesWithText("Spor Ekranı").fetchSemanticsNodes().isNotEmpty() }
         File(directory, "sports-app-proof.txt").writeText("${events.size} listings; $channel opened in the native player.")
     }
 

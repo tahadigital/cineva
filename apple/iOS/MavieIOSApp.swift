@@ -3,6 +3,7 @@ import SwiftUI
 
 public enum MavieTab: String, CaseIterable, Identifiable {
     case home
+    case sports
     case library
     case search
     case settings
@@ -12,6 +13,7 @@ public enum MavieTab: String, CaseIterable, Identifiable {
     public var title: String {
         switch self {
         case .home: return "Ana Sayfa"
+        case .sports: return "Spor"
         case .library: return "Kütüphane"
         case .search: return "Ara"
         case .settings: return "Ayarlar"
@@ -21,6 +23,7 @@ public enum MavieTab: String, CaseIterable, Identifiable {
     public var systemImage: String {
         switch self {
         case .home: return "house.fill"
+        case .sports: return "sportscourt.fill"
         case .library: return "square.grid.2x2.fill"
         case .search: return "magnifyingglass"
         case .settings: return "gearshape.fill"
@@ -139,6 +142,8 @@ private struct MavieRootShell: View {
         switch tab {
         case .home:
             HomeView(store: store, onPlay: onPlay, onOpenTab: { selectedTab = $0 })
+        case .sports:
+            SportsView(store: store, onPlay: onPlay)
         case .library:
             LibraryView(store: store, onPlay: onPlay)
         case .search:

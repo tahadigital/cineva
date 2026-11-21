@@ -31,7 +31,7 @@ data class UiCollection(val id: String, val title: String, val count: Int = 0)
 
 enum class LibraryTab(val title: String) {
     HOME("Ana Sayfa"), LIVE("Canlı TV"), FILMS("Filmler"), SERIES("Diziler"),
-    SPORTS("Rehber"), SEARCH("Ara"), FAVORITES("Kütüphanem"), PLAYLISTS("Listelerim")
+    SPORTS("Spor"), SEARCH("Ara"), FAVORITES("Kütüphanem"), PLAYLISTS("Listelerim")
 }
 
 data class LibraryUiState(
