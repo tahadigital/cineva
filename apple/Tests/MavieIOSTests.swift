@@ -17,9 +17,9 @@ final class MavieIOSTests: XCTestCase {
         XCTAssertTrue(DemoCatalog.items.contains { $0.id == "vod:demo_elephants" })
     }
 
-    func testNavigationTabsAreFourFreeLocalTabsWithoutAccountGate() {
-        XCTAssertEqual(MavieTab.allCases, [.home, .library, .search, .settings])
-        XCTAssertEqual(MavieTab.allCases.count, 4)
+    func testNavigationTabsAreFiveFreeLocalTabsIncludingSportsWithoutAccountGate() {
+        XCTAssertEqual(MavieTab.allCases, [.home, .sports, .library, .search, .settings])
+        XCTAssertEqual(MavieTab.allCases.count, 5)
     }
 
     func testM3uParserExtractsEpgGroupsAndVodVsLive() {

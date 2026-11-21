@@ -46,7 +46,12 @@ public struct SportsView: View {
         isoFormatter().string(from: Date())
     }
 
-    private var dayChoices: [(iso: String, label: String)] {
+    private struct DayChoice: Identifiable {
+        let id: String
+        let label: String
+    }
+
+    private var dayChoices: [DayChoice] {
         let cal = Self.istanbulCalendar
         let today = cal.startOfDay(for: Date())
         let isoFmt = Self.isoFormatter()
@@ -61,7 +66,7 @@ public struct SportsView: View {
             case 1: label = "Yarın"
             default: label = lblFmt.string(from: date)
             }
-            return (iso, label)
+            return DayChoice(id: iso, label: label)
         }
     }
 
@@ -101,10 +106,10 @@ public struct SportsView: View {
 
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
-                            ForEach(dayChoices, id: \.iso) { day in
+                            ForEach(dayChoices) { day in
                                 Button {
-                                    if selectedDayIso != day.iso {
-                                        selectedDayIso = day.iso
+                                    if selectedDayIso != day.id {
+                                        selectedDayIso = day.id
                                         selectedSport = ""
                                         Task { await loadGuide(force: false) }
                                     }
@@ -114,7 +119,7 @@ public struct SportsView: View {
                                         .padding(.horizontal, 14)
                                         .padding(.vertical, 8)
                                         .background(
-                                            selectedDayIso == day.iso ? AnyShapeStyle(MavieTheme.brandGradient) : AnyShapeStyle(MavieTheme.panel),
+                                            selectedDayIso == day.id ? AnyShapeStyle(MavieTheme.brandGradient) : AnyShapeStyle(MavieTheme.panel),
                                             in: Capsule()
                                         )
                                         .foregroundStyle(.white)
