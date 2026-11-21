@@ -537,27 +537,6 @@ input, select, .field input, .sort-select, .season-select { background-color: #2
 .multiview-action-btn svg { width:14px; height:14px; }
 @media(max-width:780px) { .multiview-grid { grid-template-columns:1fr; } }
 
-/* Cloud Auth, Verification, Trial & Plans UI */
-.cloud-tabs { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
-.cloud-tab { padding:7px 11px; border-radius:8px; background:#1c202c; border:1px solid #ffffff14; color:#b8becb; font-size:11px; font-weight:600; transition: background-color .18s, border-color .18s, color .18s; }
-.cloud-tab:hover { color:#fff; border-color:#ffffff30; }
-.cloud-tab.active { background:linear-gradient(135deg, rgba(124,58,237,.22), rgba(6,182,212,.14)); border-color:#7c3aed; color:#fff; }
-.cloud-panel-pane { display:grid; gap:10px; }
-.cloud-trial-banner { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:12px 14px; margin:12px 0; border-radius:10px; background:linear-gradient(135deg, rgba(124,58,237,.18), rgba(6,182,212,.14)); border:1px solid rgba(6,182,212,.35); }
-.cloud-trial-banner strong { display:block; font-size:12px; color:#fff; }
-.cloud-trial-banner small { font-size:11px; color:#67e8f9; }
-.cloud-plan-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:12px 0; }
-@media(max-width:560px) { .cloud-plan-grid { grid-template-columns:1fr; } }
-.cloud-plan-card { padding:12px; border-radius:10px; background:#12151d; border:1px solid #ffffff14; }
-.cloud-plan-card.current { border-color:#7c3aed; background:rgba(124,58,237,.08); }
-.cloud-plan-card h3 { font-size:12px; margin:0 0 6px; display:flex; align-items:center; justify-content:space-between; }
-.cloud-plan-card ul { margin:0; padding-left:16px; font-size:11px; color:#b4bac8; display:grid; gap:3px; }
-.cloud-upgrade-callout { padding:11px 13px; border-radius:9px; background:rgba(124,58,237,.11); border:1px solid rgba(124,58,237,.32); font-size:11px; color:#e0e7ff; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-top:10px; }
-.cloud-device-list { display:grid; gap:8px; margin-top:12px; }
-.cloud-device-row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 11px; border-radius:8px; background:#12151d; border:1px solid #ffffff12; font-size:11px; }
-.cloud-device-row strong { display:block; color:#eef1f7; }
-.cloud-device-row small { color:#939aa9; font-size:10px; }
-
 /* Lively Loading Panels & Waiting Animations */
 @keyframes mavieEqPulse {
   0%, 100% { transform: scaleY(0.32); opacity: 0.55; }

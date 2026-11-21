@@ -17,6 +17,11 @@ final class MavieIOSTests: XCTestCase {
         XCTAssertTrue(DemoCatalog.items.contains { $0.id == "vod:demo_elephants" })
     }
 
+    func testNavigationTabsAreFourFreeLocalTabsWithoutAccountGate() {
+        XCTAssertEqual(MavieTab.allCases, [.home, .library, .search, .settings])
+        XCTAssertEqual(MavieTab.allCases.count, 4)
+    }
+
     func testM3uParserExtractsEpgGroupsAndVodVsLive() {
         let playlist = """
         #EXTM3U url-tvg="https://epg.example.com/guide.xml"
@@ -85,77 +90,6 @@ final class MavieIOSTests: XCTestCase {
         XCTAssertNil(detail.followingEpisode(after: ep2))
     }
 
-    func testCloudUrlValidatorNormalizesAndRejectsCredentials() throws {
-        XCTAssertEqual(CloudClient.defaultPortalURL, "https://cineva-app.netlify.app")
-        let validated = try CloudClient.validateBaseURL("https://cineva-app.netlify.app/")
-        XCTAssertEqual(validated.absoluteString, "https://cineva-app.netlify.app")
-
-        let localHttp = try CloudClient.validateBaseURL("http://127.0.0.1:8899/")
-        XCTAssertEqual(localHttp.absoluteString, "http://127.0.0.1:8899")
-
-        XCTAssertThrowsError(try CloudClient.validateBaseURL("http://example.com"))
-        XCTAssertThrowsError(try CloudClient.validateBaseURL("https://user:pass@cineva-app.netlify.app"))
-        XCTAssertThrowsError(try CloudClient.validateBaseURL("https://cineva-app.netlify.app?foo=bar"))
-    }
-
-    func testCloudUserDecodingNormalVsProTrialState() throws {
-        let proTrialJSON = """
-        {
-          "id":"usr_1",
-          "email":"test@mavie.app",
-          "displayName":"Taha",
-          "role":"user",
-          "emailVerified":true,
-          "verifiedAt":"2026-11-19T00:00:00Z",
-          "plan":"pro",
-          "effectivePlan":"pro",
-          "isPro":true,
-          "trialActive":true,
-          "trialUsed":true,
-          "trialStartedAt":"2026-11-19T00:00:00Z",
-          "trialEndsAt":"2026-11-22T00:00:00Z",
-          "status":"active",
-          "maxDevices":5,
-          "expiresAt":"2026-11-22T00:00:00Z",
-          "adminNote":"",
-          "createdAt":"2026-11-19T00:00:00Z",
-          "lastSeenAt":"2026-11-19T00:00:00Z",
-          "features":{
-            "cloudSync":true,
-            "multiView":true,
-            "unlimitedProfiles":true,
-            "epgMatch":true,
-            "advancedTracks":true,
-            "maxDevices":5
-          }
-        }
-        """.data(using: .utf8)!
-        let user = try JSONDecoder().decode(CloudUser.self, from: proTrialJSON)
-        XCTAssertTrue(user.isPro)
-        XCTAssertTrue(user.trialActive)
-        XCTAssertEqual(user.maxDevices, 5)
-        XCTAssertTrue(user.features.cloudSync)
-        let refNow = MavieDateParser.parseISO8601("2026-11-19T12:00:00Z")!
-        XCTAssertNotNil(user.trialRemainingSummary(now: refNow))
-    }
-
-    func testCloudApiErrorDecodingEmailNotVerifiedAndProRequired() {
-        let verifyErrData = """
-        {"error":"E-posta doğrulaması gerekli.","code":"EMAIL_NOT_VERIFIED","verificationRequired":true,"email":"a@b.com"}
-        """.data(using: .utf8)!
-        let verifyErr = CloudClient.decodeApiError(status: 403, data: verifyErrData)
-        XCTAssertEqual(verifyErr.code, "EMAIL_NOT_VERIFIED")
-        XCTAssertTrue(verifyErr.verificationRequired)
-        XCTAssertEqual(verifyErr.email, "a@b.com")
-
-        let proErrData = """
-        {"error":"Bu özellik Pro plan gerektirir.","code":"PRO_REQUIRED","upgradeRequired":true}
-        """.data(using: .utf8)!
-        let proErr = CloudClient.decodeApiError(status: 403, data: proErrData)
-        XCTAssertEqual(proErr.code, "PRO_REQUIRED")
-        XCTAssertTrue(proErr.upgradeRequired)
-    }
-
     func testLanSyncRejectsPublicHostsAndUserinfo() throws {
         let okLan = try LanSyncClient.validateLanAddress("192.168.1.42:8844")
         XCTAssertEqual(okLan.absoluteString, "http://192.168.1.42:8844")
@@ -170,55 +104,26 @@ final class MavieIOSTests: XCTestCase {
     }
 
     @MainActor
-    func testLibraryStorePlanGatingBlocksCloudSyncAndExtraProfilesOnNormal() async throws {
+    func testLibraryStoreUnlimitedProfilesAndPinAreCompletelyFree() throws {
         let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("mavie_test_\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: tmpDir) }
 
-        let store = LibraryStore(storageDirectory: tmpDir, useKeychain: false)
-        let normalUser = CloudUser(
-            id: "u1",
-            email: "normal@mavie.app",
-            displayName: "Normal",
-            emailVerified: true,
-            plan: "normal",
-            effectivePlan: "normal",
-            isPro: false,
-            maxDevices: 1,
-            features: CloudPlanFeatures(cloudSync: false, unlimitedProfiles: false, maxDevices: 1)
-        )
-        store.setMockCloudSessionForTesting(user: normalUser, token: "tok_normal")
-        XCTAssertFalse(store.canUseCloudSync)
-        XCTAssertFalse(store.canAddAnotherProfile)
+        let store = LibraryStore(storageDirectory: tmpDir)
+        XCTAssertEqual(store.profiles.count, 1)
 
-        XCTAssertThrowsError(try store.addProfile(name: "İkinci Profil")) { err in
-            guard case MavieError.proRequired = err else {
-                return XCTFail("Expected proRequired, got \(err)")
-            }
-        }
+        let second = try store.addProfile(name: "İkinci Profil")
+        let kids = try store.addProfile(name: "Çocuk", isKids: true, pin: "1234")
+        let third = try store.addProfile(name: "Misafir", pin: "9876")
 
-        do {
-            try await store.syncWithCloud()
-            XCTFail("Expected syncWithCloud to throw proRequired for Normal user")
-        } catch MavieError.proRequired {
-            // Expected
-        }
+        XCTAssertEqual(store.profiles.count, 4)
+        XCTAssertFalse(second.hasPin)
+        XCTAssertTrue(kids.hasPin)
+        XCTAssertTrue(kids.isKids)
+        XCTAssertTrue(third.hasPin)
 
-        let proUser = CloudUser(
-            id: "u2",
-            email: "pro@mavie.app",
-            displayName: "Pro",
-            emailVerified: true,
-            plan: "pro",
-            effectivePlan: "pro",
-            isPro: true,
-            maxDevices: 5,
-            features: CloudPlanFeatures(cloudSync: true, unlimitedProfiles: true, maxDevices: 5)
-        )
-        store.setMockCloudSessionForTesting(user: proUser, token: "tok_pro")
-        XCTAssertTrue(store.canUseCloudSync)
-        XCTAssertTrue(store.canAddAnotherProfile)
-        let added = try store.addProfile(name: "Çocuk", isKids: true, pin: "1234")
-        XCTAssertTrue(added.hasPin)
+        XCTAssertThrowsError(try store.switchProfile(id: kids.id, pinAttempt: "0000"))
+        try store.switchProfile(id: kids.id, pinAttempt: "1234")
+        XCTAssertTrue(store.profiles.first(where: { $0.id == kids.id })?.active ?? false)
     }
 
     @MainActor
@@ -226,7 +131,7 @@ final class MavieIOSTests: XCTestCase {
         let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("mavie_test_\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: tmpDir) }
 
-        let store = LibraryStore(storageDirectory: tmpDir, useKeychain: false)
+        let store = LibraryStore(storageDirectory: tmpDir)
         let item = DemoCatalog.items[0]
         XCTAssertFalse(store.isFavorite(item))
         store.toggleFavorite(item)
@@ -246,7 +151,7 @@ final class MavieIOSTests: XCTestCase {
         let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("mavie_test_\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: tmpDir) }
 
-        let store = LibraryStore(storageDirectory: tmpDir, useKeychain: false)
+        let store = LibraryStore(storageDirectory: tmpDir)
         store.importM3uText("""
         #EXTM3U
         #EXTINF:-1 group-title="Belgesel",İstanbul Şehir Rehberi
@@ -261,7 +166,7 @@ final class MavieIOSTests: XCTestCase {
 
         let tmpDir2 = FileManager.default.temporaryDirectory.appendingPathComponent("mavie_test2_\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: tmpDir2) }
-        let restored = LibraryStore(storageDirectory: tmpDir2, useKeychain: false)
+        let restored = LibraryStore(storageDirectory: tmpDir2)
         try restored.importBackupJSON(backup)
         XCTAssertTrue(restored.isFavorite(found[0]))
     }
@@ -323,7 +228,7 @@ final class MavieIOSTests: XCTestCase {
         }
         """.data(using: .utf8)!
 
-        let decodedPayload = try JSONDecoder().decode(CloudSyncPayload.self, from: serverExportFixture)
+        let decodedPayload = try JSONDecoder().decode(LibrarySyncPayload.self, from: serverExportFixture)
         XCTAssertEqual(decodedPayload.version, 1)
         XCTAssertEqual(decodedPayload.favorites.map(\.itemId), ["vod:demo_bbb"])
         XCTAssertEqual(decodedPayload.progress.first?.itemId, "vod:demo_bbb")
@@ -336,7 +241,7 @@ final class MavieIOSTests: XCTestCase {
 
         let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("mavie_v1_test_\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: tmpDir) }
-        let store = LibraryStore(storageDirectory: tmpDir, useKeychain: false)
+        let store = LibraryStore(storageDirectory: tmpDir)
         try store.importBackupJSON(serverExportFixture)
 
         XCTAssertTrue(store.favoriteIds.contains("vod:demo_bbb"))
@@ -376,66 +281,6 @@ final class MavieIOSTests: XCTestCase {
     }
 
     @MainActor
-    func testPullThenMergeThenPushInSyncWithCloud() async throws {
-        MockCloudSyncURLProtocol.reset(remoteStateJSON: """
-        {
-          "state": {
-            "version": 1,
-            "exportedAt": "2026-11-19T05:00:00Z",
-            "favorites": [{"item_id": "vod:demo_bbb", "created_at": "2026-11-19T05:00:00Z"}],
-            "progress": [{"item_id": "vod:demo_bbb", "position": 180.0, "duration": 596.0, "completed": 0, "updated_at": "2026-11-19T05:00:00Z"}],
-            "playlists": [{"id": "pl_remote", "name": "Uzak Liste", "created_at": "2026-11-19T05:00:00Z"}],
-            "playlistItems": [{"playlist_id": "pl_remote", "item_id": "vod:demo_bbb", "position": 0}],
-            "trackPreferences": [],
-            "items": []
-          },
-          "updatedAt": "2026-11-19T05:00:00Z"
-        }
-        """)
-
-        let cfg = URLSessionConfiguration.ephemeral
-        cfg.protocolClasses = [MockCloudSyncURLProtocol.self]
-        let mockSession = URLSession(configuration: cfg)
-        let client = CloudClient(session: mockSession)
-
-        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("mavie_sync_test_\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: tmpDir) }
-
-        let store = LibraryStore(storageDirectory: tmpDir, cloudClient: client, useKeychain: false)
-        store.portalURL = "http://127.0.0.1:19999"
-        let proUser = CloudUser(
-            id: "u_pro",
-            email: "pro@mavie.app",
-            displayName: "Pro",
-            emailVerified: true,
-            plan: "pro",
-            effectivePlan: "pro",
-            isPro: true,
-            maxDevices: 5,
-            features: CloudPlanFeatures(cloudSync: true, unlimitedProfiles: true, maxDevices: 5)
-        )
-        store.setMockCloudSessionForTesting(user: proUser, token: "tok_pro")
-        store.toggleFavorite(DemoCatalog.items[1]) // vod:demo_sintel
-        store.createPlaylist(name: "Yerel Liste")
-
-        try await store.syncWithCloud()
-
-        XCTAssertEqual(MockCloudSyncURLProtocol.recordedMethods, ["GET", "PUT"])
-        XCTAssertTrue(store.favoriteIds.contains("vod:demo_bbb"))
-        XCTAssertTrue(store.favoriteIds.contains("vod:demo_sintel"))
-        XCTAssertEqual(store.progressByItem["vod:demo_bbb"]?.positionSeconds, 180.0)
-        XCTAssertTrue(store.playlists.contains { $0.id == "pl_remote" && $0.itemIds == ["vod:demo_bbb"] })
-        XCTAssertTrue(store.playlists.contains { $0.name == "Yerel Liste" })
-
-        let pushedData = try XCTUnwrap(MockCloudSyncURLProtocol.lastPutBody)
-        let pushedWrapper = try XCTUnwrap(try JSONSerialization.jsonObject(with: pushedData) as? [String: Any])
-        let pushedState = try XCTUnwrap(pushedWrapper["state"] as? [String: Any])
-        let pushedFavs = try XCTUnwrap(pushedState["favorites"] as? [[String: Any]])
-        let pushedFavIds = Set(pushedFavs.compactMap { $0["item_id"] as? String })
-        XCTAssertEqual(pushedFavIds, Set(["vod:demo_bbb", "vod:demo_sintel"]))
-    }
-
-    @MainActor
     func testSurpriseItemPrefersPlayableAndImportLocalVideoCopiesToContainer() throws {
         let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("mavie_local_test_\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: tmpDir) }
@@ -446,7 +291,7 @@ final class MavieIOSTests: XCTestCase {
         let srcVideo = srcDir.appendingPathComponent("sample_clip.mp4")
         try Data("fake-mp4-bytes".utf8).write(to: srcVideo)
 
-        let store = LibraryStore(storageDirectory: tmpDir, useKeychain: false)
+        let store = LibraryStore(storageDirectory: tmpDir)
         try store.importLocalMediaFile(from: srcVideo)
 
         let imported = try XCTUnwrap(store.items.first { $0.name == "sample_clip" })
@@ -454,7 +299,6 @@ final class MavieIOSTests: XCTestCase {
         let copiedURL = try XCTUnwrap(URL(string: imported.sourceUrl))
         XCTAssertTrue(FileManager.default.fileExists(atPath: copiedURL.path))
 
-        // surpriseItem must prefer playable items over series
         store.importM3uText("""
         #EXTM3U
         #EXTINF:-1 group-title="Test" type="movie",Tek Film
@@ -494,64 +338,11 @@ final class MavieIOSTests: XCTestCase {
 
         let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("mavie_legacy_test_\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: tmpDir) }
-        let store = LibraryStore(storageDirectory: tmpDir, useKeychain: false)
+        let store = LibraryStore(storageDirectory: tmpDir)
         try store.importBackupJSON(legacyJSON)
 
         XCTAssertTrue(store.favoriteIds.contains("vod:demo_bbb"))
         XCTAssertEqual(store.progressByItem["vod:demo_bbb"]?.positionSeconds, 42.0)
         XCTAssertEqual(store.playlists.first(where: { $0.id == "pl_legacy" })?.itemIds, ["vod:demo_bbb"])
     }
-}
-
-private final class MockCloudSyncURLProtocol: URLProtocol, @unchecked Sendable {
-    private static let lock = NSLock()
-    private static var remoteStateJSON: String = "{}"
-    nonisolated(unsafe) static var recordedMethods: [String] = []
-    nonisolated(unsafe) static var lastPutBody: Data?
-
-    static func reset(remoteStateJSON: String) {
-        lock.lock()
-        defer { lock.unlock() }
-        self.remoteStateJSON = remoteStateJSON
-        self.recordedMethods = []
-        self.lastPutBody = nil
-    }
-
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-
-    override func startLoading() {
-        let method = request.httpMethod ?? "GET"
-        var bodyData = request.httpBody
-        if bodyData == nil, let stream = request.httpBodyStream {
-            stream.open()
-            defer { stream.close() }
-            var collected = Data()
-            var buffer = [UInt8](repeating: 0, count: 4096)
-            while stream.hasBytesAvailable {
-                let count = stream.read(&buffer, maxLength: buffer.count)
-                if count > 0 { collected.append(buffer, count: count) } else { break }
-            }
-            bodyData = collected
-        }
-
-        let responseJSON: String
-        Self.lock.lock()
-        Self.recordedMethods.append(method)
-        if method == "PUT" {
-            Self.lastPutBody = bodyData
-            responseJSON = Self.remoteStateJSON
-        } else {
-            responseJSON = Self.remoteStateJSON
-        }
-        Self.lock.unlock()
-
-        let url = request.url ?? URL(string: "http://127.0.0.1:19999/api/v1/sync")!
-        let resp = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
-        client?.urlProtocol(self, didReceive: resp, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Data(responseJSON.utf8))
-        client?.urlProtocolDidFinishLoading(self)
-    }
-
-    override func stopLoading() {}
 }

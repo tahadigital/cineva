@@ -3,14 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Mavie — 4 Platformda Kişisel Sinema &amp; Yayın Merkezi</title>
-  <meta name="description" content="Windows, Android, macOS ve iOS için hızlı, gizlilik odaklı kişisel medya merkezi. E-posta doğrulamalı hesapla 3 günlük ücretsiz Mavie Pro deneyimini hemen başlatın.">
+  <title>Mavie — 4 Platformda Ücretsiz Kişisel Sinema &amp; Yayın Merkezi</title>
+  <meta name="description" content="Windows, Android, macOS ve iOS için tamamen ücretsiz, hesap gerektirmeyen, gizlilik odaklı kişisel medya merkezi.">
   <link rel="icon" type="image/svg+xml" href="/icon.svg">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <div class="ambient-bg" aria-hidden="true"></div>
-  <div id="announceBanner" class="announce-bar" hidden></div>
 
   <header class="topbar">
     <div class="container topbar-inner">
@@ -21,11 +20,11 @@
       <nav class="nav-links" aria-label="Üst menü">
         <a href="#downloads">İndir</a>
         <a href="#features">Neden Mavie?</a>
-        <a href="#plans">Normal &amp; Pro</a>
+        <a href="#free-forever">Tamamen Ücretsiz</a>
         <a href="#privacy-shield">Gizlilik</a>
       </nav>
       <div class="nav-actions">
-        <button id="openAccountBtn" class="btn secondary small" type="button">Hesabım / Pro</button>
+        <a class="btn small" href="#downloads">Ücretsiz İndir</a>
       </div>
     </div>
   </header>
@@ -34,23 +33,22 @@
     <section class="hero">
       <div class="container hero-grid">
         <div>
-          <span class="eyebrow"><span class="pulse-dot" aria-hidden="true"></span>3 GÜNLÜK ÜCRETSİZ PRO DENEME · WINDOWS · ANDROID · MACOS · İOS</span>
+          <span class="eyebrow"><span class="pulse-dot" aria-hidden="true"></span>%100 ÜCRETSİZ · HESAP GEREKTİRMEZ · WINDOWS · ANDROID · MACOS · İOS</span>
           <div class="hero-brand-display" aria-label="Mavie">Mavie<span class="hero-brand-dot">.</span></div>
-          <p class="hero-slogan">Kişisel sinemanın yeni frekansı — dört ekranda, senin kurallarınla.</p>
+          <p class="hero-slogan">Kişisel sinemanın yeni frekansı — dört ekranda, ücretsiz ve senin kurallarınla.</p>
           <h1>Tüm medyalarınız, <span class="text-gradient">dört ekranda</span> tek sinema.</h1>
           <p class="lead">
-            Mavie; bilgisayarınızdaki filmleri, kendi M3U / Xtream listelerinizi ve XMLTV EPG yayın rehberini tek bir akıcı sinema arayüzünde birleştirir. Telifli içerik barındırmaz; hesap açtığınızda e-posta doğrulamasıyla 3 günlük ücretsiz Pro denemesi otomatik başlar.
+            Mavie; bilgisayarınızdaki filmleri, kendi M3U / Xtream listelerinizi ve XMLTV EPG yayın rehberini tek bir akıcı sinema arayüzünde birleştirir. Kayıt yok, abonelik yok, kısıtlama yok — indirin ve anında izlemeye başlayın.
           </p>
           <div class="hero-cta-row">
             <a id="primaryDownloadBtn" class="btn" href="#downloads">Platformun için İndir</a>
             <a id="secondaryDownloadBtn" class="btn secondary" href="#downloads">Diğer Sürümler</a>
-            <button id="heroTrialBtn" class="btn amber-outline" type="button">3 Gün Ücretsiz Pro Başlat</button>
             <a class="btn ghost" href="#downloads">Tüm 4 Platform</a>
           </div>
-          <p id="platformHint" class="platform-note">Windows, Android, macOS ve iOS sürümleri hazır.</p>
+          <p id="platformHint" class="platform-note">Windows, Android, macOS ve iOS sürümleri ücretsiz ve hazır.</p>
           <div class="hero-chips" aria-label="Öne çıkan özellikler">
             <span class="mini-chip">4K HDR &amp; FFmpeg Motoru</span>
-            <span class="mini-chip">Sıfır-Bilgi Bulut Eşitleme</span>
+            <span class="mini-chip">Hesapsız &amp; Sınırsız</span>
             <span class="mini-chip">2×2 Çoklu Ekran</span>
             <span class="mini-chip">PBKDF2 Profil PIN</span>
           </div>
@@ -61,7 +59,7 @@
           <div class="desktop-mockup">
             <div class="mockup-bar">
               <div class="win-dots" aria-hidden="true"><span></span><span></span><span></span></div>
-              <span style="font-size:12px;color:var(--muted);font-weight:700">Mavie Masaüstü · 4 Platform Senkron</span>
+              <span style="font-size:12px;color:var(--muted);font-weight:700">Mavie Masaüstü · 4 Platform Yerel Eşitleme</span>
               <span class="live-pill"><span class="pulse-dot" aria-hidden="true"></span>CANLI · 4K HDR</span>
             </div>
             <div class="cinema-screen">
@@ -70,7 +68,7 @@
                   <p class="cinema-title">Kişisel Sinema Odası</p>
                   <div class="cinema-sub">Yerel MKV/MP4 · M3U · XMLTV EPG Eşli</div>
                 </div>
-                <span class="badge pro">Pro Aktif</span>
+                <span class="badge active">Tam Sürüm Ücretsiz</span>
               </div>
               <div class="cinema-center-play">
                 <div class="play-orb" aria-hidden="true">
@@ -90,7 +88,7 @@
                   <span class="ctrl-pill">2×2 Çoklu Ekran</span>
                   <span class="ctrl-pill">Altyazı Senkron</span>
                   <span class="ctrl-pill">EPG Eşli</span>
-                  <span class="ctrl-pill">5 Cihaza Kadar</span>
+                  <span class="ctrl-pill">Sınırsız Cihaz</span>
                 </div>
               </div>
             </div>
@@ -99,9 +97,9 @@
           <div class="mobile-mockup">
             <div class="mobile-mockup-head">
               <span>Mavie Android &amp; iOS</span>
-              <span class="badge trial">3 Gün Pro</span>
+              <span class="badge active">Hesapsız</span>
             </div>
-            <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Kaldığın yerden devam et · PiP hazır</div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Kaldığın yerden devam et · PiP &amp; LAN eşitleme hazır</div>
             <div class="progress-sweep" style="margin-bottom:0" aria-hidden="true"></div>
           </div>
         </div>
@@ -110,10 +108,10 @@
       <div class="container" style="margin-top:26px">
         <div class="trial-banner">
           <div>
-            <h2>Yeni Kayıtlara Otomatik 3 Günlük Mavie Pro Denemesi</h2>
-            <p>E-posta adresinizi doğruladığınız anda 72 saat boyunca Sıfır-Bilgi Bulut Eşitleme, 5 cihaz sınırı, 2×2 Çoklu Ekran ve sınırsız profil özelliklerini ücretsiz deneyin.</p>
+            <h2>Hesap Yok, Ücret Yok — Her Özellik Herkese Açık</h2>
+            <p>E-posta kaydı veya abonelik gerekmeden sınırsız profil + PIN kilidi, 2×2 Çoklu Ekran, XMLTV EPG &amp; Spor Rehberi, Yerel Ağ (LAN) eşitleme ve JSON yedekleme özelliklerinin tamamını ücretsiz kullanın.</p>
           </div>
-          <button id="bannerTrialBtn" class="btn" type="button">3 Gün Ücretsiz Pro Başlat</button>
+          <a class="btn" href="#downloads">Hemen İndir</a>
         </div>
       </div>
     </section>
@@ -123,9 +121,9 @@
         <div class="section-head">
           <div>
             <h2 class="section-title">4 Platform için Mavie'yi İndirin</h2>
-            <p class="section-sub">Windows, Android, macOS ve iOS sürümleri tek hesap ve şeffaf sürüm takibiyle sunulur.</p>
+            <p class="section-sub">Windows, Android, macOS ve iOS sürümlerinin tamamı ücretsizdir; hesap açmadan hemen kurulup çalışır.</p>
           </div>
-          <span class="badge active">v2.1.0 Güncel Sürüm</span>
+          <span class="badge active">v2.2.0 Güncel Sürüm</span>
         </div>
 
         <div class="grid-4">
@@ -135,7 +133,7 @@
                 <div class="platform-icon" aria-hidden="true">
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.5L10.5 4.4V11.3H3V5.5ZM11.6 4.2L21 2.8V11.3H11.6V4.2ZM3 12.4H10.5V19.4L3 18.3V12.4ZM11.6 12.4H21V21L11.6 19.6V12.4Z"/></svg>
                 </div>
-                <span class="badge pro" id="winVerBadge">Windows 10/11 · v2.1.0</span>
+                <span class="badge active" id="winVerBadge">Windows 10/11 · v2.2.0</span>
               </div>
               <h3>Windows</h3>
               <p>Kurulum sihirbazı veya taşınabilir tek dosya sürümü; yerleşik FFmpeg motoru ve yerel sunucu ile anında başlar.</p>
@@ -147,7 +145,7 @@
               </div>
               <div class="artifact-meta">
                 <span>64-bit Setup &amp; Portable</span>
-                <span id="dlWinCount">0 kez indirildi</span>
+                <span>Ücretsiz</span>
               </div>
             </div>
           </article>
@@ -158,7 +156,7 @@
                 <div class="platform-icon" aria-hidden="true">
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 9.48L19.44 6.3A.48.48 0 0 0 19.26 5.64A.48.48 0 0 0 18.6 5.82L16.74 9.04A11.4 11.4 0 0 0 12 8C10.31 8 8.71 8.37 7.26 9.04L5.4 5.82A.48.48 0 0 0 4.74 5.64A.48.48 0 0 0 4.56 6.3L6.4 9.48A9.83 9.83 0 0 0 2 17.5H22A9.83 9.83 0 0 0 17.6 9.48ZM8.5 14.5A1 1 0 1 1 9.5 13.5A1 1 0 0 1 8.5 14.5ZM15.5 14.5A1 1 0 1 1 16.5 13.5A1 1 0 0 1 15.5 14.5Z"/></svg>
                 </div>
-                <span class="badge active" id="androidVerBadge">Android 8+ · v2.1.0</span>
+                <span class="badge active" id="androidVerBadge">Android 8+ · v2.2.0</span>
               </div>
               <h3>Android</h3>
               <p>LibVLC tabanlı donanım hızlandırmalı oynatıcı, çift dokunma sarma, PiP, ekran kilidi ve tablet 2-panelli arayüz.</p>
@@ -169,7 +167,7 @@
               </div>
               <div class="artifact-meta">
                 <span>Telefon &amp; Tablet APK</span>
-                <span id="dlAndroidCount">0 kez indirildi</span>
+                <span>Ücretsiz</span>
               </div>
             </div>
           </article>
@@ -180,7 +178,7 @@
                 <div class="platform-icon" aria-hidden="true">
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5C17.88 20.74 17 21.95 15.66 21.97C14.32 22 13.89 21.18 12.37 21.18C10.84 21.18 10.37 21.95 9.1 22C7.79 22.05 6.8 20.68 5.96 19.47C4.25 17 2.94 12.45 4.7 9.39C5.57 7.87 7.13 6.91 8.82 6.88C10.1 6.86 11.32 7.75 12.1 7.75C12.89 7.75 14.37 6.68 15.92 6.84C16.57 6.87 18.39 7.1 19.56 8.82C19.47 8.88 17.39 10.1 17.41 12.63C17.44 15.65 20.06 16.66 20.09 16.67C20.06 16.74 19.67 18.11 18.71 19.5ZM13 3.5C13.73 2.67 14.94 2.04 15.94 2C16.07 3.17 15.6 4.35 14.9 5.19C14.21 6.04 13.07 6.7 11.95 6.61C11.8 5.46 12.36 4.26 13 3.5Z"/></svg>
                 </div>
-                <span class="badge" id="macosVerBadge">macOS 13+ · v2.1.0</span>
+                <span class="badge" id="macosVerBadge">macOS 13+ · v2.2.0</span>
               </div>
               <h3>macOS</h3>
               <p>Apple Silicon ve Intel Mac uyumlu özgün Mavie.app paketi. Dahili yerel motoruyla kurulumsuz çalışır.</p>
@@ -191,7 +189,7 @@
               </div>
               <div class="artifact-meta">
                 <span>Apple Silicon &amp; Intel</span>
-                <span id="dlMacCount">0 kez indirildi</span>
+                <span>Ücretsiz</span>
               </div>
             </div>
           </article>
@@ -202,7 +200,7 @@
                 <div class="platform-icon" aria-hidden="true">
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H8C6.34 1 5 2.34 5 4V20C5 21.66 6.34 23 8 23H16C17.66 23 19 21.66 19 20V4C19 2.34 17.66 1 16 1ZM12 21.5A1.25 1.25 0 1 1 13.25 20.25A1.25 1.25 0 0 1 12 21.5ZM17 18H7V4H17V18Z"/></svg>
                 </div>
-                <span class="badge" id="iosVerBadge">iOS 16+ · v2.1.0</span>
+                <span class="badge" id="iosVerBadge">iOS 16+ · v2.2.0</span>
               </div>
               <h3>iOS</h3>
               <p>iPhone ve iPad için SwiftUI + AVPlayer tabanlı özgün istemci. AirPlay, PiP, Demo/M3U ve LAN sunucu bağlantısı.</p>
@@ -214,14 +212,14 @@
               <p class="sideload-note">İmzasız sideload IPA (AltStore / Sideloadly ile yüklenebilir).</p>
               <div class="artifact-meta">
                 <span>iPhone &amp; iPad</span>
-                <span id="dlIosCount">0 kez indirildi</span>
+                <span>Ücretsiz</span>
               </div>
             </div>
           </article>
         </div>
 
         <div class="release-notes-strip">
-          <span><strong>Sürüm Notları:</strong> <span id="releaseNotesText">Mavie 2.1.0: 4 platform desteği, e-posta doğrulama ve 3 günlük Pro deneme.</span></span>
+          <span><strong>Sürüm Notları:</strong> <span id="releaseNotesText">Mavie 2.2.0: 4 platformda tamamen ücretsiz ve hesap gerektirmeyen tam deneyim — tüm özellikler herkese açık.</span></span>
           <span style="color:var(--amber);font-weight:600">GitHub Releases üzerinden doğrudan indirilir</span>
         </div>
 
@@ -234,7 +232,7 @@
         <div class="section-head">
           <div>
             <h2 class="section-title">Neden Mavie'yi Tercih Etmelisiniz?</h2>
-            <p class="section-sub">Klasik oynatıcıların dağınıklığını ortadan kaldıran, hız ve gizlilik odaklı sinema mimarisi.</p>
+            <p class="section-sub">Klasik oynatıcıların dağınıklığını ve abonelik engellerini ortadan kaldıran, hız ve gizlilik odaklı sinema mimarisi.</p>
           </div>
         </div>
         <div class="grid-3">
@@ -249,8 +247,8 @@
             <div class="feature-icon" aria-hidden="true">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             </div>
-            <h3>Profiller &amp; Çocuk Modu</h3>
-            <p>Her kişi için ayrı favoriler ve kaldığı yer. 4–8 haneli PBKDF2 PIN kilidi ve yetişkin/korku filtreli Çocuk Modu.</p>
+            <h3>Sınırsız Profil &amp; Çocuk Modu</h3>
+            <p>Her kişi için ayrı favoriler ve kaldığı yer. 4–8 haneli PBKDF2 PIN kilidi ve yetişkin/korku filtreli Çocuk Modu tamamen ücretsiz.</p>
           </div>
           <div class="card feature-card">
             <div class="feature-icon" aria-hidden="true">
@@ -270,70 +268,28 @@
             <div class="feature-icon" aria-hidden="true">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L4 5v6.09c0 5.05 3.41 9.76 8 10.91 4.59-1.15 8-5.86 8-10.91V5l-8-3z"/></svg>
             </div>
-            <h3>E-posta Doğrulama &amp; Güvenlik</h3>
-            <p>Kayıtlar 6 haneli e-posta doğrulamasıyla korunur; şifre sıfırlama bağlantısı ve token iptaliyle hesabınız her zaman güvende kalır.</p>
+            <h3>Hesapsız &amp; Sıfır-Kayıt Gizlilik</h3>
+            <p>Giriş yapmanız, e-posta paylaşmanız veya harici bir sunucuya bağlanmanız gerekmez. Tüm verileriniz kendi cihazınızda kalır.</p>
           </div>
           <div class="card feature-card">
             <div class="feature-icon" aria-hidden="true">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
             </div>
-            <h3>4 Platform Tek Deneyim</h3>
-            <p>Windows, Android, macOS ve iOS cihazlarınız arasında tek Pro hesabıyla favorilerinizi ve izleme ilerlemenizi senkronize edin.</p>
+            <h3>Yerel Ağ (LAN) &amp; JSON Yedek</h3>
+            <p>Aynı Wi-Fi ağındaki bilgisayar, telefon ve tabletler arasında 6 haneli kodla eşitleyin veya tek tıkla JSON yedek alıp geri yükleyin.</p>
           </div>
         </div>
       </div>
     </section>
 
-    <section id="plans" class="section">
+    <section id="free-forever" class="section">
       <div class="container">
         <div class="section-head">
           <div>
-            <h2 class="section-title">Normal &amp; Mavie Pro Planları</h2>
-            <p class="section-sub">Her yeni doğrulanmış hesapta 3 günlük Mavie Pro denemesi otomatik aktifleşir. Süre sonunda dilediğiniz zaman Normal ile devam edebilir veya lisans anahtarıyla Pro'ya geçebilirsiniz.</p>
+            <h2 class="section-title">Tamamen Ücretsiz — Kısıtlama Yok</h2>
+            <p class="section-sub">Mavie'de kilitli özellik, cihaz sınırı, üyelik duvarı veya ücretli abonelik yoktur. Tüm araçlar ilk açılıştan itibaren açıktır.</p>
           </div>
-          <span class="badge pro"><span id="planProTrialDays">3</span> Gün Ücretsiz Pro Deneme</span>
-        </div>
-
-        <div class="plan-grid">
-          <article class="card plan-card">
-            <div>
-              <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-                <span class="badge normal">NORMAL PLAN</span>
-                <span style="font-size:12px;color:var(--muted)"><strong id="planNormalDevices">1</strong> Cihaz</span>
-              </div>
-              <div class="plan-price-line">
-                <strong>Ücretsiz</strong>
-                <span>Yerel temel sinema deneyimi</span>
-              </div>
-              <ul class="check-list">
-                <li><span class="check-mark">✓</span> Demo, kendi M3U / Xtream listeniz ve yerel medya klasörleri</li>
-                <li><span class="check-mark">✓</span> 1 aktif profil ve tek cihaz bağlantısı</li>
-                <li><span class="check-mark">✓</span> SRT/VTT yan altyazı algılama ve temel oynatıcı</li>
-                <li class="check-muted"><span>—</span> Sıfır-Bilgi Bulut Eşitleme &amp; 2×2 Çoklu Ekran Pro'da açılır</li>
-              </ul>
-            </div>
-            <button class="btn secondary" type="button" data-open-auth="login">Normal Hesap ile Giriş Yap</button>
-          </article>
-
-          <article class="card plan-card pro-featured">
-            <div>
-              <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-                <span class="badge pro">MAVIE PRO</span>
-                <span style="font-size:12px;color:#67e8f9"><strong><span id="planProDevices">5</span> Cihaza Kadar</strong></span>
-              </div>
-              <div class="plan-price-line">
-                <strong>3 Gün Ücretsiz</strong>
-                <span>Yeni kayıtta e-posta doğrulama ile otomatik başlar</span>
-              </div>
-              <ul class="check-list">
-                <li><span class="check-mark">✓</span> <span><strong>Sıfır-Bilgi Bulut Eşitleme:</strong> Favoriler, kaldığın yer ve listeler tüm cihazlarda</span></li>
-                <li><span class="check-mark">✓</span> <span><strong>2×2 Çoklu Ekran &amp; PiP:</strong> Aynı anda 4 yayını tek ızgarada izle</span></li>
-                <li><span class="check-mark">✓</span> <span><strong>Sınırsız Profil + PIN &amp; Çocuk Modu:</strong> Aile bireylerine ayrı alanlar</span></li>
-                <li><span class="check-mark">✓</span> <span><strong>XMLTV EPG Spor Rehberi &amp; Gelişmiş Ses/Altyazı Senkronu</strong></span></li>
-              </ul>
-            </div>
-            <button id="startTrialFromPlansBtn" class="btn" type="button">3 Gün Ücretsiz Pro Başlat</button>
-          </article>
+          <span class="badge active">%100 Ücretsiz · Sınırsız</span>
         </div>
 
         <div class="table-wrap">
@@ -341,17 +297,17 @@
             <thead>
               <tr>
                 <th>Özellik</th>
-                <th>Normal</th>
-                <th>Mavie Pro</th>
+                <th>Mavie (Tüm Platformlar)</th>
               </tr>
             </thead>
             <tbody>
-              <tr><td>Demo, M3U / Xtream ve Yerel Klasör Oynatma</td><td>Dahil</td><td>Dahil</td></tr>
-              <tr><td>Kayıtlı Cihaz Limiti</td><td>1 Cihaz</td><td>5 Cihaz + Self-Servis Cihaz Kaldırma</td></tr>
-              <tr><td>Sıfır-Bilgi Bulut Eşitleme (Favoriler &amp; İlerleme)</td><td>Yok</td><td>Dahil</td></tr>
-              <tr><td>Profiller &amp; PBKDF2 PIN Kilidi</td><td>1 Profil (PIN Yok)</td><td>Sınırsız Profil + PIN + Çocuk Modu</td></tr>
-              <tr><td>2×2 Çoklu Ekran &amp; Gelişmiş Ses/Altyazı</td><td>Temel Oynatıcı</td><td>Tam Erişim + XMLTV EPG Spor Eşleme</td></tr>
-              <tr><td>Başlangıç Deneme Süresi</td><td>—</td><td>Kayıtta Otomatik 3 Gün Ücretsiz</td></tr>
+              <tr><td>Demo, M3U / Xtream ve Yerel Klasör Oynatma</td><td>Ücretsiz &amp; Sınırsız</td></tr>
+              <tr><td>Hesap veya E-posta Kaydı</td><td>Gerekmez — İndir ve Başla</td></tr>
+              <tr><td>Cihaz Sayısı</td><td>Sınırsız Cihaz (Windows, Android, macOS, iOS)</td></tr>
+              <tr><td>Profiller, PBKDF2 PIN Kilidi &amp; Çocuk Modu</td><td>Sınırsız &amp; Ücretsiz</td></tr>
+              <tr><td>2×2 Çoklu Ekran, FFmpeg Dönüştürme &amp; Gelişmiş Altyazı</td><td>Tam Erişim</td></tr>
+              <tr><td>Canlı XMLTV EPG &amp; Spor Rehberi Eşleme</td><td>Tam Erişim</td></tr>
+              <tr><td>Yerel Ağ (LAN) Eşitleme &amp; JSON Kütüphane Yedeği</td><td>Tam Erişim (Çevrimdışı &amp; Özel)</td></tr>
             </tbody>
           </table>
         </div>
@@ -361,9 +317,9 @@
     <section id="privacy-shield" class="section">
       <div class="container">
         <div class="card">
-          <h3>Sıfır-Bilgi (Zero-Knowledge) Gizlilik &amp; Yasal Güvence</h3>
+          <h3>Yerel Öncelikli Gizlilik &amp; Yasal Güvence</h3>
           <p style="margin-top:8px">
-            Mavie hesap oluşturmayı zorunlu tutmaz. E-posta doğrulamalı hesap açtığınızda yalnızca e-posta adresiniz, abonelik planınız (Normal / Pro veya 3 günlük deneme) ve kayıtlı cihaz sınırınız saklanır; eklediğiniz kişisel M3U/Xtream adresleri veya yayın parolalarınız asla merkezi sunucuya gönderilmez.
+            Mavie hiçbir hesap sistemi, bulut veritabanı veya kullanıcı takibi içermez. Eklediğiniz medya klasörleri, M3U/Xtream adresleri, favorileriniz, profilleriniz ve izleme geçmişiniz yalnızca kendi cihazınızda saklanır ve hiçbir merkezi sunucuya gönderilmez. Uygulama telifli içerik barındırmaz veya dağıtmaz.
           </p>
         </div>
       </div>
@@ -372,146 +328,13 @@
 
   <footer class="footer">
     <div class="container footer-row">
-      <span>© 2026 Mavie — Kişisel Medya Merkezi</span>
+      <span>© 2026 Mavie — Ücretsiz Kişisel Medya Merkezi</span>
       <div style="display:flex;gap:16px">
         <a href="/privacy">Gizlilik Politikası</a>
         <a href="/terms">Kullanım Koşulları</a>
       </div>
     </div>
   </footer>
-
-  <!-- Hesabım & Pro Portal Modalı -->
-  <div id="accountModal" class="modal-backdrop" hidden>
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="accTitle">
-      <div class="modal-head">
-        <h2 id="accTitle" style="margin:0;font-size:20px">Mavie Hesabım &amp; Pro</h2>
-        <button id="closeAccountModal" class="btn ghost small" type="button">Kapat</button>
-      </div>
-
-      <div id="accountLoggedOut" data-auth-view="login">
-        <div id="authViewTabs" class="tabs" style="margin-top:0">
-          <button type="button" class="tab-btn active" data-auth-tab="login">Giriş Yap</button>
-          <button type="button" class="tab-btn" data-auth-tab="register">Hesap Oluştur (3 Gün Pro)</button>
-        </div>
-
-        <!-- Login / Register -->
-        <form id="userAuthForm">
-          <div id="regNameWrap" class="field" hidden>
-            <label for="uName">Adınız / Görünen Ad</label>
-            <input id="uName" placeholder="Örneğin: Ahmet">
-          </div>
-          <div class="field">
-            <label for="uEmail">E-posta</label>
-            <input id="uEmail" type="email" required autocomplete="email" placeholder="ad@ornek.com">
-          </div>
-          <div class="field">
-            <label for="uPass">Parola (en az 8 karakter)</label>
-            <input id="uPass" type="password" required minlength="8" autocomplete="current-password">
-          </div>
-          <div id="uAuthOk" class="ok-msg" hidden></div>
-          <div id="uAuthErr" class="error-msg"></div>
-          <button class="btn full" type="submit" id="uAuthSubmit">Giriş Yap</button>
-          <div class="auth-footer-links">
-            <button id="openForgotBtn" class="text-link" type="button">Parolamı Unuttum</button>
-            <span style="font-size:12px;color:var(--muted)">Kayıt sonrası 6 haneli doğrulama kodu gönderilir</span>
-          </div>
-        </form>
-
-        <!-- Verify Email -->
-        <div id="verifyEmailPanel" hidden>
-          <div class="auth-panel-note">
-            <strong>E-posta Doğrulama:</strong> <span id="verifyEmailTarget"></span> adresine gönderilen 6 haneli kodu girin. Doğrulama tamamlandığında <strong>3 günlük ücretsiz Mavie Pro</strong> denemeniz otomatik başlatılır.
-          </div>
-          <form id="verifyEmailForm">
-            <div class="field">
-              <label for="verifyCodeInput">6 Haneli Doğrulama Kodu</label>
-              <input id="verifyCodeInput" class="code-input" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required placeholder="000000">
-            </div>
-            <div id="verifyMsg" class="ok-msg"></div>
-            <div id="verifyErr" class="error-msg"></div>
-            <button class="btn full" type="submit" id="verifyEmailSubmit">E-postayı Doğrula ve Pro Denemeyi Başlat</button>
-          </form>
-          <div class="auth-footer-links">
-            <button id="resendVerifyBtn" class="btn secondary small" type="button">Kodu Tekrar Gönder</button>
-            <button id="verifyBackLoginBtn" class="text-link" type="button">Girişe Dön</button>
-          </div>
-        </div>
-
-        <!-- Forgot Password -->
-        <div id="forgotPassPanel" hidden>
-          <div class="auth-panel-note">
-            <strong>Parola Sıfırlama:</strong> Kayıtlı e-posta adresinizi girin; sıfırlama için 6 haneli kod gönderelim.
-          </div>
-          <form id="forgotPassForm">
-            <div class="field">
-              <label for="forgotEmailInput">E-posta Adresi</label>
-              <input id="forgotEmailInput" type="email" required placeholder="ad@ornek.com">
-            </div>
-            <div id="forgotMsg" class="ok-msg"></div>
-            <div id="forgotErr" class="error-msg"></div>
-            <button class="btn full" type="submit">Sıfırlama Kodu Gönder</button>
-          </form>
-          <div class="auth-footer-links">
-            <button id="forgotHaveCodeBtn" class="text-link" type="button">Zaten kodum var</button>
-            <button id="forgotBackLoginBtn" class="text-link" type="button">Girişe Dön</button>
-          </div>
-        </div>
-
-        <!-- Reset Password -->
-        <div id="resetPassPanel" hidden>
-          <div class="auth-panel-note">
-            E-postanıza gelen 6 haneli kodu doğrulayın ve en az 8 karakterli yeni parolanızı belirleyin.
-          </div>
-          <form id="resetPassForm">
-            <div class="field">
-              <label for="resetEmailInput">E-posta</label>
-              <input id="resetEmailInput" type="email" required placeholder="ad@ornek.com">
-            </div>
-            <div class="field">
-              <label for="resetCodeInput">6 Haneli Sıfırlama Kodu</label>
-              <div style="display:flex;gap:8px;align-items:center">
-                <input id="resetCodeInput" class="code-input" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required placeholder="000000">
-                <button id="verifyResetCodeBtn" class="btn secondary small" type="button" style="flex-shrink:0">Kodu Doğrula</button>
-              </div>
-            </div>
-            <div class="field">
-              <label for="resetNewPassInput">Yeni Parola (en az 8 karakter)</label>
-              <input id="resetNewPassInput" type="password" required minlength="8" autocomplete="new-password">
-            </div>
-            <div id="resetMsg" class="ok-msg"></div>
-            <div id="resetErr" class="error-msg"></div>
-            <button class="btn full" type="submit">Parolayı Güncelle</button>
-          </form>
-          <div class="auth-footer-links">
-            <button id="resetBackLoginBtn" class="text-link" type="button">Girişe Dön</button>
-          </div>
-        </div>
-      </div>
-
-      <div id="accountLoggedIn" hidden>
-        <div id="uVerifyCelebration" class="ok-msg" hidden style="margin-bottom:10px;padding:10px 12px;border-radius:10px;background:rgba(52,199,89,0.12);border:1px solid rgba(52,199,89,0.35)"></div>
-        <div id="uProfileSummary" class="card" style="background:#0f131c;margin-bottom:12px"></div>
-        <div id="uTrialCountdownBox" class="trial-box" hidden></div>
-        <div id="uPlanGateSummary" class="entitlement-chips"></div>
-
-        <form id="redeemForm" style="margin-bottom:14px">
-          <div class="field">
-            <label for="licenseCodeInput">Pro Lisans / Kupon Kodu Etkinleştir</label>
-            <div style="display:flex;gap:8px">
-              <input id="licenseCodeInput" placeholder="MAVIE-XXXX-XXXX-XXXX">
-              <button class="btn" type="submit" style="flex-shrink:0">Etkinleştir</button>
-            </div>
-          </div>
-          <div id="redeemMsg" class="ok-msg"></div>
-        </form>
-
-        <div id="uDevicesList"></div>
-        <div style="margin-top:14px;display:flex;justify-content:flex-end">
-          <button id="uLogoutBtn" class="btn danger small" type="button">Çıkış Yap</button>
-        </div>
-      </div>
-    </div>
-  </div>
 
   <script src="/portal.js"></script>
 </body>

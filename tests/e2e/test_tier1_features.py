@@ -1,4 +1,4 @@
-"""Tier 1: Requirement-driven single-feature opaque-box E2E tests (>=5 per feature area)."""
+"""Tier 1: Requirement-driven single-feature opaque-box E2E tests for free account-less Mavie."""
 
 from __future__ import annotations
 
@@ -14,16 +14,13 @@ import unittest
 import m3u
 import sports
 from tests.e2e.runner import (
-    CloudServerProcess,
-    HttpClient,
     LocalMediaServerProcess,
     REPO_ROOT,
-    parse_iso_dt,
 )
 
 
 class Tier1BrandAndHygieneTests(unittest.TestCase):
-    """Feature #1 & #2: Brand `Mavie`, zero unwanted Cineva branding, repo secret hygiene."""
+    """Brand `Mavie`, zero account/admin/Pro artifacts, repo secret hygiene."""
 
     def test_local_server_health_and_mavie_cookie_branding(self) -> None:
         srv = LocalMediaServerProcess().start()
@@ -39,31 +36,16 @@ class Tier1BrandAndHygieneTests(unittest.TestCase):
         self.assertNotIn("cineva", root.text.lower())
         self.assertIn("mavie_device", c.cookies_dict())
 
-    def test_cloud_server_health_and_mavie_license_prefix(self) -> None:
-        cloud = CloudServerProcess().start()
-        self.addCleanup(cloud.stop)
-        health = cloud.client().get("/api/v1/health")
-        self.assertEqual(health.status, 200)
-        self.assertEqual(health.json, {"ok": True, "service": "mavie-cloud"})
-
-        tok = cloud.admin_login()
-        lic = cloud.client().post(
-            "/api/v1/admin/licenses",
-            {"plan": "pro", "durationDays": 30, "count": 1},
-            headers=cloud.admin_headers(tok),
-        )
-        self.assertIn(lic.status, (200, 201), lic.text)
-        code = (lic.json or {}).get("license", {}).get("code", "")
-        self.assertRegex(code, r"^MAVIE-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$")
-
-    def test_website_pages_use_mavie_branding_and_emails(self) -> None:
-        for rel in ("website/index.html", "website/admin.html", "website/privacy.html", "website/terms.html"):
+    def test_website_pages_are_free_no_account_and_mavie_branded(self) -> None:
+        for rel in ("website/index.html", "website/404.html", "website/privacy.html", "website/terms.html"):
             path = REPO_ROOT / rel
             self.assertTrue(path.exists(), f"Missing website file: {rel}")
             content = path.read_text(encoding="utf-8")
             self.assertIn("Mavie", content, f"{rel} should display Mavie branding")
             self.assertNotIn("cineva", content.lower(), f"{rel} still contains Cineva branding")
 
+        self.assertFalse((REPO_ROOT / "website/admin.html").exists())
+        self.assertFalse((REPO_ROOT / "cloud_admin.py").exists())
         privacy = (REPO_ROOT / "website/privacy.html").read_text(encoding="utf-8")
         terms = (REPO_ROOT / "website/terms.html").read_text(encoding="utf-8")
         self.assertIn("privacy@mavie.app", privacy)
@@ -102,7 +84,7 @@ class Tier1BrandAndHygieneTests(unittest.TestCase):
 
 
 class Tier1LocalCatalogAndEpgTests(unittest.TestCase):
-    """Feature #9 / Core Engine: Local Catalog, Demo, M3U, Local folder, XMLTV EPG."""
+    """Local Catalog, Demo, M3U, Local folder, XMLTV EPG — all 100% free."""
 
     def setUp(self) -> None:
         self.srv = LocalMediaServerProcess().start()
@@ -217,7 +199,7 @@ class Tier1LocalCatalogAndEpgTests(unittest.TestCase):
 
 
 class Tier1PlaybackLifecycleTests(unittest.TestCase):
-    """Feature: Playback session creation, media proxy, ping/progress, pause, and close."""
+    """Playback session creation, media proxy, ping/progress, pause, and close."""
 
     def setUp(self) -> None:
         self.srv = LocalMediaServerProcess().start()
@@ -295,7 +277,7 @@ class Tier1PlaybackLifecycleTests(unittest.TestCase):
 
 
 class Tier1ProfilesPinKidModeTests(unittest.TestCase):
-    """Feature: Profiles, PBKDF2 PIN locking, and Kid Mode content filtering."""
+    """Unlimited Profiles, PBKDF2 PIN locking, and Kid Mode content filtering — 100% free."""
 
     def setUp(self) -> None:
         self.srv = LocalMediaServerProcess().start()
@@ -359,7 +341,7 @@ class Tier1ProfilesPinKidModeTests(unittest.TestCase):
 
 
 class Tier1LanPairingTests(unittest.TestCase):
-    """Feature: LAN Pairing & Device Authorization."""
+    """LAN Pairing & Device Authorization."""
 
     def setUp(self) -> None:
         self.srv = LocalMediaServerProcess().start()
@@ -409,370 +391,29 @@ class Tier1LanPairingTests(unittest.TestCase):
         self.assertEqual(mobile.get("/api/catalog").status, 401)
 
 
-class Tier1EmailVerifiedRegistrationTests(unittest.TestCase):
-    """Feature #3 & #5: Email-verified account registration, outbox, login block, resend."""
-
-    def setUp(self) -> None:
-        self.cloud = CloudServerProcess().start()
-        self.addCleanup(self.cloud.stop)
-
-    def test_register_creates_unverified_normal_user_without_session_token(self) -> None:
-        res = self.cloud.client().post(
-            "/api/v1/auth/register",
-            {"email": "newuser@mavie.app", "password": "StrongPassword123!", "displayName": "New User"},
-        )
-        self.assertEqual(res.status, 201, res.text)
-        body = res.json or {}
-        self.assertTrue(body.get("ok"))
-        self.assertTrue(body.get("verificationRequired"))
-        self.assertFalse(body.get("emailVerified"))
-        self.assertIsNone(body.get("token"))
-        user = body.get("user", {})
-        self.assertEqual(user.get("email"), "newuser@mavie.app")
-        self.assertFalse(user.get("emailVerified"))
-        self.assertEqual(user.get("plan"), "normal")
-
-    def test_register_writes_verifiable_email_to_outbox_without_response_leak(self) -> None:
-        res = self.cloud.client().post(
-            "/api/v1/auth/register",
-            {"email": "outbox@mavie.app", "password": "StrongPassword123!", "displayName": "Outbox"},
-        )
-        self.assertEqual(res.status, 201, res.text)
-        self.assertEqual((res.json or {}).get("deliveryMode"), "outbox")
-        mail, code, token = self.cloud.find_latest_mail("outbox@mavie.app")
-        self.assertIsNotNone(mail, "Expected verification email in local outbox")
-        self.assertTrue(code or token, "Outbox email must contain 6-digit code or verification token")
-        if code:
-            self.assertNotIn(code, res.text)
-        if token:
-            self.assertNotIn(token, res.text)
-
-    def test_unverified_user_login_blocked_with_403_email_not_verified(self) -> None:
-        self.cloud.client().post(
-            "/api/v1/auth/register",
-            {"email": "unverified@mavie.app", "password": "StrongPassword123!", "displayName": "Unver"},
-        )
-        login = self.cloud.client().post(
-            "/api/v1/auth/login",
-            {"email": "unverified@mavie.app", "password": "StrongPassword123!"},
-        )
-        self.assertEqual(login.status, 403, login.text)
-        body = login.json or {}
-        self.assertEqual(body.get("code"), "EMAIL_NOT_VERIFIED")
-        self.assertTrue(body.get("verificationRequired"))
-
-    def test_resend_verification_dispatches_fresh_outbox_email(self) -> None:
-        self.cloud.client().post(
-            "/api/v1/auth/register",
-            {"email": "resend@mavie.app", "password": "StrongPassword123!", "displayName": "Resend"},
-        )
-        before_count = len(self.cloud.read_outbox())
-        resend = self.cloud.client().post("/api/v1/auth/resend-verification", {"email": "resend@mavie.app"})
-        self.assertEqual(resend.status, 200, resend.text)
-        self.assertTrue((resend.json or {}).get("ok"))
-        self.assertGreater(len(self.cloud.read_outbox()), before_count)
-
-    def test_verify_email_with_outbox_code_activates_account_and_unlocks_login(self) -> None:
-        ver, tok, user = self.cloud.register_and_verify("verified@mavie.app", "StrongPassword123!", "Verified")
-        self.assertEqual(ver.status, 200, ver.text)
-        self.assertTrue(tok)
-        self.assertTrue((user or {}).get("emailVerified"))
-
-        me = self.cloud.client().get("/api/v1/me", token=tok)
-        self.assertEqual(me.status, 200, me.text)
-        self.assertTrue((me.json or {}).get("user", {}).get("emailVerified"))
-
-        login = self.cloud.client().post(
-            "/api/v1/auth/login",
-            {"email": "verified@mavie.app", "password": "StrongPassword123!"},
-        )
-        self.assertEqual(login.status, 200, login.text)
-        self.assertTrue((login.json or {}).get("token"))
-
-
-class Tier1PasswordResetTests(unittest.TestCase):
-    """Feature #4: Self-service email-verified password reset."""
-
-    def setUp(self) -> None:
-        self.cloud = CloudServerProcess().start()
-        self.addCleanup(self.cloud.stop)
-        _, self.initial_token, _ = self.cloud.register_and_verify("reset@mavie.app", "InitialPass123!")
-
-    def test_forgot_password_dispatches_reset_email_to_outbox(self) -> None:
-        before = len(self.cloud.read_outbox())
-        resp = self.cloud.client().post("/api/v1/auth/forgot-password", {"email": "reset@mavie.app"})
-        self.assertEqual(resp.status, 200, resp.text)
-        self.assertTrue((resp.json or {}).get("ok"))
-        after = self.cloud.read_outbox()
-        self.assertGreater(len(after), before)
-        _, code, token = self.cloud.find_latest_mail("reset@mavie.app")
-        self.assertTrue(code or token)
-        if code:
-            self.assertNotIn(code, resp.text)
-
-    def test_forgot_password_unknown_email_returns_generic_200(self) -> None:
-        before = len(self.cloud.read_outbox())
-        resp = self.cloud.client().post("/api/v1/auth/forgot-password", {"email": "nobody@mavie.app"})
-        self.assertEqual(resp.status, 200, resp.text)
-        self.assertTrue((resp.json or {}).get("ok"))
-        self.assertEqual(len(self.cloud.read_outbox()), before)
-
-    def test_verify_reset_code_validates_outbox_code(self) -> None:
-        self.assertEqual(self.cloud.client().post("/api/v1/auth/forgot-password", {"email": "reset@mavie.app"}).status, 200)
-        _, code, token = self.cloud.find_latest_mail("reset@mavie.app")
-        payload = {"email": "reset@mavie.app", "code": code} if code else {"token": token}
-        check = self.cloud.client().post("/api/v1/auth/verify-reset-code", payload)
-        self.assertEqual(check.status, 200, check.text)
-        self.assertTrue((check.json or {}).get("valid"))
-
-    def test_reset_password_updates_credentials_for_login(self) -> None:
-        self.cloud.client().post("/api/v1/auth/forgot-password", {"email": "reset@mavie.app"})
-        _, code, token = self.cloud.find_latest_mail("reset@mavie.app")
-        payload = {"email": "reset@mavie.app", "code": code, "newPassword": "UpdatedPass456!"} if code else {"token": token, "newPassword": "UpdatedPass456!"}
-        res = self.cloud.client().post("/api/v1/auth/reset-password", payload)
-        self.assertEqual(res.status, 200, res.text)
-        self.assertTrue((res.json or {}).get("ok"))
-
-        login = self.cloud.client().post(
-            "/api/v1/auth/login",
-            {"email": "reset@mavie.app", "password": "UpdatedPass456!"},
-        )
-        self.assertEqual(login.status, 200, login.text)
-
-    def test_reset_password_invalidates_prior_session_tokens(self) -> None:
-        self.assertEqual(self.cloud.client().get("/api/v1/me", token=self.initial_token).status, 200)
-        self.cloud.client().post("/api/v1/auth/forgot-password", {"email": "reset@mavie.app"})
-        _, code, token = self.cloud.find_latest_mail("reset@mavie.app")
-        payload = {"email": "reset@mavie.app", "code": code, "newPassword": "UpdatedPass789!"} if code else {"token": token, "newPassword": "UpdatedPass789!"}
-        self.assertEqual(self.cloud.client().post("/api/v1/auth/reset-password", payload).status, 200)
-        stale_me = self.cloud.client().get("/api/v1/me", token=self.initial_token)
-        self.assertEqual(stale_me.status, 401, stale_me.text)
-
-
-class Tier1ThreeDayProTrialTests(unittest.TestCase):
-    """Feature #6: Automatic 3-day Pro subscription trial upon email-verified signup."""
-
-    def setUp(self) -> None:
-        self.cloud = CloudServerProcess().start()
-        self.addCleanup(self.cloud.stop)
-
-    def test_unverified_signup_starts_without_active_pro_trial(self) -> None:
-        reg = self.cloud.client().post(
-            "/api/v1/auth/register",
-            {"email": "trial_wait@mavie.app", "password": "StrongPassword123!", "displayName": "Wait"},
-        )
-        self.assertEqual(reg.status, 201, reg.text)
-        user = (reg.json or {}).get("user", {})
-        self.assertEqual(user.get("plan"), "normal")
-        self.assertFalse(user.get("trialActive", False))
-        self.assertFalse(user.get("isPro", False))
-
-    def test_verifying_email_automatically_activates_pro_trial(self) -> None:
-        ver, tok, user = self.cloud.register_and_verify("trial_go@mavie.app", "StrongPassword123!", "Go")
-        self.assertEqual(ver.status, 200, ver.text)
-        self.assertTrue((ver.json or {}).get("trialActivated"))
-        self.assertEqual(user.get("effectivePlan"), "pro")
-        self.assertTrue(user.get("isPro"))
-        self.assertTrue(user.get("trialActive"))
-
-    def test_pro_trial_duration_is_72_hours(self) -> None:
-        _, _, user = self.cloud.register_and_verify("trial_72h@mavie.app", "StrongPassword123!")
-        started = parse_iso_dt(user["trialStartedAt"])
-        ends = parse_iso_dt(user["trialEndsAt"])
-        hours = (ends - started).total_seconds() / 3600.0
-        self.assertGreaterEqual(hours, 71.5)
-        self.assertLessEqual(hours, 72.5)
-        self.assertTrue(user.get("expiresAt"))
-
-    def test_trial_user_receives_pro_entitlements_and_5_device_limit(self) -> None:
-        _, tok, user = self.cloud.register_and_verify("trial_ent@mavie.app", "StrongPassword123!")
-        self.assertEqual(user.get("maxDevices"), 5)
-        feats = user.get("features", {})
-        for k in ("cloudSync", "multiView", "unlimitedProfiles", "epgMatch", "advancedTracks"):
-            self.assertTrue(feats.get(k), f"Expected Pro trial feature {k}=True")
-        me = self.cloud.client().get("/api/v1/me", token=tok)
-        self.assertEqual(me.json["user"]["maxDevices"], 5)
-
-    def test_trial_is_single_use_and_not_regranted_on_login(self) -> None:
-        _, _, user = self.cloud.register_and_verify("trial_once@mavie.app", "StrongPassword123!")
-        admin_tok = self.cloud.admin_login()
-        self.cloud.client().patch(
-            f"/api/v1/admin/users/{user['id']}",
-            {"plan": "normal", "expiresAt": "2020-01-01T00:00:00+00:00"},
-            headers=self.cloud.admin_headers(admin_tok),
-        )
-        login = self.cloud.client().post(
-            "/api/v1/auth/login",
-            {"email": "trial_once@mavie.app", "password": "StrongPassword123!"},
-        )
-        self.assertEqual(login.status, 200)
-        u2 = login.json["user"]
-        self.assertEqual(u2.get("effectivePlan"), "normal")
-        self.assertFalse(u2.get("trialActive"))
-
-
-class Tier1PlanGatingAndDeviceLimitsTests(unittest.TestCase):
-    """Feature #6 & #9: Normal vs Pro gating and 1-vs-5 device limits."""
-
-    def setUp(self) -> None:
-        self.cloud = CloudServerProcess().start()
-        self.addCleanup(self.cloud.stop)
-
-    def _make_normal_user(self, email: str):
-        _, _, user = self.cloud.register_and_verify(email, "StrongPassword123!")
-        admin_tok = self.cloud.admin_login()
-        self.cloud.client().patch(
-            f"/api/v1/admin/users/{user['id']}",
-            {"plan": "normal", "expiresAt": "2020-01-01T00:00:00+00:00"},
-            headers=self.cloud.admin_headers(admin_tok),
-        )
-        login = self.cloud.client().post(
-            "/api/v1/auth/login",
-            {"email": email, "password": "StrongPassword123!"},
-        )
-        return login.json["token"], login.json["user"]
-
-    def test_app_config_publishes_normal_and_pro_plan_definitions(self) -> None:
-        cfg = self.cloud.client().get("/api/v1/app-config")
-        self.assertEqual(cfg.status, 200)
-        plans = (cfg.json or {}).get("plans", {})
-        self.assertEqual(plans.get("normal", {}).get("maxDevices"), 1)
-        self.assertEqual(plans.get("pro", {}).get("maxDevices"), 5)
-        self.assertEqual(plans.get("pro", {}).get("trialDays"), 3)
-
-    def test_normal_user_blocked_from_cloud_sync_with_pro_required(self) -> None:
-        tok, user = self._make_normal_user("norm_sync@mavie.app")
-        self.assertEqual(user["effectivePlan"], "normal")
-        put_res = self.cloud.client().put(
-            "/api/v1/sync",
-            {"favorites": ["vod:demo_bbb"], "progress": {}, "playlists": [], "playlistItems": []},
-            token=tok,
-        )
-        self.assertEqual(put_res.status, 403, put_res.text)
-        self.assertEqual((put_res.json or {}).get("code"), "PRO_REQUIRED")
-        self.assertTrue((put_res.json or {}).get("upgradeRequired"))
-
-    def test_pro_trial_user_can_put_and_get_cloud_sync(self) -> None:
-        _, tok, _ = self.cloud.register_and_verify("pro_sync@mavie.app", "StrongPassword123!")
-        payload = {"favorites": ["vod:demo_sintel"], "progress": {"vod:demo_sintel": 120}, "playlists": [], "playlistItems": []}
-        put_res = self.cloud.client().put("/api/v1/sync", payload, token=tok)
-        self.assertEqual(put_res.status, 200, put_res.text)
-        get_res = self.cloud.client().get("/api/v1/sync", token=tok)
-        self.assertEqual(get_res.status, 200, get_res.text)
-        self.assertIn("vod:demo_sintel", json.dumps(get_res.json))
-
-    def test_normal_device_limit_is_1_and_self_delete_frees_slot(self) -> None:
-        tok, _ = self._make_normal_user("norm_dev@mavie.app")
-        d1 = self.cloud.client().post(
-            "/api/v1/devices/register",
-            {"deviceId": "dev_one", "name": "Phone", "platform": "android"},
-            token=tok,
-        )
-        self.assertEqual(d1.status, 200, d1.text)
-        d2 = self.cloud.client().post(
-            "/api/v1/devices/register",
-            {"deviceId": "dev_two", "name": "Desktop", "platform": "windows"},
-            token=tok,
-        )
-        self.assertEqual(d2.status, 403, d2.text)
-        self.assertEqual((d2.json or {}).get("code"), "DEVICE_LIMIT_REACHED")
-
-        rm = self.cloud.client().delete("/api/v1/devices/dev_one", token=tok)
-        self.assertEqual(rm.status, 200, rm.text)
-        d2_retry = self.cloud.client().post(
-            "/api/v1/devices/register",
-            {"deviceId": "dev_two", "name": "Desktop", "platform": "windows"},
-            token=tok,
-        )
-        self.assertEqual(d2_retry.status, 200, d2_retry.text)
-
-    def test_local_server_enforces_pro_gates_when_linked_to_normal_account(self) -> None:
-        self._make_normal_user("local_norm@mavie.app")
-        srv = LocalMediaServerProcess(cloud_url=self.cloud.base_url).start()
-        self.addCleanup(srv.stop)
-        c = srv.paired_client()
-
-        login = c.post(
-            "/api/cloud/login",
-            {"email": "local_norm@mavie.app", "password": "StrongPassword123!", "cloudUrl": self.cloud.base_url},
-        )
-        self.assertEqual(login.status, 200, login.text)
-
-        sync_res = c.post("/api/cloud/sync", {})
-        self.assertEqual(sync_res.status, 403, sync_res.text)
-        self.assertEqual((sync_res.json or {}).get("code"), "PRO_REQUIRED")
-
-        prof_res = c.post("/api/profiles", {"name": "Second", "pin": "1234"})
-        self.assertEqual(prof_res.status, 403, prof_res.text)
-        self.assertEqual((prof_res.json or {}).get("code"), "PRO_REQUIRED")
-
-
-class Tier1WebsiteShowcaseAndAdminTests(unittest.TestCase):
-    """Feature #11 & #7: Website 4-platform showcase, download tracking, portal modals, Admin gate."""
-
-    def setUp(self) -> None:
-        self.cloud = CloudServerProcess().start()
-        self.addCleanup(self.cloud.stop)
-
-    def test_website_index_served_with_mavie_branding(self) -> None:
-        res = self.cloud.client().get("/")
-        self.assertEqual(res.status, 200)
-        self.assertIn("Mavie", res.text)
-        self.assertNotIn("cineva", res.text.lower())
+class Tier1WebsiteShowcaseAndFreeModelTests(unittest.TestCase):
+    """Website 4-platform showcase, direct downloads, and zero account/admin/Pro UI."""
 
     def test_website_showcases_all_four_platform_downloads(self) -> None:
-        html = self.cloud.client().get("/").text
+        html = (REPO_ROOT / "website/index.html").read_text(encoding="utf-8")
+        portal_js = (REPO_ROOT / "website/portal.js").read_text(encoding="utf-8")
         for artifact in ("Mavie-Setup.exe", "Mavie.exe", "Mavie-Android.apk", "Mavie-macOS.dmg", "Mavie-iOS.ipa"):
             self.assertIn(artifact, html, f"Website index missing download link for {artifact}")
+            self.assertIn(artifact, portal_js, f"portal.js missing direct URL for {artifact}")
         for label in ("Windows", "Android", "macOS", "iOS"):
             self.assertIn(label, html)
 
-    def test_app_config_provides_4_platform_urls_and_tracks_ios_macos(self) -> None:
-        cfg = self.cloud.client().get("/api/v1/app-config")
-        self.assertEqual(cfg.status, 200)
-        versions = (cfg.json or {}).get("versions", {})
-        for key, expected in (
-            ("windowsInstallerUrl", "Mavie-Setup.exe"),
-            ("windowsPortableUrl", "Mavie.exe"),
-            ("androidApkUrl", "Mavie-Android.apk"),
-            ("macosUrl", "Mavie-macOS.dmg"),
-            ("iosUrl", "Mavie-iOS.ipa"),
-        ):
-            self.assertIn(expected, str(versions.get(key, "")), f"versions.{key} invalid")
-
-        for plat in ("windows-installer", "android-apk", "macos", "ios"):
-            tr = self.cloud.client().post("/api/v1/downloads/track", {"platform": plat})
-            self.assertEqual(tr.status, 200, f"track failed for {plat}: {tr.text}")
-
-        cfg2 = self.cloud.client().get("/api/v1/app-config").json
-        self.assertEqual(cfg2["downloads"]["ios"], 1)
-        self.assertEqual(cfg2["downloads"]["macos"], 1)
-
-    def test_website_contains_plans_verify_reset_and_device_management_ui(self) -> None:
+    def test_website_has_no_account_modals_plans_or_admin_files(self) -> None:
         html = (REPO_ROOT / "website/index.html").read_text(encoding="utf-8")
         portal_js = (REPO_ROOT / "website/portal.js").read_text(encoding="utf-8")
         combined = html + "\n" + portal_js
-        self.assertIn("Normal", combined)
-        self.assertIn("Pro", combined)
-        self.assertIn("verify-email", combined)
-        self.assertIn("forgot-password", combined)
-        self.assertIn("reset-password", combined)
-        self.assertIn("/devices/", combined)
-
-    def test_admin_gate_protects_admin_api_and_supports_normal_pro_management(self) -> None:
-        no_gate = self.cloud.client().get("/api/v1/admin/overview")
-        self.assertIn(no_gate.status, (401, 403, 404))
-
-        tok = self.cloud.admin_login()
-        ov = self.cloud.client().get("/api/v1/admin/overview", headers=self.cloud.admin_headers(tok))
-        self.assertEqual(ov.status, 200, ov.text)
-        admin_html = (REPO_ROOT / "website/admin.html").read_text(encoding="utf-8")
-        self.assertIn("MAVIE-", admin_html)
-        self.assertNotIn("CINEVA-", admin_html)
+        for forbidden in ("accountModal", "Mavie Pro", "verify-email", "forgot-password", "reset-password", "/api/v1/"):
+            self.assertNotIn(forbidden, combined)
+        self.assertIn("Tamamen Ücretsiz", html)
 
 
 class Tier1MultiPlatformPackagingAndCiTests(unittest.TestCase):
-    """Feature #12–#16: Windows, Android, macOS, iOS projects/packaging & 4-platform CI."""
+    """Windows, Android, macOS, iOS projects/packaging & 4-platform CI."""
 
     def test_windows_desktop_launcher_and_installer_packaging_present(self) -> None:
         desktop_files = list((REPO_ROOT / "desktop").glob("*.py"))

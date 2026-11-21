@@ -568,199 +568,11 @@ public struct AccountInfo: Codable, Hashable, Sendable {
     }
 }
 
-public struct CloudPlanFeatures: Codable, Hashable, Sendable {
-    public var cloudSync: Bool
-    public var multiView: Bool
-    public var unlimitedProfiles: Bool
-    public var epgMatch: Bool
-    public var advancedTracks: Bool
-    public var maxDevices: Int
-
-    public init(
-        cloudSync: Bool = false,
-        multiView: Bool = false,
-        unlimitedProfiles: Bool = false,
-        epgMatch: Bool = false,
-        advancedTracks: Bool = false,
-        maxDevices: Int = 1
-    ) {
-        self.cloudSync = cloudSync
-        self.multiView = multiView
-        self.unlimitedProfiles = unlimitedProfiles
-        self.epgMatch = epgMatch
-        self.advancedTracks = advancedTracks
-        self.maxDevices = maxDevices
-    }
-}
-
-public struct CloudDevice: Identifiable, Codable, Hashable, Sendable {
-    public var id: String
-    public var name: String
-    public var platform: String
-    public var lastSeenAt: String
-
-    public init(id: String, name: String, platform: String, lastSeenAt: String = "") {
-        self.id = id
-        self.name = name
-        self.platform = platform
-        self.lastSeenAt = lastSeenAt
-    }
-}
-
-public struct CloudUser: Identifiable, Codable, Hashable, Sendable {
-    public var id: String
-    public var email: String
-    public var displayName: String
-    public var role: String
-    public var emailVerified: Bool
-    public var verifiedAt: String
-    public var plan: String
-    public var effectivePlan: String
-    public var isPro: Bool
-    public var trialActive: Bool
-    public var trialUsed: Bool
-    public var trialStartedAt: String
-    public var trialEndsAt: String
-    public var status: String
-    public var maxDevices: Int
-    public var expiresAt: String
-    public var adminNote: String
-    public var createdAt: String
-    public var lastSeenAt: String
-    public var features: CloudPlanFeatures
-    public var devices: [CloudDevice]?
-
-    public init(
-        id: String,
-        email: String,
-        displayName: String,
-        role: String = "user",
-        emailVerified: Bool = false,
-        verifiedAt: String = "",
-        plan: String = "normal",
-        effectivePlan: String = "normal",
-        isPro: Bool = false,
-        trialActive: Bool = false,
-        trialUsed: Bool = false,
-        trialStartedAt: String = "",
-        trialEndsAt: String = "",
-        status: String = "active",
-        maxDevices: Int = 1,
-        expiresAt: String = "",
-        adminNote: String = "",
-        createdAt: String = "",
-        lastSeenAt: String = "",
-        features: CloudPlanFeatures = CloudPlanFeatures(),
-        devices: [CloudDevice]? = nil
-    ) {
-        self.id = id
-        self.email = email
-        self.displayName = displayName
-        self.role = role
-        self.emailVerified = emailVerified
-        self.verifiedAt = verifiedAt
-        self.plan = plan
-        self.effectivePlan = effectivePlan
-        self.isPro = isPro
-        self.trialActive = trialActive
-        self.trialUsed = trialUsed
-        self.trialStartedAt = trialStartedAt
-        self.trialEndsAt = trialEndsAt
-        self.status = status
-        self.maxDevices = maxDevices
-        self.expiresAt = expiresAt
-        self.adminNote = adminNote
-        self.createdAt = createdAt
-        self.lastSeenAt = lastSeenAt
-        self.features = features
-        self.devices = devices
-    }
-
-    public func trialRemainingSummary(now: Date = Date()) -> String? {
-        guard trialActive, !trialEndsAt.isEmpty else { return nil }
-        guard let endDate = MavieDateParser.parseISO8601(trialEndsAt) else { return nil }
-        let seconds = endDate.timeIntervalSince(now)
-        if seconds <= 0 { return "Deneme süresi sona erdi" }
-        let totalHours = Int(ceil(seconds / 3600.0))
-        let days = totalHours / 24
-        let hours = totalHours % 24
-        if days > 0 {
-            return "\(days) gün \(hours) saat kaldı"
-        }
-        return "\(max(1, totalHours)) saat kaldı"
-    }
-}
-
-public struct CloudAnnouncement: Codable, Hashable, Sendable {
-    public var enabled: Bool
-    public var title: String
-    public var message: String
-    public var severity: String
-}
-
-public struct CloudVersions: Codable, Hashable, Sendable {
-    public var latestVersion: String
-    public var windowsInstallerUrl: String?
-    public var windowsPortableUrl: String?
-    public var androidApkUrl: String?
-    public var macosUrl: String?
-    public var iosUrl: String?
-    public var releaseNotes: String?
-}
-
-public struct CloudPlanCatalogEntry: Codable, Hashable, Sendable {
-    public var maxDevices: Int
-    public var trialDays: Int?
-    public var features: [String]
-}
-
-public struct CloudPlanCatalog: Codable, Hashable, Sendable {
-    public var normal: CloudPlanCatalogEntry
-    public var pro: CloudPlanCatalogEntry
-}
-
-public struct CloudAppConfig: Codable, Hashable, Sendable {
-    public var announcement: CloudAnnouncement?
-    public var versions: CloudVersions?
-    public var downloads: [String: Int]?
-    public var plans: CloudPlanCatalog?
-}
-
-public struct CloudApiError: Codable, Equatable, Sendable {
-    public var status: Int
-    public var message: String
-    public var code: String
-    public var verificationRequired: Bool
-    public var upgradeRequired: Bool
-    public var email: String?
-    public var maxDevices: Int?
-
-    public init(
-        status: Int,
-        message: String,
-        code: String = "",
-        verificationRequired: Bool = false,
-        upgradeRequired: Bool = false,
-        email: String? = nil,
-        maxDevices: Int? = nil
-    ) {
-        self.status = status
-        self.message = message
-        self.code = code
-        self.verificationRequired = verificationRequired
-        self.upgradeRequired = upgradeRequired
-        self.email = email
-        self.maxDevices = maxDevices
-    }
-}
-
 public enum MavieError: LocalizedError, Equatable, Sendable {
     case invalidURL(String)
     case insecureTransport(String)
     case network(String)
-    case api(CloudApiError)
     case parsing(String)
-    case proRequired(String)
     case validation(String)
 
     public var errorDescription: String? {
@@ -769,11 +581,8 @@ public enum MavieError: LocalizedError, Equatable, Sendable {
              .insecureTransport(let msg),
              .network(let msg),
              .parsing(let msg),
-             .proRequired(let msg),
              .validation(let msg):
             return msg
-        case .api(let err):
-            return err.message
         }
     }
 }
@@ -920,7 +729,7 @@ public struct SyncTrackPreferenceRecord: Codable, Hashable, Sendable {
     }
 }
 
-public struct CloudSyncPayload: Codable, Hashable, Sendable {
+public struct LibrarySyncPayload: Codable, Hashable, Sendable {
     public var version: Int
     public var exportedAt: String
     public var items: [MediaItem]

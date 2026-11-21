@@ -45,13 +45,6 @@ class PlaybackError(RuntimeError):
         self.code = code
 
 
-class CloudError(RuntimeError):
-    def __init__(self, message, status=400, data=None):
-        super().__init__(message)
-        self.status = status
-        self.data = data if isinstance(data, dict) else {}
-
-
 def stamp(): return dt.datetime.now(dt.timezone.utc).isoformat()
 def number(v, default=0):
     try:
@@ -494,273 +487,6 @@ def surprise_pick():
     return {'item': pool[secrets.randbelow(len(pool))]}
 
 
-DEFAULT_CLOUD_URL = 'https://cineva-app.netlify.app'
-CLOUD_OPENER = urllib.request.build_opener(urllib.request.HTTPSHandler(context=TLS_CONTEXT))
-
-
-def _cloud_platform():
-    if sys.platform.startswith('win'):
-        return 'windows'
-    if sys.platform == 'darwin':
-        return 'macos'
-    return 'desktop'
-
-
-def _cloud_state():
-    saved = meta_get('cloud_auth', {})
-    if not isinstance(saved, dict):
-        saved = {}
-    env_url = (os.environ.get('MAVIE_CLOUD_URL') or os.environ.get('CINEVA_CLOUD_URL') or '').strip()
-    url = saved.get('cloudUrl') or env_url
-    return {'cloudUrl': url, 'token': saved.get('token', ''), 'deviceId': saved.get('deviceId') or meta_get('cloud_device_id') or ''}
-
-
-def _ensure_cloud_device_id():
-    did = meta_get('cloud_device_id')
-    if not did:
-        did = 'dev_' + secrets.token_hex(8)
-        meta_set('cloud_device_id', did)
-    return did
-
-
-def _cloud_request(cloud_url, path, method='GET', payload=None, token=''):
-    base = validate_host(cloud_url)
-    headers = {'User-Agent': 'Mavie-Desktop/3.0', 'Accept': 'application/json'}
-    if token:
-        headers['Authorization'] = 'Bearer ' + token
-    raw = None
-    if payload is not None:
-        raw = json.dumps(payload, ensure_ascii=False).encode('utf-8')
-        headers['Content-Type'] = 'application/json'
-    req = urllib.request.Request(base + path, data=raw, method=method, headers=headers)
-    try:
-        with CLOUD_OPENER.open(req, timeout=8) as r:
-            body = r.read(1536 * 1024)
-            return json.loads(body.decode('utf-8')) if body else {}
-    except urllib.error.HTTPError as err:
-        raw_err = err.read(64 * 1024)
-        parsed = {}
-        with contextlib.suppress(Exception):
-            decoded = json.loads(raw_err.decode('utf-8'))
-            if isinstance(decoded, dict):
-                parsed = decoded
-        msg = parsed.get('error') or 'Bulut sunucusu isteği reddetti.'
-        raise CloudError(msg, status=err.code, data=parsed) from None
-    except (urllib.error.URLError, TimeoutError) as err:
-        raise RuntimeError('Mavie Bulut sunucusuna şu anda ulaşılamıyor.') from err
-
-
-def _cloud_status_shape(connected, cloud_url, user, cfg):
-    u = user if isinstance(user, dict) else None
-    return {
-        'connected': connected,
-        'cloudUrl': cloud_url,
-        'user': u,
-        'config': cfg,
-        'emailVerified': bool(u and u.get('emailVerified')),
-        'plan': (u or {}).get('plan', 'normal'),
-        'effectivePlan': (u or {}).get('effectivePlan', 'normal'),
-        'isPro': bool(u and u.get('isPro')),
-        'trialActive': bool(u and u.get('trialActive')),
-        'trialEndsAt': (u or {}).get('trialEndsAt'),
-        'features': (u or {}).get('features', {}),
-    }
-
-
-def _complete_cloud_session(cloud_url, token, user=None):
-    meta_set('cloud_auth', {'cloudUrl': cloud_url, 'token': token})
-    if isinstance(user, dict):
-        meta_set('cloud_user', user)
-    with contextlib.suppress(Exception):
-        _cloud_request(cloud_url, '/api/v1/devices/register', method='POST', payload={
-            'deviceId': _ensure_cloud_device_id(),
-            'deviceName': socket.gethostname() or 'Mavie Masaüstü',
-            'platform': _cloud_platform(),
-        }, token=token)
-    with contextlib.suppress(Exception):
-        cloud_sync()
-
-
-def _linked_normal_user():
-    st = _cloud_state()
-    if not st['token']:
-        return False
-    u = meta_get('cloud_user')
-    if not isinstance(u, dict) and st['cloudUrl']:
-        with contextlib.suppress(Exception):
-            u = _cloud_request(st['cloudUrl'], '/api/v1/me', token=st['token']).get('user')
-            if isinstance(u, dict):
-                meta_set('cloud_user', u)
-    if not isinstance(u, dict):
-        return False
-    if u.get('effectivePlan') == 'normal':
-        return True
-    exp_raw = u.get('trialEndsAt') if u.get('trialActive') else u.get('expiresAt')
-    if isinstance(exp_raw, str) and exp_raw.strip():
-        with contextlib.suppress(ValueError):
-            exp_dt = dt.datetime.fromisoformat(exp_raw.strip().replace('Z', '+00:00'))
-            if exp_dt.tzinfo is None:
-                exp_dt = exp_dt.replace(tzinfo=dt.timezone.utc)
-            if exp_dt <= dt.datetime.now(dt.timezone.utc):
-                return True
-    return False
-
-
-def cloud_status():
-    st = _cloud_state()
-    if not st['cloudUrl']:
-        return _cloud_status_shape(False, '', None, None)
-    cfg = None
-    with contextlib.suppress(Exception):
-        cfg = _cloud_request(st['cloudUrl'], '/api/v1/app-config')
-    user = None
-    if st['token']:
-        try:
-            user = _cloud_request(st['cloudUrl'], '/api/v1/me', token=st['token']).get('user')
-            if isinstance(user, dict):
-                meta_set('cloud_user', user)
-        except CloudError as err:
-            if err.status in (401, 403):
-                meta_set('cloud_auth', {'cloudUrl': st['cloudUrl'], 'token': ''})
-                meta_set('cloud_user', None)
-        except Exception:
-            pass
-    return _cloud_status_shape(True, st['cloudUrl'], user, cfg)
-
-
-def cloud_auth(action, d):
-    cloud_url = validate_host(d.get('cloudUrl') or _cloud_state().get('cloudUrl') or DEFAULT_CLOUD_URL)
-    endpoint = '/api/v1/auth/register' if action == 'register' else '/api/v1/auth/login'
-    res = _cloud_request(cloud_url, endpoint, method='POST', payload={
-        'email': str(d.get('email', '')).strip(),
-        'password': str(d.get('password', '')),
-        'displayName': str(d.get('displayName', '')).strip(),
-    })
-    token = res.get('token', '')
-    if token:
-        _complete_cloud_session(cloud_url, token, res.get('user'))
-        return cloud_status()
-    meta_set('cloud_auth', {'cloudUrl': cloud_url, 'token': ''})
-    meta_set('cloud_user', None)
-    return {**res, 'cloudUrl': cloud_url}
-
-
-def cloud_verify_email(d):
-    cloud_url = validate_host(d.get('cloudUrl') or _cloud_state().get('cloudUrl') or DEFAULT_CLOUD_URL)
-    payload = {}
-    if str(d.get('token', '')).strip():
-        payload['token'] = str(d.get('token', '')).strip()
-    else:
-        payload['email'] = str(d.get('email', '')).strip()
-        payload['code'] = str(d.get('code', '')).strip()
-    res = _cloud_request(cloud_url, '/api/v1/auth/verify-email', method='POST', payload=payload)
-    token = res.get('token', '')
-    if token:
-        _complete_cloud_session(cloud_url, token, res.get('user'))
-    st = cloud_status()
-    return {**res, **st, 'user': st.get('user') or res.get('user')}
-
-
-def cloud_resend_verification(d):
-    cloud_url = validate_host(d.get('cloudUrl') or _cloud_state().get('cloudUrl') or DEFAULT_CLOUD_URL)
-    return _cloud_request(cloud_url, '/api/v1/auth/resend-verification', method='POST', payload={
-        'email': str(d.get('email', '')).strip(),
-    })
-
-
-def cloud_forgot_password(d):
-    cloud_url = validate_host(d.get('cloudUrl') or _cloud_state().get('cloudUrl') or DEFAULT_CLOUD_URL)
-    return _cloud_request(cloud_url, '/api/v1/auth/forgot-password', method='POST', payload={
-        'email': str(d.get('email', '')).strip(),
-    })
-
-
-def cloud_verify_reset_code(d):
-    cloud_url = validate_host(d.get('cloudUrl') or _cloud_state().get('cloudUrl') or DEFAULT_CLOUD_URL)
-    payload = {}
-    if str(d.get('token', '')).strip():
-        payload['token'] = str(d.get('token', '')).strip()
-    else:
-        payload['email'] = str(d.get('email', '')).strip()
-        payload['code'] = str(d.get('code', '')).strip()
-    return _cloud_request(cloud_url, '/api/v1/auth/verify-reset-code', method='POST', payload=payload)
-
-
-def cloud_reset_password(d):
-    cloud_url = validate_host(d.get('cloudUrl') or _cloud_state().get('cloudUrl') or DEFAULT_CLOUD_URL)
-    payload = {'newPassword': str(d.get('newPassword', ''))}
-    if str(d.get('token', '')).strip():
-        payload['token'] = str(d.get('token', '')).strip()
-    else:
-        payload['email'] = str(d.get('email', '')).strip()
-        payload['code'] = str(d.get('code', '')).strip()
-    return _cloud_request(cloud_url, '/api/v1/auth/reset-password', method='POST', payload=payload)
-
-
-def cloud_delete_device(device_id):
-    st = _cloud_state()
-    if not st['cloudUrl'] or not st['token']:
-        raise CloudError('Önce Mavie hesabınızla giriş yapın.', status=401)
-    did = urllib.parse.quote(str(device_id or '').strip(), safe='')
-    if not did:
-        raise ValueError('Cihaz kimliği gerekli.')
-    res = _cloud_request(st['cloudUrl'], f'/api/v1/devices/{did}', method='DELETE', token=st['token'])
-    u = meta_get('cloud_user')
-    if isinstance(u, dict) and isinstance(res.get('devices'), list):
-        u['devices'] = res['devices']
-        meta_set('cloud_user', u)
-    return res
-
-
-def cloud_sync():
-    st = _cloud_state()
-    if not st['cloudUrl'] or not st['token']:
-        raise ValueError('Önce Mavie hesabınızla giriş yapın.')
-    if _linked_normal_user():
-        raise CloudError('Bulut eşitleme Pro plan gerektirir.', status=403, data={'code': 'PRO_REQUIRED', 'upgradeRequired': True})
-    try:
-        remote_res = _cloud_request(st['cloudUrl'], '/api/v1/sync', token=st['token'])
-        remote_state = remote_res.get('state') if isinstance(remote_res, dict) else None
-        if isinstance(remote_state, dict) and remote_state.get('version') == 1:
-            merge_state_dict(remote_state)
-        merged = export_state_dict()
-        pushed = _cloud_request(st['cloudUrl'], '/api/v1/sync', method='PUT', payload={'state': merged}, token=st['token'])
-    except CloudError as err:
-        if err.status == 403 and err.data.get('code') == 'PRO_REQUIRED':
-            u = meta_get('cloud_user')
-            if isinstance(u, dict):
-                u['effectivePlan'] = 'normal'
-                u['isPro'] = False
-                meta_set('cloud_user', u)
-        raise
-    return {
-        'ok': True,
-        'updatedAt': pushed.get('updatedAt') or merged['exportedAt'],
-        'counts': {
-            'favorites': len(merged['favorites']),
-            'progress': len(merged['progress']),
-            'playlists': len(merged['playlists']),
-        },
-    }
-
-
-def cloud_redeem(d):
-    st = _cloud_state()
-    if not st['cloudUrl'] or not st['token']:
-        raise ValueError('Önce Mavie hesabınızla giriş yapın.')
-    res = _cloud_request(st['cloudUrl'], '/api/v1/licenses/redeem', method='POST', payload={'code': d.get('code', '')}, token=st['token'])
-    if isinstance(res.get('user'), dict):
-        meta_set('cloud_user', res['user'])
-    return {'ok': True, 'user': res.get('user')}
-
-
-def cloud_logout():
-    st = _cloud_state()
-    meta_set('cloud_auth', {'cloudUrl': st.get('cloudUrl', ''), 'token': ''})
-    meta_set('cloud_user', None)
-    return {'ok': True}
-
-
 def catalog(q):
     kind = q.get('kind', ['vod'])[0]
     if kind not in KINDS: raise ValueError('İçerik türü geçersiz.')
@@ -1188,8 +914,6 @@ def play_item(iid, mode, start, options=None):
     if r['kind'] == 'series': raise ValueError('Oynatmak için bir dizi bölümü seçin.')
     if mode not in ('direct', 'remux', 'transcode'): raise ValueError('Oynatma modu geçersiz.')
     is_multiview = bool(options.get('multiview'))
-    if _linked_normal_user() and (mode == 'transcode' or is_multiview):
-        raise CloudError('Dönüştürme ve Çoklu Ekran özellikleri Pro plan gerektirir.', status=403, data={'code': 'PRO_REQUIRED', 'upgradeRequired': True})
     request = register_play_request(options)
     mv_slot = request[1] if isinstance(request, tuple) and request[0] == 'multiview' else None
     start = max(0, number(start))
@@ -1403,12 +1127,7 @@ class Handler(BaseHTTPRequestHandler):
         code = 400 if isinstance(e, ValueError) else (502 if isinstance(e, (RuntimeError, urllib.error.URLError, TimeoutError)) else 500)
         message = str(e) if isinstance(e, (ValueError, RuntimeError)) else 'İşlem tamamlanamadı. Yeniden deneyin.'
         payload = {'error': message}
-        if isinstance(e, CloudError):
-            code = int(e.status) if isinstance(e.status, int) and 400 <= e.status < 600 else 400
-            for k in ('code', 'verificationRequired', 'upgradeRequired', 'email', 'deliveryMode'):
-                if k in e.data:
-                    payload[k] = e.data[k]
-        elif isinstance(e, PlaybackError):
+        if isinstance(e, PlaybackError):
             if e.code == 'superseded': code = 409
             if e.mode: payload['mode'] = e.mode
             if e.code: payload['code'] = e.code
@@ -1462,10 +1181,7 @@ class Handler(BaseHTTPRequestHandler):
                 if p == '/api/home': return self.send_json(home())
                 if p == '/api/surprise': return self.send_json(surprise_pick())
                 if p == '/api/profiles': return self.send_json({'activeProfileId': active_profile_id(), 'profiles': list_profiles()})
-                if p == '/api/cloud/status': return self.send_json(cloud_status())
                 if p == '/api/sports':
-                    if _linked_normal_user():
-                        return self.send_json({'error': 'Canlı Yayın & EPG rehberi Pro plan gerektirir.', 'code': 'PRO_REQUIRED', 'upgradeRequired': True}, 403)
                     day = sports.selected_date(q.get('date', [''])[0])
                     epg_url = q.get('epgUrl', [''])[0].strip() or provider.config.get('epgUrl') or provider.config.get('discoveredEpgUrl', '')
                     if epg_url: validate_host(epg_url)
@@ -1530,11 +1246,6 @@ class Handler(BaseHTTPRequestHandler):
                 color = str(d.get('avatarColor') or '#7C3AED')
                 if not re.fullmatch(r'#[0-9A-Fa-f]{6}', color): color = '#7C3AED'
                 raw_pin = str(d.get('pin', '')).strip()
-                if _linked_normal_user():
-                    with connect() as c:
-                        prof_count = c.execute('SELECT count(*) FROM profiles').fetchone()[0]
-                    if prof_count >= 1 or bool(raw_pin):
-                        return self.send_json({'error': 'Çoklu profil ve PIN kilidi Pro plan gerektirir.', 'code': 'PRO_REQUIRED', 'upgradeRequired': True}, 403)
                 pin_hash = _hash_pin(raw_pin)
                 pid = 'p_' + secrets.token_urlsafe(8)
                 with connect() as c:
@@ -1661,21 +1372,6 @@ class Handler(BaseHTTPRequestHandler):
             if p == '/api/track-preferences' and method == 'POST':
                 iid = str(d.get('id', '')); get_row(iid)
                 return self.send_json({'ok': True, 'selection': save_track_preferences(iid, d)})
-            if p == '/api/cloud/login' and method == 'POST':
-                return self.send_json(cloud_auth('login', d), 200)
-            if p == '/api/cloud/register' and method == 'POST':
-                payload = cloud_auth('register', d)
-                return self.send_json(payload, 201 if payload.get('verificationRequired') else 200)
-            if p == '/api/cloud/verify-email' and method == 'POST': return self.send_json(cloud_verify_email(d))
-            if p == '/api/cloud/resend-verification' and method == 'POST': return self.send_json(cloud_resend_verification(d))
-            if p == '/api/cloud/forgot-password' and method == 'POST': return self.send_json(cloud_forgot_password(d))
-            if p == '/api/cloud/verify-reset-code' and method == 'POST': return self.send_json(cloud_verify_reset_code(d))
-            if p == '/api/cloud/reset-password' and method == 'POST': return self.send_json(cloud_reset_password(d))
-            if p.startswith('/api/cloud/devices/') and method == 'DELETE':
-                return self.send_json(cloud_delete_device(p[len('/api/cloud/devices/'):]))
-            if p == '/api/cloud/redeem' and method == 'POST': return self.send_json(cloud_redeem(d))
-            if p == '/api/cloud/sync' and method == 'POST': return self.send_json(cloud_sync())
-            if p == '/api/cloud/logout' and method == 'POST': return self.send_json(cloud_logout())
             if p == '/api/import' and method == 'POST': return self.import_state(d.get('data'))
             if p == '/api/devices/revoke' and method == 'POST':
                 if not self.is_local: return self.send_json({'error': 'Bu işlem yalnızca ana cihaz üzerinde kullanılabilir.'}, 403)

@@ -14,10 +14,10 @@ on:
         type: boolean
         default: false
       release_tag:
-        description: 'Release tag to use when manually publishing from a branch (e.g. v2.1.0)'
+        description: 'Release tag to use when manually publishing from a branch (e.g. v2.2.0)'
         required: false
         type: string
-        default: 'v2.1.0'
+        default: 'v2.2.0'
 
 permissions:
   contents: write
@@ -37,14 +37,14 @@ jobs:
         run: pip install -r requirements.txt
       - name: Install native Ubuntu FFmpeg
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
-      - name: Run Python Backend, Cloud Admin & E2E Tier 1 Tests
+      - name: Run Python Backend & E2E Tier 1 Tests
         env:
           FFMPEG_PATH: /usr/bin/ffmpeg
           IMAGEIO_FFMPEG_EXE: /usr/bin/ffmpeg
         run: |
           python -m unittest discover -s tests -p "test_*.py" -v
           python -m unittest discover -s tests/e2e -p "test_tier1*.py" -v
-      - name: Run Web Frontend & Portal Unit Tests
+      - name: Run Web Frontend & Website Unit Tests
         run: node --test tests/test_*.mjs
 
   android-build-and-test:
@@ -281,8 +281,8 @@ jobs:
           ls -lh release-assets/Mavie-Windows/ release-assets/Mavie-macOS/ release-assets/Mavie-iOS/ release-assets/Mavie-Android.*
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.release_tag || 'v2.1.0' }}
-          name: Mavie ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.release_tag || 'v2.1.0' }}
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.release_tag || 'v2.2.0' }}
+          name: Mavie ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.release_tag || 'v2.2.0' }}
           generate_release_notes: true
           files: |
             release-assets/Mavie-Windows/Mavie-Setup.exe

@@ -5,9 +5,9 @@ const $=selector=>document.querySelector(selector);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=new Intl.NumberFormat('tr-TR');
 const kindNames={live:'Canlı TV',vod:'Film',series:'Dizi',episode:'Bölüm'};
-const state={status:null,cloudStatus:null,route:'home',params:new URLSearchParams(),renderId:0,items:new Map(),detail:null,playlists:[],player:null,hls:null,progressTimer:null,pingTimer:null,syncTimer:null,searchTimer:null,playGeneration:0,playClient:Date.now().toString(36)+Math.random().toString(36).slice(2),seekTimer:null,waitingTimer:null,playbackRate:1,videoCover:false,sleepTimer:null,sleepUntil:0,osdTimer:null,multiHls:[],multiSids:[]};
+const state={status:null,route:'home',params:new URLSearchParams(),renderId:0,items:new Map(),detail:null,playlists:[],player:null,hls:null,progressTimer:null,pingTimer:null,syncTimer:null,searchTimer:null,playGeneration:0,playClient:Date.now().toString(36)+Math.random().toString(36).slice(2),seekTimer:null,waitingTimer:null,playbackRate:1,videoCover:false,sleepTimer:null,sleepUntil:0,osdTimer:null,multiHls:[],multiSids:[]};
 function hydrateIcons(root=document){root.querySelectorAll('[data-icon]').forEach(el=>{el.innerHTML=icon(el.dataset.icon);});}
-async function api(path,options={}){const init={...options,headers:{...(options.body?{'Content-Type':'application/json'}:{}),...(options.headers||{})}};if(init.body&&typeof init.body!=='string')init.body=JSON.stringify(init.body);const response=await fetch(path,init);let data;try{data=await response.json();}catch{throw new Error('Sunucudan geçerli bir yanıt alınamadı. Mavie uygulamasının açık olduğundan emin ol.');}if(!response.ok){if(response.status===401&&state.status?.authorized){state.status.authorized=false;render();}const error=new Error(data.error||`İşlem tamamlanamadı (${response.status}).`);error.status=response.status;error.mode=data.mode;error.code=data.code;error.verificationRequired=data.verificationRequired;error.upgradeRequired=data.upgradeRequired;error.email=data.email;throw error;}return data;}
+async function api(path,options={}){const init={...options,headers:{...(options.body?{'Content-Type':'application/json'}:{}),...(options.headers||{})}};if(init.body&&typeof init.body!=='string')init.body=JSON.stringify(init.body);const response=await fetch(path,init);let data;try{data=await response.json();}catch{throw new Error('Sunucudan geçerli bir yanıt alınamadı. Mavie uygulamasının açık olduğundan emin ol.');}if(!response.ok){if(response.status===401&&state.status?.authorized){state.status.authorized=false;render();}const error=new Error(data.error||`İşlem tamamlanamadı (${response.status}).`);error.status=response.status;error.mode=data.mode;error.code=data.code;throw error;}return data;}
 function remember(items){for(const item of items||[])if(item?.id){if(state.items.has(item.id))state.items.delete(item.id);else if(state.items.size>=5000)state.items.delete(state.items.keys().next().value);state.items.set(item.id,item);}return items||[];}
 function itemFor(id){return state.items.get(id);}
 function notify(message,error=false){const toast=document.createElement('div');toast.className=`toast${error?' error':''}`;toast.innerHTML=icon(error?'alert':'check')+`<span>${esc(message)}</span>`;$('#toastRegion').append(toast);setTimeout(()=>toast.remove(),6000);}
@@ -175,203 +175,7 @@ function renderPairing(){const main=$('#main');main.innerHTML=`<section class="p
 function connectionForm(setup=false){const c=state.status?.connection||{};const mode=['m3u','local','xtream'].includes(c.type)?c.type:'xtream';return `<form id="connectionForm"><div class="field"><label for="connectionType">Kaynak türü</label><select id="connectionType" name="type"><option value="m3u" ${mode==='m3u'?'selected':''}>M3U / M3U8 Oynatma Listesi</option><option value="local" ${mode==='local'?'selected':''}>Bilgisayardaki Yerel Klasör</option><option value="xtream" ${mode==='xtream'?'selected':''}>Xtream API Sunucusu</option></select></div><div class="field"><label for="connectionLabel">Bağlantı adı</label><input id="connectionLabel" name="name" value="${esc(c.name||'Kişisel Kütüphane')}" maxlength="80" required autocomplete="off"></div><div id="m3uFields" ${mode==='m3u'?'':'hidden'}><div class="field"><label for="connectionM3u">M3U / M3U8 liste adresi</label><input id="connectionM3u" name="m3uUrl" type="url" value="${esc(c.m3uUrl||'')}" placeholder="https://example.com/playlist.m3u8" spellcheck="false" autocomplete="url"></div></div><div id="localFields" ${mode==='local'?'':'hidden'}><div class="field"><label for="connectionLocalDir">Bilgisayardaki video klasörü yolu</label><input id="connectionLocalDir" name="localDir" value="${esc(c.localDir||'')}" placeholder="/Users/isim/Movies veya C:\\Users\\isim\\Videos" spellcheck="false" autocomplete="off"><span class="field-hint">Klasördeki MP4, MKV, AVI, MOV dosyalarını ve aynı isimli SRT/VTT altyazıları otomatik tarar.</span></div></div><div id="xtreamFields" ${mode==='xtream'?'':'hidden'}><div class="field"><label for="connectionHost">Sunucu adresi</label><input id="connectionHost" name="host" type="url" value="${esc(c.host||'')}" placeholder="https://sunucu-adresi:8080" spellcheck="false" autocomplete="url"><span class="field-hint">Sağlayıcının http:// veya https:// adresini port numarasıyla gir.</span></div><div class="field-row"><div class="field"><label for="connectionUsername">Kullanıcı adı</label><input id="connectionUsername" name="username" placeholder="${setup?'Kullanıcı adın':'Değiştirmek için gir'}" autocomplete="off" spellcheck="false"></div><div class="field"><label for="connectionPassword">Şifre</label><input id="connectionPassword" name="password" type="password" placeholder="${setup?'Parolan':'Kayıtlı şifre korunur'}" autocomplete="new-password"></div></div>${!setup?'<span class="field-hint">Kullanıcı adı ve şifreyi boş bırakırsan mevcut bilgiler korunur.</span>':''}</div><div class="field"><label for="connectionEpg">XMLTV EPG rehber adresi (İsteğe bağlı)</label><input id="connectionEpg" name="epgUrl" type="url" value="${esc(c.epgUrl||'')}" placeholder="https://example.com/guide.xml" spellcheck="false" autocomplete="url"></div><div class="settings-actions"><button class="button" type="submit">${icon('link')}${setup?'Bağlan ve kütüphaneyi getir':'Bağlantıyı kaydet'}</button></div><div id="settingsError" class="inline-error" role="alert"></div></form>`;}
 function bindConnectionForm(){const form=$('#connectionForm');const toggle=()=>$('#connectionType')&&( $('#m3uFields').hidden=$('#connectionType').value!=='m3u', $('#localFields').hidden=$('#connectionType').value!=='local', $('#xtreamFields').hidden=$('#connectionType').value!=='xtream');$('#connectionType')?.addEventListener('change',toggle);toggle();form?.addEventListener('submit',async event=>{event.preventDefault();const submit=form.querySelector('[type=submit]');submit.disabled=true;$('#settingsError').textContent='';try{const body=Object.fromEntries(new FormData(form));await api('/api/settings',{method:'POST',body});state.status=await api('/api/status');notify('Bağlantı kaydedildi. Kütüphanen eşitleniyor.');await syncCatalog(false);routeTo('home');if(state.route==='home')render();}catch(error){$('#settingsError').textContent=error.message;}finally{submit.disabled=false;}});}
 function renderSetup(){$('#main').innerHTML=`<div class="setup-intro"><span class="eyebrow">KENDİ EKRANINA HOŞ GELDİN</span><h1>Kütüphaneni bağla veya hemen dene.</h1><p>Mavie telifli içerik barındırmaz. Kendi M3U / medya kaynağını bağlayabilir ya da açık lisanslı örnek filmlerle uygulamayı anında test edebilirsin.</p><div style="margin-top:16px">${button(icon('play')+'Açık Sinema ile Hemen Dene (Demo)','demo','','')}</div></div><section class="panel setup-panel"><div class="panel-heading"><span>${icon('link')}</span><div><h2>Medya kaynağı bağla</h2><p>M3U listesi, XMLTV EPG veya Xtream API</p></div></div>${connectionForm(true)}</section>`;bindConnectionForm();}
-function renderSettings(){const s=state.status;const a=s.account||{};const network=s.network||{};const lan=network.lanUrls||[];const active=['active','demo'].includes(String(a.status||'').toLowerCase());$('#main').innerHTML=pageHeading('Her şey yerli yerinde.','Bağlantını yönet, diğer ekranlarını bağla ve kütüphaneni koru.','AYARLAR')+syncBanner()+`<div class="settings-grid"><div><section class="panel"><div class="panel-heading"><span>${icon('link')}</span><div><h2>Medya bağlantısı</h2><p>Bilgilerin yalnızca bu cihazda saklanır</p></div></div>${connectionForm(!s.configured)}${s.configured?'<div class="notice">Farklı bir kaynağa geçersen eski kaynağın favorileri, izleme geçmişi ve listelerdeki içerikleri temizlenir.</div>':''}</section><section class="panel"><div class="panel-heading"><span>${icon('shield')}</span><div><h2>Mavie Hesabı & Lisans (İsteğe Bağlı)</h2><p>Özel M3U adresleriniz asla sunucuya gönderilmez</p></div></div><div id="cloudAccountBox"><p class="settings-note">Pro durumu ve lisans anahtarları yükleniyor…</p></div></section><section class="panel"><div class="panel-heading"><span>${icon('shield')}</span><div><h2>Kütüphane yedeği</h2><p>Listeler, favoriler ve izleme geçmişi</p></div></div><p class="settings-note">Başka bir kurulumda kaldığın yerden devam etmek için kişisel kütüphaneni dışa aktar. İçe aktarma, yedekteki listeleri ve favorileri mevcut kütüphanenle birleştirir; aynı içeriğin izleme konumunu günceller.</p><div class="backup-actions">${button(icon('download')+'Yedeği indir','export')}${button(icon('upload')+'Yedeği içe aktar','import')}${button(icon('play')+'Demo Modu','demo','','ghost')}<input type="file" id="importFile" accept="application/json,.json" hidden></div></section></div><div><section class="panel"><div class="panel-heading"><span>${icon('live')}</span><div><h2>Kaynak durumu</h2><p>Bağlantı ve oynatma motoru</p></div></div><dl class="account-list"><div><dt>Durum</dt><dd><span class="status-pill ${!active?'warning':''}">${esc(active?(a.status==='Demo'?'Açık Demo':'Aktif'):a.status||'Henüz sorgulanmadı')}</span></dd></div><div><dt>Bitiş tarihi</dt><dd>${esc(date(a.expires))}</dd></div><div><dt>Eşzamanlı bağlantı</dt><dd>${esc(a.activeConnections??'—')} / ${esc(a.maxConnections??'—')}</dd></div><div><dt>Son eşitleme</dt><dd>${esc(date(s.catalog?.updatedAt))}</dd></div><div><dt>Oynatma desteği</dt><dd>${s.ffmpeg?'Doğrudan + FFmpeg':'Doğrudan oynatma'}</dd></div></dl><div class="settings-section-spacer">${button(icon('refresh')+'Kütüphaneyi eşitle','sync','','secondary small')}</div></section><section class="panel"><div class="panel-heading"><span>${icon('link')}</span><div><h2>Diğer ekranların</h2><p>Android ve aynı ağdaki cihazların</p></div></div><p class="settings-note">Bu bilgisayar açıkken telefonunda veya tabletinde şu adresi aç. Tüm cihazlar aynı kütüphaneyi kullanır.</p>${lan.length?lan.map(url=>`<div class="network-address"><code>${esc(url)}</code><button class="text-button" data-action="copy" data-value="${esc(url)}" aria-label="Adresi kopyala">${icon('copy')}</button></div>`).join(''):'<div class="notice">Yerel ağ adresi bulunamadı. Wi-Fi bağlantını kontrol et.</div>'}${s.pairingCode?`<div class="pairing-code"><span>CİHAZ EŞLEŞTİRME KODU</span><strong>${esc(s.pairingCode)}</strong></div>`:'<div class="notice">Eşleştirme kodu yalnızca ana cihaz ekranında gösterilir.</div>'}<p class="install-note">Tarayıcı menüsünden “Ana ekrana ekle” ile uygulama gibi kurabilirsin.</p><a href="#favorites" class="text-button">${icon('heart')}Favorilerime git</a></section><section class="panel"><div class="panel-heading"><span>${icon('shield')}</span><div><h2>Yasal Bilgiler & Lisanslar</h2><p>Mavie medya oynatıcı politikası</p></div></div><p class="settings-note">Mavie hiçbir televizyon kanalı veya telifli video dağıtmaz; yalnızca kullanıcının eklediği açık veya yasal kaynakları oynatır. Açık kaynak bileşenler: <strong>hls.js (Apache-2.0)</strong>, <strong>LibVLC (LGPL-2.1+)</strong>.</p></section></div></div>`;bindConnectionForm();loadCloudBox();$('#importFile').addEventListener('change',importBackup);}
-function trialCountdownText(endsAt){
-  if(!endsAt)return '3 günlük Pro deneme etkin';
-  const ms=new Date(endsAt).getTime()-Date.now();
-  if(!Number.isFinite(ms)||ms<=0)return 'Deneme süresi sona eriyor';
-  const totalHours=Math.max(1,Math.ceil(ms/3600000));
-  const days=Math.floor(totalHours/24),hours=totalHours%24;
-  return days>0?`${days} gün ${hours} saat kaldı (${date(endsAt)})`:`${totalHours} saat kaldı (${date(endsAt)})`;
-}
-async function loadCloudBox(tab='login',prefillEmail=''){
-  const box=$('#cloudAccountBox');
-  if(!box)return;
-  try{
-    const res=await api('/api/cloud/status');
-    state.cloudStatus=res;
-    const u=res.user;
-    if(u){
-      const isPro=Boolean(u.isPro||res.isPro||u.effectivePlan==='pro');
-      const devices=Array.isArray(u.devices)?u.devices:[];
-      box.innerHTML=`
-        <dl class="account-list">
-          <div><dt>Hesap</dt><dd>${esc(u.displayName||'Kullanıcı')} (${esc(u.email)})</dd></div>
-          <div><dt>E-posta Durumu</dt><dd><span class="status-pill ${u.emailVerified?'':'warning'}">${u.emailVerified?'E-posta Doğrulandı':'Doğrulama Bekleniyor'}</span></dd></div>
-          <div><dt>Aktif Plan</dt><dd><span class="status-pill ${isPro?'':'warning'}">${isPro?'Pro':'Normal'}</span></dd></div>
-          <div><dt>Durum</dt><dd>${esc(u.status||'active')}</dd></div>
-        </dl>
-        ${u.trialActive?`<div class="cloud-trial-banner"><div><strong>3 Günlük Pro Deneme Aktif</strong><small>${esc(trialCountdownText(u.trialEndsAt))}</small></div><span class="status-pill">Pro Özellikler Açık</span></div>`:''}
-        <div class="cloud-plan-grid">
-          <div class="cloud-plan-card ${!isPro?'current':''}">
-            <h3><span>Normal Plan</span><small>${!isPro?'Mevcut':''}</small></h3>
-            <ul><li>1 cihaz sınırı</li><li>Temel yerel medya &amp; M3U oynatma</li><li>Tek profil</li></ul>
-          </div>
-          <div class="cloud-plan-card ${isPro?'current':''}">
-            <h3><span>Pro Plan</span><small>${isPro?'Mevcut':'3 gün ücretsiz dene'}</small></h3>
-            <ul><li>5 cihaza kadar kullanım</li><li>Bulut eşitleme &amp; yedek</li><li>Çoklu profil + PIN kilidi + Çoklu Ekran</li></ul>
-          </div>
-        </div>
-        ${!isPro?`<div id="cloudUpgradeCallout" class="cloud-upgrade-callout"><span>Normal plandasınız. Bulut eşitleme, 5 cihaz ve PIN’li profiller için Pro lisans anahtarı girin.</span><button type="button" id="focusLicenseBtn" class="button small">Pro’ya Yükselt</button></div>`:''}
-        <div id="cloudActionError" class="inline-error" role="alert" hidden></div>
-        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-          <button id="cloudSyncBtn" type="button" class="button small secondary">${icon('refresh')}Hesap Verilerini Şimdi Eşitle</button>
-        </div>
-        <form id="cloudRedeemForm" style="margin-top:12px;display:flex;gap:8px">
-          <input id="cloudCode" placeholder="Lisans kodu: MAVIE-XXXX-XXXX-XXXX" required style="flex:1">
-          <button class="button small" type="submit">Etkinleştir</button>
-        </form>
-        <div style="margin-top:14px">
-          <strong style="font-size:12px">Kayıtlı Cihazlar (${devices.length} / ${esc(u.maxDevices||(isPro?5:1))})</strong>
-          <div class="cloud-device-list">${devices.length?devices.map(d=>`<div class="cloud-device-row"><div><strong>${esc(d.name||'Cihaz')}</strong><small>${esc(d.platform||'desktop')} · ${esc(d.lastSeenAt?date(d.lastSeenAt):d.id)}</small></div><button type="button" class="button small danger" data-remove-device="${esc(d.id)}" aria-label="${esc(d.name||'Cihaz')} kaldır">${icon('trash')}Kaldır</button></div>`).join(''):'<p class="settings-note" style="margin:6px 0">Henüz kayıtlı cihaz yok.</p>'}</div>
-        </div>
-        <div style="margin-top:12px"><button id="cloudLogoutBtn" type="button" class="text-button">${icon('logout')}Hesaptan Çıkış Yap</button></div>`;
-      $('#focusLicenseBtn')?.addEventListener('click',()=>$('#cloudCode')?.focus());
-      $('#cloudSyncBtn')?.addEventListener('click',async e=>{
-        const btn=e.currentTarget;btn.disabled=true;$('#cloudActionError').hidden=true;
-        try{
-          const s=await api('/api/cloud/sync',{method:'POST',body:{}});
-          notify(`Bulut eşitlemesi tamamlandı (${s.counts?.favorites||0} favori, ${s.counts?.progress||0} izleme kaydı, ${s.counts?.playlists||0} liste).`);
-        }catch(err){
-          const errEl=$('#cloudActionError');
-          errEl.textContent=err.message;errEl.hidden=false;
-          notify(err.message,true);
-          if(err.code==='PRO_REQUIRED')$('#cloudCode')?.focus();
-        }finally{btn.disabled=false;}
-      });
-      $('#cloudRedeemForm')?.addEventListener('submit',async e=>{
-        e.preventDefault();
-        try{await api('/api/cloud/redeem',{method:'POST',body:{code:$('#cloudCode').value.trim()}});notify('Lisans anahtarı etkinleştirildi.');loadCloudBox();}
-        catch(err){notify(err.message,true);}
-      });
-      box.querySelectorAll('[data-remove-device]').forEach(btn=>btn.addEventListener('click',async()=>{
-        btn.disabled=true;
-        try{
-          await api(`/api/cloud/devices/${encodeURIComponent(btn.dataset.removeDevice)}`,{method:'DELETE'});
-          notify('Cihaz hesaptan kaldırıldı.');
-          loadCloudBox();
-        }catch(err){notify(err.message,true);btn.disabled=false;}
-      }));
-      $('#cloudLogoutBtn')?.addEventListener('click',async()=>{try{await api('/api/cloud/logout',{method:'POST',body:{}});loadCloudBox();}catch(err){notify(err.message,true);}});
-    }else{
-      const portalUrl=res.cloudUrl||'https://cineva-app.netlify.app';
-      const activeTab=['login','register','verify','forgot'].includes(tab)?tab:'login';
-      box.innerHTML=`
-        <div class="cloud-tabs" role="tablist" aria-label="Mavie Hesap İşlemleri">
-          <button type="button" class="cloud-tab ${activeTab==='login'?'active':''}" data-cloud-tab="login">Giriş Yap</button>
-          <button type="button" class="cloud-tab ${activeTab==='register'?'active':''}" data-cloud-tab="register">Kayıt Ol</button>
-          <button type="button" class="cloud-tab ${activeTab==='verify'?'active':''}" data-cloud-tab="verify">E-posta Doğrula</button>
-          <button type="button" class="cloud-tab ${activeTab==='forgot'?'active':''}" data-cloud-tab="forgot">Şifremi Unuttum</button>
-        </div>
-        <div class="field"><label for="clUrl">Mavie Portal Sunucusu</label><input id="clUrl" value="${esc(portalUrl)}" required></div>
-        <div id="cloudMsgBox" class="inline-error" role="alert" hidden></div>
-        <form id="cloudLoginForm" class="cloud-panel-pane" ${activeTab==='login'?'':'hidden'}>
-          <div class="field-row">
-            <div class="field"><label for="clLoginEmail">E-posta</label><input id="clLoginEmail" type="email" value="${esc(prefillEmail)}" required></div>
-            <div class="field"><label for="clLoginPass">Parola</label><input id="clLoginPass" type="password" required minlength="8"></div>
-          </div>
-          <div class="settings-actions" style="margin-top:8px"><button class="button small" type="submit">Giriş Yap</button></div>
-        </form>
-        <form id="cloudRegForm" class="cloud-panel-pane" ${activeTab==='register'?'':'hidden'}>
-          <div class="field"><label for="clRegName">Ad Soyad</label><input id="clRegName" placeholder="Örneğin: Ada Yılmaz" maxlength="60"></div>
-          <div class="field-row">
-            <div class="field"><label for="clRegEmail">E-posta</label><input id="clRegEmail" type="email" value="${esc(prefillEmail)}" required></div>
-            <div class="field"><label for="clRegPass">Parola (en az 8 karakter)</label><input id="clRegPass" type="password" required minlength="8"></div>
-          </div>
-          <p class="field-hint">Doğrulama sonrası 3 günlük Pro deneme otomatik olarak başlar.</p>
-          <div class="settings-actions" style="margin-top:8px"><button class="button small" type="submit">Hesap Oluştur</button></div>
-        </form>
-        <form id="cloudVerifyForm" class="cloud-panel-pane" ${activeTab==='verify'?'':'hidden'}>
-          <div class="field-row">
-            <div class="field"><label for="clVerEmail">E-posta</label><input id="clVerEmail" type="email" value="${esc(prefillEmail)}" required></div>
-            <div class="field"><label for="clVerCode">6 Haneli Doğrulama Kodu</label><input id="clVerCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="123456" required></div>
-          </div>
-          <div class="settings-actions" style="margin-top:8px;flex-wrap:wrap">
-            <button class="button small" type="submit">Doğrula ve 3 Günlük Pro Denemeyi Başlat</button>
-            <button class="button small secondary" type="button" id="clResendBtn">Kodu Tekrar Gönder</button>
-          </div>
-        </form>
-        <form id="cloudForgotForm" class="cloud-panel-pane" ${activeTab==='forgot'?'':'hidden'}>
-          <div class="field-row">
-            <div class="field"><label for="clForgotEmail">E-posta</label><input id="clForgotEmail" type="email" value="${esc(prefillEmail)}" required></div>
-            <div class="field" style="justify-content:flex-end"><button class="button small secondary" type="button" id="clSendResetBtn">Sıfırlama Kodu Gönder</button></div>
-          </div>
-          <div class="field-row">
-            <div class="field"><label for="clResetCode">Sıfırlama Kodu</label><input id="clResetCode" inputmode="numeric" maxlength="12" placeholder="6 haneli kod"></div>
-            <div class="field"><label for="clResetPass">Yeni Parola</label><input id="clResetPass" type="password" minlength="8" placeholder="En az 8 karakter"></div>
-          </div>
-          <div class="settings-actions" style="margin-top:8px"><button class="button small" type="submit">Parolayı Güncelle</button></div>
-        </form>`;
-      const showMsg=(msg)=>{const m=$('#cloudMsgBox');if(m){m.textContent=msg;m.hidden=!msg;}};
-      box.querySelectorAll('[data-cloud-tab]').forEach(btn=>btn.addEventListener('click',()=>{
-        const target=btn.dataset.cloudTab;
-        const currentEmail=$('#clLoginEmail')?.value||$('#clRegEmail')?.value||$('#clVerEmail')?.value||$('#clForgotEmail')?.value||'';
-        loadCloudBox(target,currentEmail.trim());
-      }));
-      $('#cloudLoginForm')?.addEventListener('submit',async e=>{
-        e.preventDefault();showMsg('');
-        const email=$('#clLoginEmail').value.trim();
-        try{
-          await api('/api/cloud/login',{method:'POST',body:{cloudUrl:$('#clUrl').value.trim(),email,password:$('#clLoginPass').value}});
-          notify('Mavie hesabına bağlanıldı.');
-          loadCloudBox();
-        }catch(err){
-          if(err.code==='EMAIL_NOT_VERIFIED'||err.verificationRequired){
-            notify('E-posta doğrulaması gerekiyor. Doğrulama kodunu girin.',true);
-            await loadCloudBox('verify',err.email||email);
-            const m=$('#cloudMsgBox');if(m){m.textContent='E-posta adresiniz henüz doğrulanmamış. Lütfen kodunuzu girin veya yeni kod isteyin.';m.hidden=false;}
-          }else{showMsg(err.message);notify(err.message,true);}
-        }
-      });
-      $('#cloudRegForm')?.addEventListener('submit',async e=>{
-        e.preventDefault();showMsg('');
-        const email=$('#clRegEmail').value.trim();
-        try{
-          const reg=await api('/api/cloud/register',{method:'POST',body:{cloudUrl:$('#clUrl').value.trim(),displayName:$('#clRegName').value.trim(),email,password:$('#clRegPass').value}});
-          if(reg.verificationRequired){
-            notify('Hesap oluşturuldu! Doğrulama kodunuz gönderildi.');
-            await loadCloudBox('verify',email);
-            const m=$('#cloudMsgBox');if(m){m.textContent='E-posta adresinize gönderilen 6 haneli kodu girerek hesabınızı ve 3 günlük Pro denemenizi başlatın.';m.hidden=false;}
-          }else{notify('Mavie hesabına bağlanıldı.');loadCloudBox();}
-        }catch(err){showMsg(err.message);notify(err.message,true);}
-      });
-      $('#cloudVerifyForm')?.addEventListener('submit',async e=>{
-        e.preventDefault();showMsg('');
-        try{
-          const v=await api('/api/cloud/verify-email',{method:'POST',body:{cloudUrl:$('#clUrl').value.trim(),email:$('#clVerEmail').value.trim(),code:$('#clVerCode').value.trim()}});
-          notify(v.trialActivated?'E-posta doğrulandı ve 3 günlük Pro denemeniz başladı!':'E-posta doğrulandı.');
-          loadCloudBox();
-        }catch(err){showMsg(err.message);notify(err.message,true);}
-      });
-      $('#clResendBtn')?.addEventListener('click',async()=>{
-        showMsg('');
-        try{
-          await api('/api/cloud/resend-verification',{method:'POST',body:{cloudUrl:$('#clUrl').value.trim(),email:$('#clVerEmail').value.trim()}});
-          notify('Doğrulama kodu tekrar gönderildi.');
-        }catch(err){showMsg(err.message);notify(err.message,true);}
-      });
-      $('#clSendResetBtn')?.addEventListener('click',async()=>{
-        showMsg('');
-        try{
-          await api('/api/cloud/forgot-password',{method:'POST',body:{cloudUrl:$('#clUrl').value.trim(),email:$('#clForgotEmail').value.trim()}});
-          notify('Eğer hesap varsa sıfırlama kodu gönderildi.');
-        }catch(err){showMsg(err.message);notify(err.message,true);}
-      });
-      $('#cloudForgotForm')?.addEventListener('submit',async e=>{
-        e.preventDefault();showMsg('');
-        const email=$('#clForgotEmail').value.trim();
-        const code=$('#clResetCode').value.trim();
-        const newPassword=$('#clResetPass').value;
-        try{
-          await api('/api/cloud/verify-reset-code',{method:'POST',body:{cloudUrl:$('#clUrl').value.trim(),email,code}});
-          await api('/api/cloud/reset-password',{method:'POST',body:{cloudUrl:$('#clUrl').value.trim(),email,code,newPassword}});
-          notify('Parolanız güncellendi. Yeni parolanızla giriş yapabilirsiniz.');
-          loadCloudBox('login',email);
-        }catch(err){showMsg(err.message);notify(err.message,true);}
-      });
-    }
-  }catch{box.innerHTML='<p class="settings-note">İsteğe bağlı bulut bağlantısı şu anda çevrimdışı.</p>';}
-}
+function renderSettings(){const s=state.status;const a=s.account||{};const network=s.network||{};const lan=network.lanUrls||[];const active=['active','demo'].includes(String(a.status||'').toLowerCase());$('#main').innerHTML=pageHeading('Her şey yerli yerinde.','Bağlantını yönet, diğer ekranlarını bağla ve kütüphaneni koru.','AYARLAR')+syncBanner()+`<div class="settings-grid"><div><section class="panel"><div class="panel-heading"><span>${icon('link')}</span><div><h2>Medya bağlantısı</h2><p>Bilgilerin yalnızca bu cihazda saklanır</p></div></div>${connectionForm(!s.configured)}${s.configured?'<div class="notice">Farklı bir kaynağa geçersen eski kaynağın favorileri, izleme geçmişi ve listelerdeki içerikleri temizlenir.</div>':''}</section><section class="panel"><div class="panel-heading"><span>${icon('shield')}</span><div><h2>Kütüphane yedeği</h2><p>Listeler, favoriler ve izleme geçmişi</p></div></div><p class="settings-note">Başka bir kurulumda kaldığın yerden devam etmek için kişisel kütüphaneni dışa aktar. İçe aktarma, yedekteki listeleri ve favorileri mevcut kütüphanenle birleştirir; aynı içeriğin izleme konumunu günceller.</p><div class="backup-actions">${button(icon('download')+'Yedeği indir','export')}${button(icon('upload')+'Yedeği içe aktar','import')}${button(icon('play')+'Demo Modu','demo','','ghost')}<input type="file" id="importFile" accept="application/json,.json" hidden></div></section></div><div><section class="panel"><div class="panel-heading"><span>${icon('live')}</span><div><h2>Kaynak durumu</h2><p>Bağlantı ve oynatma motoru</p></div></div><dl class="account-list"><div><dt>Durum</dt><dd><span class="status-pill ${!active?'warning':''}">${esc(active?(a.status==='Demo'?'Açık Demo':'Aktif'):a.status||'Henüz sorgulanmadı')}</span></dd></div><div><dt>Bitiş tarihi</dt><dd>${esc(date(a.expires))}</dd></div><div><dt>Eşzamanlı bağlantı</dt><dd>${esc(a.activeConnections??'—')} / ${esc(a.maxConnections??'—')}</dd></div><div><dt>Son eşitleme</dt><dd>${esc(date(s.catalog?.updatedAt))}</dd></div><div><dt>Oynatma desteği</dt><dd>${s.ffmpeg?'Doğrudan + FFmpeg':'Doğrudan oynatma'}</dd></div></dl><div class="settings-section-spacer">${button(icon('refresh')+'Kütüphaneyi eşitle','sync','','secondary small')}</div></section><section class="panel"><div class="panel-heading"><span>${icon('link')}</span><div><h2>Diğer ekranların</h2><p>Android ve aynı ağdaki cihazların</p></div></div><p class="settings-note">Bu bilgisayar açıkken telefonunda veya tabletinde şu adresi aç. Tüm cihazlar aynı kütüphaneyi kullanır.</p>${lan.length?lan.map(url=>`<div class="network-address"><code>${esc(url)}</code><button class="text-button" data-action="copy" data-value="${esc(url)}" aria-label="Adresi kopyala">${icon('copy')}</button></div>`).join(''):'<div class="notice">Yerel ağ adresi bulunamadı. Wi-Fi bağlantını kontrol et.</div>'}${s.pairingCode?`<div class="pairing-code"><span>CİHAZ EŞLEŞTİRME KODU</span><strong>${esc(s.pairingCode)}</strong></div>`:'<div class="notice">Eşleştirme kodu yalnızca ana cihaz ekranında gösterilir.</div>'}<p class="install-note">Tarayıcı menüsünden “Ana ekrana ekle” ile uygulama gibi kurabilirsin.</p><a href="#favorites" class="text-button">${icon('heart')}Favorilerime git</a></section><section class="panel"><div class="panel-heading"><span>${icon('shield')}</span><div><h2>Yasal Bilgiler & Lisanslar</h2><p>Ücretsiz &amp; hesapsız medya oynatıcı politikası</p></div></div><p class="settings-note">Mavie tamamen ücretsizdir ve hesap gerektirmez. Hiçbir televizyon kanalı veya telifli video dağıtmaz; yalnızca kullanıcının eklediği açık veya yasal kaynakları oynatır. Açık kaynak bileşenler: <strong>hls.js (Apache-2.0)</strong>, <strong>LibVLC (LGPL-2.1+)</strong>.</p></section></div></div>`;bindConnectionForm();$('#importFile').addEventListener('change',importBackup);}
 async function syncCatalog(showNotice=true){if(state.status?.catalog?.syncing){if(showNotice)notify('Kütüphane zaten eşitleniyor.');return;}await api('/api/catalog/sync',{method:'POST',body:{}});state.status=await api('/api/status');updateShell();if(showNotice){notify('Eşitleme başladı. Bu sırada kütüphaneni kullanabilirsin.');render();}}
 async function toggleFavorite(id){const item=itemFor(id);if(!item)return;const favorite=!item.favorite;await api('/api/favorites',{method:'POST',body:{id,favorite}});item.favorite=favorite;document.querySelectorAll('[data-action="favorite"]').forEach(el=>{if(el.dataset.id===id){el.classList.toggle('active',favorite);el.setAttribute('aria-label',favorite?'Favorilerden kaldır':'Favorilere ekle');el.title=favorite?'Favorilerden kaldır':'Favorilere ekle';}});notify(favorite?'Favorilerine eklendi.':'Favorilerinden kaldırıldı.');if(state.route==='favorites')render();}
 function openDialog(id){const dialog=$('#'+id);if(!dialog.open)dialog.showModal();}
@@ -912,25 +716,18 @@ async function renderMultiView(token){
   clearMultiView();
   const main=$('#main');
   main.innerHTML=pageHeading('Çoklu Ekran (2×2)','Aynı anda dört canlı kanalı izle; istediğin birinin sesini aç.','CANLI MOZAİK')+loading();
-  if(!state.cloudStatus){
-    try{state.cloudStatus=await api('/api/cloud/status');}catch{}
-  }
   const data=await api('/api/catalog?kind=live&limit=100&page=1');
   if(token!==state.renderId)return;
   const channels=remember(data.items||[]);
-  const isLinkedNormal=Boolean((state.cloudStatus?.user||state.cloudStatus?.signedIn)&&!state.cloudStatus?.isPro&&state.cloudStatus?.effectivePlan!=='pro');
-  const proCallout=isLinkedNormal?`<div class="cloud-upgrade-callout" role="status"><span><strong>Pro Özellik:</strong> Çoklu Ekran (2×2) yalnızca Pro planda kullanılabilir. Normal planda tek kanal oynatma açıktır.</span><a class="button small" href="#settings">Pro’ya Yükselt</a></div>`:'';
   if(!channels.length){
-    main.innerHTML=pageHeading('Çoklu Ekran (2×2)','Aynı anda dört canlı kanalı izle.','CANLI MOZAİK')+proCallout+empty('Canlı kanal bulunamadı','Çoklu ekran için canlı TV kanalı içeren bir M3U veya Xtream kaynağı bağla.','live');
+    main.innerHTML=pageHeading('Çoklu Ekran (2×2)','Aynı anda dört canlı kanalı izle.','CANLI MOZAİK')+empty('Canlı kanal bulunamadı','Çoklu ekran için canlı TV kanalı içeren bir M3U veya Xtream kaynağı bağla.','live');
     return;
   }
   const initial=[0,1,2,3].map(i=>channels[i%channels.length]);
   const optionsHtml=(selId)=>channels.map(ch=>`<option value="${esc(ch.id)}" ${ch.id===selId?'selected':''}>${esc(ch.name)}</option>`).join('');
   main.innerHTML=pageHeading('Çoklu Ekran (2×2)','Otomatik oynatma kuralları gereği başlangıçta sessiz açılır; ses simgesiyle tek kanalı dinleyebilirsin.','CANLI MOZAİK')
-    +proCallout
     +`<div class="multiview-grid">${initial.map((ch,idx)=>`<article class="multiview-tile" data-mv-idx="${idx}"><div class="multiview-video-wrap"><video id="mvVideo${idx}" muted playsinline autoplay></video></div><div class="multiview-bar"><select class="sort-select" data-mv-select="${idx}" aria-label="Kanal ${idx+1}">${optionsHtml(ch.id)}</select><div class="multiview-actions"><button type="button" class="icon-button" data-mv-mute="${idx}" title="Sesi aç" aria-label="Sesi aç" aria-pressed="false">${icon('volumeOff')}</button><button type="button" class="icon-button" data-mv-full="${idx}" title="Tam oynatıcıda aç" aria-label="Tam oynatıcıda aç">${icon('expand')}</button></div></div></article>`).join('')}</div>`;
   const slots=initial.map(ch=>({id:ch.id,sid:null,hls:null}));
-  let proToastShown=false;
   const loadSlot=async(idx,itemId)=>{
     const slot=slots[idx];
     if(slot.hls){try{slot.hls.destroy();}catch{}slot.hls=null;}
@@ -953,7 +750,6 @@ async function renderMultiView(token){
       }
       vid.play().catch(()=>{});
     }catch(err){
-      if(err.code==='PRO_REQUIRED'){if(!proToastShown){proToastShown=true;notify(err.message,true);}return;}
       notify(`${itemFor(itemId)?.name||'Kanal'}: ${err.message}`,true);
     }
   };

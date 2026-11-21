@@ -8,26 +8,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsEnabled
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertWidthIsAtLeast
-import androidx.compose.ui.test.hasContentDescription
-import androidx.compose.ui.test.hasSetTextAction
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import app.mavie.player.data.CloudAccountState
-import app.mavie.player.data.CloudDevice
-import app.mavie.player.data.CloudFeatures
 import app.mavie.player.data.UserProfile
 import app.mavie.player.player.PlayerScreen
 import app.mavie.player.player.UpNextEpisode
@@ -45,7 +35,6 @@ import app.mavie.player.ui.MavieTheme
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.time.Instant
 
 @RunWith(AndroidJUnit4::class)
 class AccessibilityAndCloudUiTest {
@@ -250,199 +239,62 @@ class AccessibilityAndCloudUiTest {
     }
 
     @Test
-    fun settingsScreenSignedOutAuthStepsHaveClearLabelsAndAccessibleControls() {
-        fun renderStep(step: CloudAuthStep, pendingEmail: String = "") {
-            rule.runOnUiThread {
-                rule.activity.setContent {
-                    MavieTheme {
-                        MavieSettingsScreen(
-                            accountName = "Demo Hesap",
-                            catalogSummary = "Doğrudan cihaz içi oynatma",
-                            refreshing = false,
-                            error = null,
-                            onBack = {},
-                            onRefresh = {},
-                            onExport = {},
-                            onImport = {},
-                            onSync = {},
-                            onLogout = {},
-                            cloudState = CloudAccountState(signedIn = false),
-                            cloudAuthStep = step,
-                            cloudPendingEmail = pendingEmail,
-                        )
-                    }
+    fun settingsScreenFreeNoAccountHasAccessibleControlsAndZeroPaywall() {
+        rule.runOnUiThread {
+            rule.activity.setContent {
+                MavieTheme {
+                    MavieSettingsScreen(
+                        accountName = "Açık Sinema · Demo",
+                        catalogSummary = "Doğrudan cihaz içi oynatma · Hesap ve masaüstü gerektirmez",
+                        refreshing = false,
+                        error = null,
+                        onBack = {},
+                        onRefresh = {},
+                        onExport = {},
+                        onImport = {},
+                        onSync = {},
+                        onLogout = {},
+                    )
                 }
             }
         }
 
-        // 1. IDLE (login & register tabs + password length rule check)
-        renderStep(CloudAuthStep.IDLE)
         rule.onNodeWithContentDescription("Geri dön")
             .assertIsDisplayed()
             .assertWidthIsAtLeast(48.dp)
             .assertHeightIsAtLeast(48.dp)
-        rule.onNodeWithText("Normal vs Mavie Pro").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithContentDescription("Parolayı göster")
+        rule.onNodeWithText("Kütüphaneyi yenile")
             .performScrollTo()
             .assertIsDisplayed()
-            .assertWidthIsAtLeast(48.dp)
             .assertHeightIsAtLeast(48.dp)
-        rule.onNodeWithText("Parolamı Unuttum")
+        rule.onNodeWithText("Yedek dışa aktar")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .assertHeightIsAtLeast(48.dp)
+        rule.onNodeWithText("Yedek içe aktar")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .assertHeightIsAtLeast(48.dp)
+        rule.onNodeWithText("Masaüstü ile eşitle")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .assertHeightIsAtLeast(48.dp)
+        rule.onNodeWithText("Açık Kaynak Lisansları ve Bildirimler")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .assertHeightIsAtLeast(48.dp)
+        rule.onNodeWithText("Kaynaktan çıkış yap")
             .performScrollTo()
             .assertIsDisplayed()
             .assertHeightIsAtLeast(48.dp)
 
-        // Login tab allows shorter pre-existing passwords (clPass.isNotBlank())
-        val textFields = rule.onAllNodes(hasSetTextAction())
-        textFields[1].performTextInput("user@mavie.app")
-        textFields[2].performTextInput("123456")
-        rule.onAllNodesWithText("Giriş Yap").let { nodes ->
-            // Last node with "Giriş Yap" is the submit button (first is FilterChip)
-            val submitBtn = nodes[nodes.fetchSemanticsNodes().lastIndex]
-            submitBtn.performScrollTo().assertIsEnabled().assertHeightIsAtLeast(48.dp)
+        // Ensure zero cloud account / Pro paywall UI exists
+        assert(rule.onAllNodesWithText("Mavie Pro", substring = true).fetchSemanticsNodes().isEmpty()) {
+            "Free app must not render Mavie Pro upsell in Settings."
         }
-
-        // Register tab enforces >= 8 char password
-        rule.onNodeWithText("Kayıt Ol (3 Gün Pro Deneme)").performScrollTo().performClick()
-        rule.onNodeWithText("Kayıt Ol ve Doğrulama Kodu Al")
-            .performScrollTo()
-            .assertIsNotEnabled()
-            .assertHeightIsAtLeast(48.dp)
-
-        // 2. VERIFY_EMAIL
-        renderStep(CloudAuthStep.VERIFY_EMAIL, pendingEmail = "test@mavie.app")
-        rule.onNodeWithText("E-posta Doğrulama", substring = true).performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Doğrula ve 3 Günlük Pro Denemeyi Başlat")
-            .performScrollTo()
-            .assertIsDisplayed()
-            .assertHeightIsAtLeast(48.dp)
-        rule.onNodeWithText("Kodu Tekrar Gönder")
-            .performScrollTo()
-            .assertIsDisplayed()
-            .assertHeightIsAtLeast(48.dp)
-
-        // 3. FORGOT_PASSWORD
-        renderStep(CloudAuthStep.FORGOT_PASSWORD)
-        rule.onNodeWithText("Parola Sıfırlama Kodu İste").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Sıfırlama Kodu Gönder")
-            .performScrollTo()
-            .assertIsDisplayed()
-            .assertHeightIsAtLeast(48.dp)
-        rule.onNodeWithText("Kodum Var")
-            .performScrollTo()
-            .assertIsDisplayed()
-            .assertHeightIsAtLeast(48.dp)
-
-        // 4. RESET_PASSWORD
-        renderStep(CloudAuthStep.RESET_PASSWORD, pendingEmail = "test@mavie.app")
-        rule.onNodeWithText("Yeni Parola Belirle", substring = true).performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Kodu Kontrol Et")
-            .performScrollTo()
-            .assertIsDisplayed()
-            .assertHeightIsAtLeast(48.dp)
-        rule.onNodeWithText("Parolayı Güncelle")
-            .performScrollTo()
-            .assertIsDisplayed()
-            .assertHeightIsAtLeast(48.dp)
-    }
-
-    @Test
-    fun settingsScreenSignedInNormalAndTrialPlansRenderProperly() {
-        val sampleDevice = CloudDevice("dev1", "Pixel 9 QA", "android")
-        val normalState = CloudAccountState(
-            cloudUrl = "https://cineva-app.netlify.app",
-            email = "normal@mavie.app",
-            displayName = "Normal Kullanıcı",
-            emailVerified = true,
-            plan = "normal",
-            effectivePlan = "normal",
-            isPro = false,
-            trialActive = false,
-            maxDevices = 1,
-            devices = listOf(sampleDevice),
-            features = CloudFeatures(maxDevices = 1),
-            signedIn = true,
-        )
-
-        rule.runOnUiThread {
-            rule.activity.setContent {
-                MavieTheme {
-                    MavieSettingsScreen(
-                        accountName = "Demo",
-                        catalogSummary = "Doğrudan cihaz içi oynatma",
-                        refreshing = false,
-                        error = null,
-                        onBack = {},
-                        onRefresh = {},
-                        onExport = {},
-                        onImport = {},
-                        onSync = {},
-                        onLogout = {},
-                        cloudState = normalState,
-                    )
-                }
-            }
+        assert(rule.onAllNodesWithText("Portal Sunucu Adresi", substring = true).fetchSemanticsNodes().isEmpty()) {
+            "Free app must not render cloud portal login in Settings."
         }
-
-        rule.onNodeWithText("NORMAL PLAN").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Normal vs Mavie Pro").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Bulut Eşitleme (Mavie Pro)")
-            .performScrollTo()
-            .assertIsDisplayed()
-            .assertHeightIsAtLeast(48.dp)
-        rule.onNodeWithContentDescription("Pixel 9 QA cihazını kaldır")
-            .performScrollTo()
-            .assertIsDisplayed()
-            .assertHeightIsAtLeast(48.dp)
-        rule.onNodeWithText("Planı Yenile").performScrollTo().assertHeightIsAtLeast(48.dp)
-        rule.onNodeWithText("Hesaptan Çık").performScrollTo().assertHeightIsAtLeast(48.dp)
-
-        // Switch to 3-Day Pro Trial
-        val trialState = normalState.copy(
-            email = "trial@mavie.app",
-            displayName = "Deneme Kullanıcısı",
-            plan = "pro",
-            effectivePlan = "pro",
-            isPro = true,
-            trialActive = true,
-            trialEndsAt = Instant.now().plusSeconds(86_400L * 2 + 3600L).toString(),
-            maxDevices = 5,
-            features = CloudFeatures(
-                cloudSync = true,
-                multiView = true,
-                unlimitedProfiles = true,
-                epgMatch = true,
-                advancedTracks = true,
-                maxDevices = 5,
-            ),
-        )
-
-        rule.runOnUiThread {
-            rule.activity.setContent {
-                MavieTheme {
-                    MavieSettingsScreen(
-                        accountName = "Demo",
-                        catalogSummary = "Doğrudan cihaz içi oynatma",
-                        refreshing = false,
-                        error = null,
-                        onBack = {},
-                        onRefresh = {},
-                        onExport = {},
-                        onImport = {},
-                        onSync = {},
-                        onLogout = {},
-                        cloudState = trialState,
-                    )
-                }
-            }
-        }
-
-        rule.onNodeWithText("3 GÜNLÜK PRO DENEME").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("3 Günlük Pro Denemeniz Aktif").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Hesap Verilerini Şimdi Eşitle (Bulut)")
-            .performScrollTo()
-            .assertIsDisplayed()
-            .assertHeightIsAtLeast(48.dp)
     }
 
     @Test

@@ -5,7 +5,6 @@ public enum MavieTab: String, CaseIterable, Identifiable {
     case home
     case library
     case search
-    case cloud
     case settings
 
     public var id: String { rawValue }
@@ -15,7 +14,6 @@ public enum MavieTab: String, CaseIterable, Identifiable {
         case .home: return "Ana Sayfa"
         case .library: return "Kütüphane"
         case .search: return "Ara"
-        case .cloud: return "Bulut & Plan"
         case .settings: return "Ayarlar"
         }
     }
@@ -25,7 +23,6 @@ public enum MavieTab: String, CaseIterable, Identifiable {
         case .home: return "house.fill"
         case .library: return "square.grid.2x2.fill"
         case .search: return "magnifyingglass"
-        case .cloud: return "icloud.fill"
         case .settings: return "gearshape.fill"
         }
     }
@@ -82,10 +79,6 @@ struct MavieIOSApp: App {
                     detail: req.detail,
                     onClose: { activePlayRequest = nil }
                 )
-            }
-            .task {
-                await store.refreshCloudConfig()
-                await store.refreshCloudProfile()
             }
         }
     }
@@ -150,8 +143,6 @@ private struct MavieRootShell: View {
             LibraryView(store: store, onPlay: onPlay)
         case .search:
             SearchView(store: store, onPlay: onPlay)
-        case .cloud:
-            CloudAccountView(store: store)
         case .settings:
             SettingsView(store: store)
         }

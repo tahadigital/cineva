@@ -14,10 +14,6 @@ private struct PersistedLibraryState: Codable {
     var profiles: [UserProfile] = []
     var connection: ConnectionSettings = ConnectionSettings()
     var account: AccountInfo = AccountInfo()
-    var portalURL: String = CloudClient.defaultPortalURL
-    var cloudUser: CloudUser?
-    var cloudToken: String?
-    var deviceId: String = UUID().uuidString
 
     init() {}
 
@@ -32,11 +28,7 @@ private struct PersistedLibraryState: Codable {
         trackPreferences: [SyncTrackPreferenceRecord],
         profiles: [UserProfile],
         connection: ConnectionSettings,
-        account: AccountInfo,
-        portalURL: String,
-        cloudUser: CloudUser?,
-        cloudToken: String?,
-        deviceId: String
+        account: AccountInfo
     ) {
         self.sourceMode = sourceMode
         self.items = items
@@ -49,10 +41,6 @@ private struct PersistedLibraryState: Codable {
         self.profiles = profiles
         self.connection = connection
         self.account = account
-        self.portalURL = portalURL
-        self.cloudUser = cloudUser
-        self.cloudToken = cloudToken
-        self.deviceId = deviceId
     }
 
     init(from decoder: Decoder) throws {
@@ -68,10 +56,6 @@ private struct PersistedLibraryState: Codable {
         self.profiles = (try? c.decodeIfPresent([UserProfile].self, forKey: .profiles)) ?? []
         self.connection = (try? c.decodeIfPresent(ConnectionSettings.self, forKey: .connection)) ?? ConnectionSettings()
         self.account = (try? c.decodeIfPresent(AccountInfo.self, forKey: .account)) ?? AccountInfo()
-        self.portalURL = (try? c.decodeIfPresent(String.self, forKey: .portalURL)) ?? CloudClient.defaultPortalURL
-        self.cloudUser = try? c.decodeIfPresent(CloudUser.self, forKey: .cloudUser)
-        self.cloudToken = try? c.decodeIfPresent(String.self, forKey: .cloudToken)
-        self.deviceId = (try? c.decodeIfPresent(String.self, forKey: .deviceId)) ?? UUID().uuidString
     }
 }
 
@@ -87,32 +71,16 @@ public final class LibraryStore: ObservableObject {
     @Published public var connection: ConnectionSettings = ConnectionSettings()
     @Published public private(set) var account: AccountInfo = AccountInfo()
 
-    @Published public var portalURL: String = CloudClient.defaultPortalURL
-    @Published public private(set) var cloudUser: CloudUser?
-    @Published public private(set) var cloudToken: String?
-    @Published public private(set) var appConfig: CloudAppConfig?
-    @Published public private(set) var deviceId: String = UUID().uuidString
-
     @Published public var isBusy: Bool = false
     @Published public var statusBanner: String?
     @Published public var lastError: String?
-    @Published public var proUpgradePrompt: String?
 
     private let baseDirectory: URL
     private let storageURL: URL
-    private let cloudClient: CloudClient
-    private let useKeychain: Bool
     private var favoriteCreatedAt: [String: String] = [:]
     private var trackPreferencesByItem: [String: SyncTrackPreferenceRecord] = [:]
 
-    public init(
-        storageDirectory: URL? = nil,
-        cloudClient: CloudClient = CloudClient(),
-        useKeychain: Bool = true
-    ) {
-        self.cloudClient = cloudClient
-        self.useKeychain = useKeychain
-
+    public init(storageDirectory: URL? = nil) {
         let baseDir: URL
         if let storageDirectory {
             baseDir = storageDirectory
@@ -132,32 +100,6 @@ public final class LibraryStore: ObservableObject {
         if items.isEmpty && sourceMode == .demo {
             loadDemoCatalog(persist: false)
         }
-    }
-
-    // MARK: - Plan & Entitlements (R4)
-
-    public var isCloudSignedIn: Bool {
-        cloudUser != nil && !(cloudToken ?? "").isEmpty
-    }
-
-    public var isProPlan: Bool {
-        cloudUser?.isPro ?? false
-    }
-
-    public var canUseCloudSync: Bool {
-        guard let user = cloudUser else { return false }
-        return user.emailVerified && user.isPro
-    }
-
-    public var canAddAnotherProfile: Bool {
-        if profiles.isEmpty { return true }
-        guard let user = cloudUser else { return true }
-        return user.isPro
-    }
-
-    public var canUseProfilePin: Bool {
-        guard let user = cloudUser else { return true }
-        return user.isPro
     }
 
     // MARK: - Catalog Sources
@@ -430,25 +372,13 @@ public final class LibraryStore: ObservableObject {
         saveState()
     }
 
-    // MARK: - Profiles (Pro-Gated >1 or PIN)
+    // MARK: - Profiles (Unlimited & Free)
 
     @discardableResult
     public func addProfile(name: String, avatarColor: String = "#7C3AED", isKids: Bool = false, pin: String = "") throws -> UserProfile {
         let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else {
             throw MavieError.validation("Profil adı boş olamaz.")
-        }
-        if let user = cloudUser, !user.isPro {
-            if profiles.count >= 1 {
-                let msg = "Birden fazla profil oluşturmak Mavie Pro plan gerektirir."
-                proUpgradePrompt = msg
-                throw MavieError.proRequired(msg)
-            }
-            if !pin.isEmpty {
-                let msg = "PIN korumalı profil özelliği Mavie Pro plan gerektirir."
-                proUpgradePrompt = msg
-                throw MavieError.proRequired(msg)
-            }
         }
         let hashedPin = pin.isEmpty ? "" : SHA256.hash(data: Data(pin.utf8)).map { String(format: "%02x", $0) }.joined()
         let profile = UserProfile(
@@ -524,163 +454,7 @@ public final class LibraryStore: ObservableObject {
         return items.randomElement()
     }
 
-    // MARK: - Cloud R4 & R5 Flows
-
-    public func refreshCloudConfig() async {
-        if let cfg = try? await cloudClient.fetchAppConfig(baseURL: portalURL) {
-            appConfig = cfg
-        }
-    }
-
-    public func registerCloud(email: String, password: String, displayName: String) async throws -> CloudRegisterResponse {
-        isBusy = true
-        lastError = nil
-        defer { isBusy = false }
-        let resp = try await cloudClient.register(baseURL: portalURL, email: email, password: password, displayName: displayName)
-        statusBanner = "Doğrulama kodu e-posta adresinize gönderildi."
-        return resp
-    }
-
-    public func verifyCloudEmail(email: String, code: String, deviceName: String, platform: String = "ios") async throws -> CloudVerifyEmailResponse {
-        isBusy = true
-        lastError = nil
-        defer { isBusy = false }
-        let resp = try await cloudClient.verifyEmail(baseURL: portalURL, email: email, code: code)
-        cloudToken = resp.token
-        cloudUser = resp.user
-        persistToken(resp.token)
-        await registerCurrentDeviceIfPossible(token: resp.token, deviceName: deviceName, platform: platform)
-        statusBanner = resp.trialActivated
-            ? "E-posta doğrulandı! 3 günlük Mavie Pro denemeniz başlatıldı."
-            : "E-posta doğrulandı ve oturum açıldı."
-        saveState()
-        return resp
-    }
-
-    public func resendVerification(email: String) async throws {
-        isBusy = true
-        lastError = nil
-        defer { isBusy = false }
-        _ = try await cloudClient.resendVerification(baseURL: portalURL, email: email)
-        statusBanner = "Yeni doğrulama kodu gönderildi."
-    }
-
-    public func loginCloud(email: String, password: String, deviceName: String, platform: String = "ios") async throws {
-        isBusy = true
-        lastError = nil
-        defer { isBusy = false }
-        let resp = try await cloudClient.login(baseURL: portalURL, email: email, password: password)
-        cloudToken = resp.token
-        cloudUser = resp.user
-        persistToken(resp.token)
-        await registerCurrentDeviceIfPossible(token: resp.token, deviceName: deviceName, platform: platform)
-        statusBanner = "Bulut hesabına giriş yapıldı."
-        saveState()
-    }
-
-    private func registerCurrentDeviceIfPossible(token: String, deviceName: String, platform: String) async {
-        do {
-            let devices = try await cloudClient.registerDevice(
-                baseURL: portalURL,
-                token: token,
-                deviceId: deviceId,
-                deviceName: deviceName,
-                platform: platform
-            )
-            cloudUser?.devices = devices
-        } catch MavieError.api(let apiErr) where apiErr.status == 403 && apiErr.code == "DEVICE_LIMIT_REACHED" {
-            let limitCount = apiErr.maxDevices ?? cloudUser?.maxDevices ?? 1
-            lastError = "Cihaz sınırına ulaşıldı (\(limitCount) cihaz). Bu cihazı eklemek için aşağıdaki listeden bir cihazı kaldırın."
-            if cloudUser?.devices == nil,
-               let refreshed = try? await cloudClient.fetchMe(baseURL: portalURL, token: token) {
-                cloudUser = refreshed
-            }
-        } catch {
-            // Keep signed-in session if device registration fails for a transient network error.
-        }
-    }
-
-    public func forgotPassword(email: String) async throws {
-        isBusy = true
-        lastError = nil
-        defer { isBusy = false }
-        let resp = try await cloudClient.forgotPassword(baseURL: portalURL, email: email)
-        statusBanner = resp.message ?? "Eğer hesap kayıtlıysa şifre sıfırlama kodu gönderildi."
-    }
-
-    public func verifyResetCode(email: String, code: String) async throws -> Bool {
-        isBusy = true
-        lastError = nil
-        defer { isBusy = false }
-        let resp = try await cloudClient.verifyResetCode(baseURL: portalURL, email: email, code: code)
-        return resp.valid
-    }
-
-    public func resetPassword(email: String, code: String, newPassword: String) async throws {
-        isBusy = true
-        lastError = nil
-        defer { isBusy = false }
-        _ = try await cloudClient.resetPassword(baseURL: portalURL, email: email, code: code, newPassword: newPassword)
-        statusBanner = "Parolanız güncellendi. Yeni parolanızla giriş yapabilirsiniz."
-    }
-
-    public func refreshCloudProfile() async {
-        guard let token = cloudToken, !token.isEmpty else { return }
-        do {
-            cloudUser = try await cloudClient.fetchMe(baseURL: portalURL, token: token)
-            saveState()
-        } catch {
-            lastError = error.localizedDescription
-        }
-    }
-
-    public func redeemLicense(code: String) async throws {
-        guard let token = cloudToken, !token.isEmpty else {
-            throw MavieError.validation("Lisans anahtarı kullanmak için önce giriş yapın.")
-        }
-        isBusy = true
-        lastError = nil
-        defer { isBusy = false }
-        cloudUser = try await cloudClient.redeemLicense(baseURL: portalURL, token: token, code: code)
-        statusBanner = "Lisans anahtarı uygulandı! Planınız güncellendi."
-        saveState()
-    }
-
-    public func removeCloudDevice(deviceId targetId: String) async throws {
-        guard let token = cloudToken, !token.isEmpty else { return }
-        isBusy = true
-        lastError = nil
-        defer { isBusy = false }
-        let devices = try await cloudClient.removeDevice(baseURL: portalURL, token: token, deviceId: targetId)
-        cloudUser?.devices = devices
-        statusBanner = "Cihaz hesaptan kaldırıldı."
-        saveState()
-    }
-
-    public func syncWithCloud() async throws {
-        guard let user = cloudUser, let token = cloudToken, !token.isEmpty else {
-            throw MavieError.validation("Bulut eşitleme için önce giriş yapın.")
-        }
-        guard user.isPro else {
-            let msg = "Bulut eşitleme özelliği Mavie Pro plan gerektirir."
-            proUpgradePrompt = msg
-            throw MavieError.proRequired(msg)
-        }
-        isBusy = true
-        lastError = nil
-        defer { isBusy = false }
-        let pulled = try await cloudClient.pullSync(baseURL: portalURL, token: token)
-        if let remoteState = pulled.state {
-            mergeSyncPayload(remoteState)
-        }
-        let payload = buildSyncPayload(limitItems: 500)
-        let pushed = try await cloudClient.pushSync(baseURL: portalURL, token: token, payload: payload)
-        if let remoteState = pushed.state {
-            mergeSyncPayload(remoteState)
-        }
-        statusBanner = "Bulut eşitleme tamamlandı."
-        saveState()
-    }
+    // MARK: - LAN Sync & Local Backup
 
     public func syncWithLanServer(address: String, pairingCode: String) async throws {
         isBusy = true
@@ -694,9 +468,9 @@ public final class LibraryStore: ObservableObject {
         }
         let remoteObj = try await LanSyncClient.merge(address: address, code: pairingCode, localExportDictionary: dict)
         let rawData = try JSONSerialization.data(withJSONObject: remoteObj)
-        let remotePayload: CloudSyncPayload
+        let remotePayload: LibrarySyncPayload
         do {
-            remotePayload = try JSONDecoder().decode(CloudSyncPayload.self, from: rawData)
+            remotePayload = try JSONDecoder().decode(LibrarySyncPayload.self, from: rawData)
         } catch {
             throw MavieError.parsing("Masaüstü eşitleme verisi ayrıştırılamadı: \(error.localizedDescription)")
         }
@@ -705,21 +479,7 @@ public final class LibraryStore: ObservableObject {
         saveState()
     }
 
-    public func logoutCloud() {
-        cloudUser = nil
-        cloudToken = nil
-        if useKeychain { CloudSessionKeychain.deleteToken() }
-        statusBanner = "Bulut oturumu kapatıldı."
-        saveState()
-    }
-
-    // For unit tests & offline state simulation
-    public func setMockCloudSessionForTesting(user: CloudUser?, token: String?) {
-        self.cloudUser = user
-        self.cloudToken = token
-    }
-
-    public func buildSyncPayload(limitItems: Int? = nil) -> CloudSyncPayload {
+    public func buildSyncPayload(limitItems: Int? = nil) -> LibrarySyncPayload {
         var referencedIds = Set(favoriteIds)
         referencedIds.formUnion(progressByItem.keys)
         for pl in playlists {
@@ -745,7 +505,7 @@ public final class LibraryStore: ObservableObject {
             SyncFavoriteRecord(itemId: id, createdAt: favoriteCreatedAt[id] ?? nowIso)
         }
 
-        return CloudSyncPayload(
+        return LibrarySyncPayload(
             version: 1,
             exportedAt: nowIso,
             items: selectedItems,
@@ -764,7 +524,7 @@ public final class LibraryStore: ObservableObject {
     }
 
     public func importBackupJSON(_ data: Data) throws {
-        let payload = try JSONDecoder().decode(CloudSyncPayload.self, from: data)
+        let payload = try JSONDecoder().decode(LibrarySyncPayload.self, from: data)
         mergeSyncPayload(payload)
         statusBanner = "Yedek içe aktarıldı."
         saveState()
@@ -772,7 +532,7 @@ public final class LibraryStore: ObservableObject {
 
     // MARK: - Persistence & Helpers
 
-    private func mergeSyncPayload(_ payload: CloudSyncPayload) {
+    private func mergeSyncPayload(_ payload: LibrarySyncPayload) {
         if !payload.items.isEmpty {
             var existingById = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
             for remote in payload.items where existingById[remote.id] == nil {
@@ -825,18 +585,9 @@ public final class LibraryStore: ObservableObject {
         }
     }
 
-    private func persistToken(_ token: String) {
-        if useKeychain {
-            CloudSessionKeychain.saveToken(token)
-        }
-    }
-
     private func loadState() {
         guard let data = try? Data(contentsOf: storageURL),
               let state = try? JSONDecoder().decode(PersistedLibraryState.self, from: data) else {
-            if useKeychain {
-                cloudToken = CloudSessionKeychain.loadToken()
-            }
             return
         }
         sourceMode = state.sourceMode
@@ -850,14 +601,6 @@ public final class LibraryStore: ObservableObject {
         profiles = state.profiles
         connection = state.connection
         account = state.account
-        portalURL = state.portalURL.isEmpty ? CloudClient.defaultPortalURL : state.portalURL
-        cloudUser = state.cloudUser
-        deviceId = state.deviceId.isEmpty ? UUID().uuidString : state.deviceId
-        if useKeychain, let keychainToken = CloudSessionKeychain.loadToken(), !keychainToken.isEmpty {
-            cloudToken = keychainToken
-        } else {
-            cloudToken = state.cloudToken
-        }
     }
 
     private func saveState() {
@@ -872,11 +615,7 @@ public final class LibraryStore: ObservableObject {
             trackPreferences: Array(trackPreferencesByItem.values),
             profiles: profiles,
             connection: connection,
-            account: account,
-            portalURL: portalURL,
-            cloudUser: cloudUser,
-            cloudToken: useKeychain ? nil : cloudToken,
-            deviceId: deviceId
+            account: account
         )
         if let data = try? JSONEncoder().encode(snapshot) {
             try? data.write(to: storageURL, options: [.atomic])

@@ -28,10 +28,6 @@ public struct HomeView: View {
                 VStack(alignment: .leading, spacing: 22) {
                     headerBar
 
-                    if let user = store.cloudUser, user.trialActive, let remaining = user.trialRemainingSummary() {
-                        trialBanner(remaining: remaining)
-                    }
-
                     if let hero = spotlightItem {
                         heroSpotlight(item: hero)
                     } else {
@@ -119,41 +115,6 @@ public struct HomeView: View {
         }
         .padding(14)
         .mavieCard()
-    }
-
-    private func trialBanner(remaining: String) -> some View {
-        Button {
-            onOpenTab(.cloud)
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "crown.fill")
-                    .font(.title3)
-                    .foregroundStyle(MavieTheme.amber)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("3 Günlük Mavie Pro Deneme Aktif")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.white)
-                    Text("Kalan süre: \(remaining) · Bulut Eşitleme ve 5 Cihaz açık")
-                        .font(.caption)
-                        .foregroundStyle(MavieTheme.muted)
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .foregroundStyle(MavieTheme.muted)
-            }
-            .padding(14)
-            .frame(minHeight: 54)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(MavieTheme.coral.opacity(0.16))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .strokeBorder(MavieTheme.amber.opacity(0.45), lineWidth: 1)
-                    )
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Pro deneme durumu: \(remaining)")
     }
 
     private func heroSpotlight(item: MediaItem) -> some View {

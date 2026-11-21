@@ -31,20 +31,9 @@ data class PlayingItem(
     val isLocalUri: Boolean = false,
 )
 
-enum class CloudAuthStep { IDLE, VERIFY_EMAIL, FORGOT_PASSWORD, RESET_PASSWORD }
-
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     val repository = MavieRepository(application)
-    val cloudClient = CloudClient(application)
     val account = repository.account
-    var cloudState by mutableStateOf(cloudClient.current()); private set
-    var cloudAuthStep by mutableStateOf(
-        if (!cloudState.signedIn && cloudState.pendingVerificationEmail.isNotBlank()) CloudAuthStep.VERIFY_EMAIL else CloudAuthStep.IDLE,
-    ); private set
-    var cloudBusy by mutableStateOf(false); private set
-    var cloudError by mutableStateOf<String?>(null); private set
-    var cloudInfo by mutableStateOf<String?>(null); private set
-    var cloudPendingEmail by mutableStateOf(cloudState.pendingVerificationEmail); private set
     var library by mutableStateOf(LibraryUiState(loading = true)); private set
     var detail by mutableStateOf<DetailUiState?>(null); private set
     var settings by mutableStateOf(false)
@@ -70,7 +59,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         refreshProfiles()
-        refreshCloudStatus()
         viewModelScope.launch { repository.discoveryUpdates.collect { if(it>0 && account.value!=null && library.tab==LibraryTab.HOME)loadLibrary() } }
         viewModelScope.launch {
             var previous: String? = null
@@ -86,7 +74,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
     private fun message(error: Exception) = when (error) {
         is IptvException -> error.message ?: "İşlem tamamlanamadı."
-        is CloudApiException -> error.message ?: "Bulut işlemi tamamlanamadı."
         else -> "İşlem tamamlanamadı. Yeniden deneyebilirsin."
     }
     private fun remember(items: List<MediaItem>): List<UiMedia> { items.forEach { knownItems[it.id]=it };return items.map(::present) }
@@ -324,14 +311,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
-    private fun isCloudProGated() = cloudState.signedIn && !cloudState.isPro
-
     fun createProfile(name: String, avatarColor: String, isKids: Boolean, pin: String) {
         profileError = null
-        if (isCloudProGated() && (profiles.size >= 1 || pin.isNotBlank())) {
-            profileError = "Birden fazla profil ve PIN kilidi Mavie Pro gerektirir. Ayarlar'dan Pro'ya geçebilirsiniz."
-            return
-        }
         viewModelScope.launch {
             try {
                 repository.createProfile(name, avatarColor, isKids, pin)
@@ -399,229 +380,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 notice = message(error)
             }
         }
-    }
-    fun setCloudAuthStep(step: CloudAuthStep, pendingEmail: String? = null) {
-        cloudAuthStep = step
-        cloudError = null
-        cloudInfo = null
-        if (pendingEmail != null) cloudPendingEmail = pendingEmail.trim().lowercase()
-    }
-    fun refreshCloudStatus() {
-        viewModelScope.launch {
-            runCatching { cloudClient.refreshStatus() }
-                .onSuccess { cloudState = it }
-                .onFailure { cloudState = cloudClient.current() }
-        }
-    }
-    fun cloudRegister(url: String, email: String, password: String, displayName: String = "") {
-        if (cloudBusy) return
-        cloudBusy = true; cloudError = null; cloudInfo = null
-        viewModelScope.launch {
-            try {
-                cloudState = cloudClient.register(url, email, password, displayName)
-                cloudPendingEmail = cloudState.pendingVerificationEmail
-                cloudAuthStep = CloudAuthStep.VERIFY_EMAIL
-                cloudInfo = "6 haneli doğrulama kodu ${cloudPendingEmail} adresine gönderildi."
-                notice = cloudInfo
-            } catch (error: Exception) {
-                if (error is CancellationException) throw error
-                cloudError = message(error)
-                notice = cloudError
-            } finally {
-                cloudBusy = false
-            }
-        }
-    }
-    fun cloudLogin(url: String, email: String, password: String) {
-        if (cloudBusy) return
-        cloudBusy = true; cloudError = null; cloudInfo = null
-        viewModelScope.launch {
-            try {
-                cloudState = cloudClient.login(url, email, password)
-                cloudAuthStep = CloudAuthStep.IDLE
-                cloudPendingEmail = ""
-                if (cloudState.isPro && account.value != null) {
-                    runCatching { cloudClient.syncState(repository); loadLibrary() }
-                }
-                val planLabel = if (cloudState.trialActive) "3 Günlük Pro Deneme" else if (cloudState.isPro) "Mavie Pro" else "Normal Plan"
-                notice = "Mavie hesabına bağlanıldı ($planLabel)."
-            } catch (error: CloudApiException) {
-                if (error.code == "EMAIL_NOT_VERIFIED") {
-                    cloudPendingEmail = error.email.ifBlank { email.trim().lowercase() }
-                    cloudState = cloudClient.current()
-                    cloudAuthStep = CloudAuthStep.VERIFY_EMAIL
-                    cloudError = error.message ?: "E-posta doğrulaması gerekli."
-                } else {
-                    cloudError = message(error)
-                }
-                notice = cloudError
-            } catch (error: Exception) {
-                if (error is CancellationException) throw error
-                cloudError = message(error)
-                notice = cloudError
-            } finally {
-                cloudBusy = false
-            }
-        }
-    }
-    fun cloudVerifyEmail(url: String, email: String, code: String) {
-        if (cloudBusy) return
-        cloudBusy = true; cloudError = null; cloudInfo = null
-        viewModelScope.launch {
-            try {
-                val (updated, trialActivated) = cloudClient.verifyEmail(url, email, code)
-                cloudState = updated
-                cloudAuthStep = CloudAuthStep.IDLE
-                cloudPendingEmail = ""
-                if (cloudState.isPro && account.value != null) {
-                    runCatching { cloudClient.syncState(repository); loadLibrary() }
-                }
-                notice = if (trialActivated) {
-                    "E-posta doğrulandı! 3 günlük ücretsiz Mavie Pro denemeniz başladı."
-                } else {
-                    "E-posta doğrulandı. Mavie hesabınız aktif."
-                }
-            } catch (error: Exception) {
-                if (error is CancellationException) throw error
-                cloudError = message(error)
-                notice = cloudError
-            } finally {
-                cloudBusy = false
-            }
-        }
-    }
-    fun cloudResendVerification(url: String, email: String) {
-        if (cloudBusy) return
-        cloudBusy = true; cloudError = null; cloudInfo = null
-        viewModelScope.launch {
-            try {
-                cloudClient.resendVerification(url, email)
-                cloudInfo = "Yeni doğrulama kodu $email adresine gönderildi."
-                notice = cloudInfo
-            } catch (error: Exception) {
-                if (error is CancellationException) throw error
-                cloudError = message(error)
-                notice = cloudError
-            } finally {
-                cloudBusy = false
-            }
-        }
-    }
-    fun cloudForgotPassword(url: String, email: String) {
-        if (cloudBusy) return
-        cloudBusy = true; cloudError = null; cloudInfo = null
-        viewModelScope.launch {
-            try {
-                val msg = cloudClient.forgotPassword(url, email)
-                cloudPendingEmail = email.trim().lowercase()
-                cloudAuthStep = CloudAuthStep.RESET_PASSWORD
-                cloudInfo = msg
-                notice = msg
-            } catch (error: Exception) {
-                if (error is CancellationException) throw error
-                cloudError = message(error)
-                notice = cloudError
-            } finally {
-                cloudBusy = false
-            }
-        }
-    }
-    fun cloudVerifyResetCode(url: String, email: String, code: String) {
-        if (cloudBusy) return
-        cloudBusy = true; cloudError = null; cloudInfo = null
-        viewModelScope.launch {
-            try {
-                val valid = cloudClient.verifyResetCode(url, email, code)
-                cloudInfo = if (valid) "Kod doğrulandı. Yeni parolanızı belirleyin." else "Kod geçersiz."
-            } catch (error: Exception) {
-                if (error is CancellationException) throw error
-                cloudError = message(error)
-                notice = cloudError
-            } finally {
-                cloudBusy = false
-            }
-        }
-    }
-    fun cloudResetPassword(url: String, email: String, code: String, newPassword: String) {
-        if (cloudBusy) return
-        cloudBusy = true; cloudError = null; cloudInfo = null
-        viewModelScope.launch {
-            try {
-                cloudClient.resetPassword(url, email, code, newPassword)
-                cloudAuthStep = CloudAuthStep.IDLE
-                cloudInfo = "Parolanız güncellendi. Yeni parolanızla giriş yapabilirsiniz."
-                notice = cloudInfo
-            } catch (error: Exception) {
-                if (error is CancellationException) throw error
-                cloudError = message(error)
-                notice = cloudError
-            } finally {
-                cloudBusy = false
-            }
-        }
-    }
-    fun cloudRemoveDevice(deviceId: String) {
-        if (cloudBusy) return
-        cloudBusy = true; cloudError = null; cloudInfo = null
-        viewModelScope.launch {
-            try {
-                cloudState = cloudClient.removeDevice(deviceId)
-                notice = "Cihaz hesaptan kaldırıldı."
-            } catch (error: Exception) {
-                if (error is CancellationException) throw error
-                cloudError = message(error)
-                notice = cloudError
-            } finally {
-                cloudBusy = false
-            }
-        }
-    }
-    fun cloudSync() {
-        cloudError = null
-        if (isCloudProGated()) {
-            val msg = "Bulut eşitleme Mavie Pro gerektirir. Pro'ya yükseltin veya lisans kodu etkinleştirin."
-            cloudError = msg
-            notice = msg
-            return
-        }
-        viewModelScope.launch {
-            try {
-                cloudClient.syncState(repository)
-                loadLibrary()
-                notice = "Bulut eşitlemesi tamamlandı: Favoriler, izleme kayıtları ve listeler eşitlendi."
-            } catch (error: Exception) {
-                if (error is CancellationException) throw error
-                if (error is CloudApiException && error.httpStatus == 403 && error.code == "PRO_REQUIRED") {
-                    runCatching { cloudClient.refreshStatus() }.onSuccess { cloudState = it }
-                }
-                cloudError = message(error)
-                notice = cloudError
-            }
-        }
-    }
-    fun cloudRedeem(code: String) {
-        if (cloudBusy) return
-        cloudBusy = true; cloudError = null; cloudInfo = null
-        viewModelScope.launch {
-            try {
-                cloudState = cloudClient.redeemLicense(code)
-                notice = "Lisans etkinleştirildi: ${if (cloudState.isPro) "Mavie Pro" else cloudState.effectivePlan}"
-            } catch (error: Exception) {
-                if (error is CancellationException) throw error
-                cloudError = message(error)
-                notice = cloudError
-            } finally {
-                cloudBusy = false
-            }
-        }
-    }
-    fun cloudLogout() {
-        cloudClient.logout()
-        cloudState = cloudClient.current()
-        cloudAuthStep = CloudAuthStep.IDLE
-        cloudPendingEmail = ""
-        cloudError = null
-        cloudInfo = null
     }
     fun logout() { viewModelScope.launch { repository.logout();knownItems.clear() } }
 }

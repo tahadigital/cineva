@@ -3,7 +3,6 @@ import SwiftUI
 
 public struct PreferencesView: View {
     @ObservedObject public var manager: ServerProcessManager
-    @State private var portalURL: String = UserDefaults.standard.string(forKey: "mavie_portal_url") ?? CloudClient.defaultPortalURL
     @State private var copiedAddress: String?
     public var onClose: () -> Void
 
@@ -77,7 +76,7 @@ public struct PreferencesView: View {
             .mavieCard()
 
             VStack(alignment: .leading, spacing: 10) {
-                Text("Depolama ve Bulut Portalı")
+                Text("Yerel Depolama & Günlük")
                     .font(.headline)
                     .foregroundStyle(.white)
 
@@ -112,15 +111,9 @@ public struct PreferencesView: View {
                     .accessibilityLabel("Yerel Sunucuyu Yeniden Başlat")
                 }
 
-                HStack(spacing: 8) {
-                    TextField("Bulut Portalı URL", text: $portalURL)
-                        .textFieldStyle(.roundedBorder)
-                    Button("Kaydet") {
-                        UserDefaults.standard.set(portalURL.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "mavie_portal_url")
-                    }
-                    .buttonStyle(MavieGhostButtonStyle(compact: true))
-                    .accessibilityLabel("Bulut Portalı Adresini Kaydet")
-                }
+                Text("Mavie tamamen ücretsizdir ve hesap gerektirmez. Tüm kütüphane verileriniz yalnızca bu Mac üzerinde saklanır.")
+                    .font(.caption)
+                    .foregroundStyle(MavieTheme.muted)
             }
             .padding(14)
             .mavieCard()

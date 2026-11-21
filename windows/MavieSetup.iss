@@ -2,7 +2,7 @@
 ; Build after PyInstaller: iscc windows\MavieSetup.iss
 
 #define MyAppName "Mavie"
-#define MyAppVersion "2.1.0"
+#define MyAppVersion "2.2.0"
 #define MyAppPublisher "Mavie"
 #define MyAppURL "https://mavie.app"
 #define MyAppExeName "Mavie.exe"

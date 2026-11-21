@@ -120,7 +120,7 @@ fun MavieApplication(model: MainViewModel) {
                     ) { localVideoFile.launch(arrayOf("video/*")) }
                     "settings" -> MavieSettingsScreen(
                         accountName = account?.let { "${it.name} · ${it.username}" }.orEmpty(),
-                        catalogSummary = "Doğrudan cihaz içi oynatma · Bulut/masaüstü gerektirmez",
+                        catalogSummary = "Doğrudan cihaz içi oynatma · Hesap ve masaüstü gerektirmez",
                         refreshing = model.library.refreshing,
                         error = model.library.error,
                         onBack = { model.settings = false },
@@ -130,25 +130,6 @@ fun MavieApplication(model: MainViewModel) {
                         onSync = { syncDialog = true },
                         onLogout = model::logout,
                         versionName = BuildConfig.VERSION_NAME,
-                        cloudState = model.cloudState,
-                        cloudAuthStep = model.cloudAuthStep,
-                        cloudPendingEmail = model.cloudPendingEmail,
-                        cloudBusy = model.cloudBusy,
-                        cloudError = model.cloudError,
-                        cloudInfo = model.cloudInfo,
-                        onSetAuthStep = model::setCloudAuthStep,
-                        onCloudRegister = model::cloudRegister,
-                        onCloudLogin = model::cloudLogin,
-                        onCloudVerifyEmail = model::cloudVerifyEmail,
-                        onCloudResendVerification = model::cloudResendVerification,
-                        onCloudForgotPassword = model::cloudForgotPassword,
-                        onCloudVerifyResetCode = model::cloudVerifyResetCode,
-                        onCloudResetPassword = model::cloudResetPassword,
-                        onCloudRedeem = model::cloudRedeem,
-                        onCloudRemoveDevice = model::cloudRemoveDevice,
-                        onCloudRefresh = model::refreshCloudStatus,
-                        onCloudSync = model::cloudSync,
-                        onCloudLogout = model::cloudLogout,
                     )
                     "detail" -> model.detail?.let { state ->
                         MavieDetailScreen(

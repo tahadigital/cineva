@@ -191,9 +191,9 @@ final class MavieMacDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         menu.addItem(helpMenuItem)
         let helpMenu = NSMenu(title: "Yardım")
         helpMenuItem.submenu = helpMenu
-        let portalItem = NSMenuItem(title: "Mavie Web Portalını Aç", action: #selector(openCloudPortal), keyEquivalent: "")
-        portalItem.target = self
-        helpMenu.addItem(portalItem)
+        let websiteItem = NSMenuItem(title: "Mavie Web Sitesini Aç", action: #selector(openWebsite), keyEquivalent: "")
+        websiteItem.target = self
+        helpMenu.addItem(websiteItem)
 
         NSApp.mainMenu = menu
     }
@@ -201,7 +201,7 @@ final class MavieMacDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     @objc private func showAbout() {
         let alert = NSAlert()
         alert.messageText = "Mavie Medya Merkezi"
-        alert.informativeText = "Sürüm 2.1.0\nYerel medya sunucusu, HLS oynatıcı ve bulut hesap eşitlemesi ile macOS için yerel masaüstü uygulaması."
+        alert.informativeText = "Sürüm 2.2.0\nTamamen ücretsiz ve hesap gerektirmeyen yerel medya sunucusu, HLS oynatıcı ve yerel ağ (LAN) eşitlemesi ile macOS masaüstü uygulaması."
         alert.addButton(withTitle: "Tamam")
         alert.runModal()
     }
@@ -246,9 +246,8 @@ final class MavieMacDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         }
     }
 
-    @objc private func openCloudPortal() {
-        let raw = UserDefaults.standard.string(forKey: "mavie_portal_url") ?? CloudClient.defaultPortalURL
-        if let url = try? CloudClient.validateBaseURL(raw) {
+    @objc private func openWebsite() {
+        if let url = URL(string: "https://cineva-app.netlify.app") {
             NSWorkspace.shared.open(url)
         }
     }

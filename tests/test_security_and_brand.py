@@ -1,30 +1,24 @@
-"""Comprehensive security hardening, penetration-check, and multi-platform Mavie brand/icon tests."""
+"""Comprehensive security hardening, zero-account verification, and multi-platform Mavie brand/icon tests."""
 from __future__ import annotations
 
-import base64
 import http.client
 import json
 import os
 import re
 import socket
-import sqlite3
 import struct
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 import unittest
 import urllib.parse
 import zlib
-from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
-import cloud_admin
 
 
 def _png_info(path: Path) -> tuple[int, int, bytes]:
@@ -86,18 +80,6 @@ class SecurityAndHardeningTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.temp = tempfile.TemporaryDirectory(prefix="mavie-sec-tests-")
         cls.data_dir = Path(cls.temp.name)
-        cls.service = cloud_admin.CloudService(
-            cls.data_dir / "cloud",
-            admin_email="admin@mavie.app",
-            admin_password="AdminStrongPass!2026",
-            admin_gate_key="sec-gate-token-2026",
-        )
-        cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), cloud_admin.make_handler(cls.service))
-        cls.port = cls.httpd.server_address[1]
-        cls.thread = threading.Thread(target=cls.httpd.serve_forever, daemon=True)
-        cls.thread.start()
-
-        # Spin up an isolated local Mavie media server subprocess for local security tests
         cls.local_dir = cls.data_dir / "local_srv"
         cls.local_dir.mkdir(parents=True, exist_ok=True)
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -131,8 +113,6 @@ class SecurityAndHardeningTests(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls) -> None:
-        cls.httpd.shutdown()
-        cls.httpd.server_close()
         cls.local_proc.terminate()
         try:
             cls.local_proc.wait(timeout=5)
@@ -146,9 +126,8 @@ class SecurityAndHardeningTests(unittest.TestCase):
         path: str,
         body: dict | bytes | None = None,
         headers: dict[str, str] | None = None,
-        port: int | None = None,
     ) -> tuple[int, dict[str, str], bytes]:
-        conn = http.client.HTTPConnection("127.0.0.1", port or self.port, timeout=10)
+        conn = http.client.HTTPConnection("127.0.0.1", self.local_port, timeout=10)
         hdrs = dict(headers or {})
         payload = None
         if isinstance(body, dict):
@@ -163,208 +142,66 @@ class SecurityAndHardeningTests(unittest.TestCase):
         conn.close()
         return resp.status, resp_headers, data
 
-    def _outbox_code(self, email: str, kind: str) -> str:
-        p = self.data_dir / "cloud" / "email_outbox.json"
-        entries = json.loads(p.read_text("utf-8"))
-        matches = [e for e in entries if e.get("recipient", "").lower() == email.lower() and e.get("kind") == kind]
-        self.assertTrue(matches, f"No outbox mail of kind {kind} for {email}")
-        return str(matches[-1]["code"])
+    def test_01_netlify_security_headers_and_admin_completely_removed(self) -> None:
+        for removed in (
+            "cloud_admin.py",
+            "website/admin.html",
+            "website/admin.js",
+            "website/netlify/edge-functions/admin-gate.ts",
+            "website/netlify/functions/api.mts",
+            "website/netlify/functions/cloud-core.mjs",
+            "android/app/src/main/java/app/mavie/player/data/CloudClient.kt",
+            "apple/Shared/CloudClient.swift",
+            "apple/iOS/CloudAccountView.swift",
+        ):
+            self.assertFalse((ROOT / removed).exists(), f"Removed account/admin file still exists: {removed}")
 
-    def _register_and_verify(self, email: str, password: str = "StrongPass!2026", name: str = "Sec User") -> tuple[str, dict]:
-        st, _, raw = self._req("POST", "/api/v1/auth/register", {
-            "email": email,
-            "password": password,
-            "displayName": name,
-        })
-        self.assertEqual(st, 201, raw)
-        res = json.loads(raw)
-        # OTP code must NEVER leak in HTTP registration response
-        self.assertNotIn("code", res)
-        self.assertNotIn("devVerificationCode", res)
-        code = self._outbox_code(email, "verify_email")
-        st2, _, raw2 = self._req("POST", "/api/v1/auth/verify-email", {
-            "email": email,
-            "code": code,
-        })
-        self.assertEqual(st2, 200, raw2)
-        verified = json.loads(raw2)
-        return verified["token"], verified["user"]
-
-    def test_01_security_headers_and_static_leak_protection(self) -> None:
-        st, hdrs, body = self._req("GET", "/")
-        self.assertEqual(st, 200)
-        self.assertEqual(hdrs.get("x-content-type-options"), "nosniff")
-        self.assertEqual(hdrs.get("x-frame-options"), "DENY")
-        self.assertEqual(hdrs.get("referrer-policy"), "no-referrer")
-        self.assertIn("script-src 'self'", hdrs.get("content-security-policy", ""))
-        self.assertIn(b"Mavie", body)
-
-        # Sensitive backend & traversal paths must all return 404
-        blocked_paths = [
-            "/netlify.toml",
-            "/package.json",
-            "/netlify/functions/cloud-core.mjs",
-            "/netlify/edge-functions/admin-gate.ts",
-            "/netlify/database/migrations/20261119000000_vrelio_plans_verify.sql",
-            "/netlify/database/migrations/20261121163000_mavie_brand_urls.sql",
-            "/admin.html",
-            "/admin",
-            "/../server.py",
-            "/../../etc/passwd",
-            "/%2e%2e/%2e%2e/etc/passwd",
-            "/..%5c..%5cserver.py",
-            "/.env",
-        ]
-        for path in blocked_paths:
-            code, _, _ = self._req("GET", path)
-            self.assertEqual(code, 404, f"Expected 404 for sensitive/traversal path {path}, got {code}")
-
-        # Verify netlify.toml enforces HSTS, CSP, nosniff, X-Frame-Options
         toml_text = (ROOT / "website" / "netlify.toml").read_text("utf-8")
-        for header in ("X-Frame-Options", "X-Content-Type-Options", "Referrer-Policy", "Strict-Transport-Security", "Content-Security-Policy"):
+        for header in (
+            "X-Frame-Options",
+            "X-Content-Type-Options",
+            "Referrer-Policy",
+            "Strict-Transport-Security",
+            "Content-Security-Policy",
+        ):
             self.assertIn(header, toml_text)
+        for blocked in ("/admin", "/admin.html", "/api/*", "/netlify/*", "/package.json", "/netlify.toml"):
+            self.assertIn(f'from = "{blocked}"', toml_text)
 
-    def test_02_sql_injection_and_malformed_input_resilience(self) -> None:
-        sqli_payloads = [
-            "' OR '1'='1",
-            "admin@mavie.app' --",
-            "admin@mavie.app' UNION SELECT 1,2,3 --",
-            "'; DROP TABLE users; --",
-        ]
-        for payload in sqli_payloads:
-            st, hdrs, _ = self._req("POST", "/api/v1/auth/login", {
-                "email": payload,
-                "password": "' OR '1'='1",
-            })
-            self.assertIn(st, (400, 401, 403, 429), f"Unexpected status {st} for SQLi login {payload!r}")
-            self.assertEqual(hdrs.get("cache-control"), "no-store")
-            self.assertEqual(hdrs.get("x-content-type-options"), "nosniff")
-
-        # Malformed JSON & non-UTF8 bytes must never cause 500
-        for bad_body in (b"{broken json", b"[]", b"\xff\xfe\xfd"):
-            st, _, _ = self._req("POST", "/api/v1/auth/login", body=bad_body, headers={"Content-Type": "application/json"})
-            self.assertEqual(st, 400, f"Malformed payload {bad_body!r} returned {st}")
-
-        # Admin account must still exist cleanly after SQLi probes
-        st_admin, _, raw_admin = self._req("POST", "/api/v1/auth/login", {
-            "email": "admin@mavie.app",
-            "password": "AdminStrongPass!2026",
-        })
-        self.assertEqual(st_admin, 200, raw_admin)
-
-    def test_03_jwt_forgery_and_privilege_escalation_blocked(self) -> None:
-        user_token, user = self._register_and_verify("normal.sec@mavie.app")
-
-        # Forged alg=none JWT, tampered payload JWT, garbage token
-        header_none = base64.urlsafe_b64encode(json.dumps({"alg": "none", "typ": "JWT"}).encode()).decode().rstrip("=")
-        payload_admin = base64.urlsafe_b64encode(json.dumps({"sub": user["id"], "role": "admin", "exp": 9999999999}).encode()).decode().rstrip("=")
-        forged_none = f"{header_none}.{payload_admin}."
-        parts = user_token.split(".")
-        tampered_sig = f"{parts[0]}.{payload_admin}.{parts[2]}" if len(parts) == 3 else "bad.token.sig"
-
-        for bad_token in (forged_none, tampered_sig, "not-a-jwt", ""):
-            st, _, _ = self._req("GET", "/api/v1/me", headers={"Authorization": f"Bearer {bad_token}"})
-            self.assertEqual(st, 401, f"Forged token accepted: {bad_token!r}")
-
-        # Layer 1: Without X-Admin-Gate, all admin API endpoints are stealth-hidden (404)
-        admin_endpoints = [
-            ("GET", "/api/v1/admin/overview"),
-            ("GET", "/api/v1/admin/users"),
-            ("GET", "/api/v1/admin/licenses"),
-            ("POST", "/api/v1/admin/licenses"),
-            ("PUT", "/api/v1/admin/config"),
-            ("GET", "/api/v1/admin/audit"),
-        ]
-        for method, path in admin_endpoints:
-            st_nogate, _, _ = self._req(method, path, body={} if method != "GET" else None, headers={"Authorization": f"Bearer {user_token}"})
-            self.assertEqual(st_nogate, 404, f"Admin route leaked without gate on {method} {path}: {st_nogate}")
-
-        # Layer 2: Even WITH X-Admin-Gate, non-admin JWT is blocked by RBAC (403)
-        for method, path in admin_endpoints:
-            st, _, _ = self._req(
-                method,
-                path,
-                body={} if method != "GET" else None,
-                headers={"Authorization": f"Bearer {user_token}", "X-Admin-Gate": "sec-gate-token-2026"},
-            )
-            self.assertEqual(st, 403, f"Non-admin allowed on {method} {path}: {st}")
-
-    def test_04_idor_cross_user_isolation_and_secret_non_leakage(self) -> None:
-        tok_a, user_a = self._register_and_verify("alice.sec@mavie.app")
-        tok_b, user_b = self._register_and_verify("bob.sec@mavie.app")
-
-        # Register device on Alice's account
-        st_dev, _, raw_dev = self._req("POST", "/api/v1/devices/register", {
-            "deviceId": "alice-device-001",
-            "deviceName": "Alice MacBook",
-            "platform": "macos",
-        }, headers={"Authorization": f"Bearer {tok_a}"})
-        self.assertEqual(st_dev, 200, raw_dev)
-
-        # Bob tries to delete Alice's device -> must fail (403/404) and Alice's device must remain
-        st_idor, _, _ = self._req("DELETE", "/api/v1/devices/alice-device-001", headers={"Authorization": f"Bearer {tok_b}"})
-        self.assertIn(st_idor, (403, 404))
-
-        st_me, _, raw_me = self._req("GET", "/api/v1/me", headers={"Authorization": f"Bearer {tok_a}"})
-        self.assertEqual(st_me, 200)
-        me_text = raw_me.decode("utf-8")
-        self.assertIn("alice-device-001", me_text)
-        # Ensure sensitive hashes never leak in API responses
-        for forbidden_field in ("password_hash", "passwordHash", "verification_code_hash", "reset_code_hash", "pbkdf2"):
-            self.assertNotIn(forbidden_field, me_text)
-
-        # Verify DB stores PBKDF2-SHA256 hashed passwords with unique salts (never plaintext)
-        db_path = self.data_dir / "cloud" / "cloud.sqlite3"
-        with sqlite3.connect(db_path) as con:
-            rows = con.execute("SELECT email, password_hash FROM users WHERE email IN (?, ?)", ("alice.sec@mavie.app", "bob.sec@mavie.app")).fetchall()
-        self.assertEqual(len(rows), 2)
-        hashes = [r[1] for r in rows]
-        for h in hashes:
-            self.assertNotIn("StrongPass!2026", h)
-            self.assertTrue(h.startswith("pbkdf2") or "$" in h, f"Weak password hash format: {h}")
-        self.assertNotEqual(hashes[0], hashes[1], "Identical passwords must produce distinct salted hashes")
-
-    def test_05_password_reset_revokes_previous_tokens(self) -> None:
-        old_tok, _ = self._register_and_verify("revoke.sec@mavie.app", "InitialPass!2026")
-        st_req, _, raw_req = self._req("POST", "/api/v1/auth/forgot-password", {"email": "revoke.sec@mavie.app"})
-        self.assertEqual(st_req, 200, raw_req)
-        req_json = json.loads(raw_req)
-        self.assertNotIn("code", req_json)
-        self.assertNotIn("devResetCode", req_json)
-        reset_code = self._outbox_code("revoke.sec@mavie.app", "password_reset")
-
-        st_rst, _, raw_rst = self._req("POST", "/api/v1/auth/reset-password", {
-            "email": "revoke.sec@mavie.app",
-            "code": reset_code,
-            "newPassword": "RotatedPass!2026",
-        })
-        self.assertEqual(st_rst, 200, raw_rst)
-
-        # Old JWT issued prior to reset must be rejected immediately
-        st_old, _, _ = self._req("GET", "/api/v1/me", headers={"Authorization": f"Bearer {old_tok}"})
-        self.assertEqual(st_old, 401, "Pre-reset JWT should be revoked after password reset")
-
-    def test_06_local_server_traversal_and_ssrf_protection(self) -> None:
-        # Local server static path traversal must be blocked
+    def test_02_local_server_traversal_malformed_json_and_ssrf_protection(self) -> None:
         for path in ("/../../etc/passwd", "/%2e%2e/%2e%2e/etc/passwd", "/../server.py"):
-            st, hdrs, _ = self._req("GET", path, port=self.local_port)
+            st, hdrs, _ = self._req("GET", path)
             self.assertIn(st, (400, 403, 404), f"Local traversal {path} returned {st}")
             self.assertEqual(hdrs.get("x-content-type-options"), "nosniff")
             self.assertEqual(hdrs.get("x-frame-options"), "DENY")
 
-        # Local server /api/local/stream must reject unauthenticated/arbitrary host file reads
-        st_loc, _, _ = self._req("GET", "/api/local/stream?path=" + urllib.parse.quote("/etc/passwd"), port=self.local_port)
+        # Obtain local device cookie, then verify removed cloud endpoints return 404
+        _, hdrs_root, _ = self._req("GET", "/")
+        cookie_hdr = hdrs_root.get("set-cookie", "").split(";", 1)[0]
+        auth_headers = {"Cookie": cookie_hdr} if cookie_hdr else {}
+        for cloud_path in ("/api/cloud/status", "/api/cloud/login", "/api/cloud/register"):
+            method = "GET" if cloud_path.endswith("status") else "POST"
+            st_c, _, _ = self._req(method, cloud_path, body={} if method == "POST" else None, headers=auth_headers)
+            self.assertEqual(st_c, 404, f"Removed cloud endpoint {cloud_path} returned {st_c}")
+
+        # Local server /api/local/stream must reject arbitrary host file reads
+        st_loc, _, _ = self._req("GET", "/api/local/stream?path=" + urllib.parse.quote("/etc/passwd"))
         self.assertIn(st_loc, (400, 401, 403, 404))
 
+        # Malformed JSON must never cause 500
+        for bad_body in (b"{broken json", b"\xff\xfe\xfd"):
+            st_bad, _, _ = self._req("POST", "/api/pair", body=bad_body, headers={"Content-Type": "application/json"})
+            self.assertEqual(st_bad, 400)
+
         # Local server /api/health returns strict Mavie identity and security headers
-        st_h, hdrs_h, raw_h = self._req("GET", "/api/health", port=self.local_port)
+        st_h, hdrs_h, raw_h = self._req("GET", "/api/health")
         self.assertEqual(st_h, 200)
         self.assertEqual(json.loads(raw_h).get("app"), "mavie")
         self.assertEqual(hdrs_h.get("x-content-type-options"), "nosniff")
         self.assertEqual(hdrs_h.get("x-frame-options"), "DENY")
         self.assertEqual(hdrs_h.get("referrer-policy"), "no-referrer")
 
-    def test_07_git_secret_hygiene_and_xss_safe_frontend(self) -> None:
+    def test_03_git_secret_hygiene_and_xss_safe_frontend(self) -> None:
         tracked = subprocess.check_output(["git", "ls-files"], cwd=ROOT, text=True).splitlines()
         forbidden_exts = (".jks", ".keystore", ".p12", ".pem", ".key")
         for f in tracked:
@@ -416,7 +253,7 @@ class MavieBrandPaletteAndIconsTests(unittest.TestCase):
             m = legacy_warm.search(txt)
             self.assertIsNone(m, f"Legacy red/orange color {m.group(0) if m else ''} found in {rel}")
 
-    def test_02_website_entrance_layout_order_and_brand_display(self) -> None:
+    def test_02_website_entrance_layout_order_and_free_brand_display(self) -> None:
         html = (ROOT / "website" / "index.html").read_text("utf-8")
         css = (ROOT / "website" / "styles.css").read_text("utf-8")
 
@@ -424,31 +261,32 @@ class MavieBrandPaletteAndIconsTests(unittest.TestCase):
         self.assertIn('class="hero-slogan"', html)
         self.assertIn("Neden Mavie'yi Tercih Etmelisiniz?", html)
         self.assertIn("4 Platform için Mavie'yi İndirin", html)
+        self.assertIn("Tamamen Ücretsiz", html)
+        self.assertNotIn("Mavie Pro", html)
+        self.assertNotIn("accountModal", html)
 
-        # Verify section ordering: Hero Brand -> Slogan -> Downloads -> Features -> Plans
+        # Verify section ordering: Hero Brand -> Slogan -> Downloads -> Features -> Free Forever
         idx_brand = html.index('hero-brand-display')
         idx_slogan = html.index('hero-slogan')
         idx_dl = html.index('id="downloads"')
         idx_feat = html.index('id="features"')
-        idx_plans = html.index('id="plans"')
+        idx_free = html.index('id="free-forever"')
         self.assertLess(idx_brand, idx_slogan)
         self.assertLess(idx_slogan, idx_dl)
         self.assertLess(idx_dl, idx_feat)
-        self.assertLess(idx_feat, idx_plans)
+        self.assertLess(idx_feat, idx_free)
 
         # Verify purple-blue-turquoise palette tokens in website CSS
         for token in ("#7c3aed", "#3b82f6", "#06b6d4"):
             self.assertIn(token, css.lower())
 
     def test_03_all_four_platform_logos_valid_and_purple_blue_turquoise(self) -> None:
-        # 1. Web & PWA SVGs
         for rel in ("website/mavie-mark.svg", "website/icon.svg", "public/mavie-mark.svg", "public/icon.svg"):
             svg = (ROOT / rel).read_text("utf-8").lower()
             self.assertIn("#7c3aed", svg, f"Missing purple in {rel}")
             self.assertIn("#3b82f6", svg, f"Missing blue in {rel}")
             self.assertIn("#06b6d4", svg, f"Missing turquoise in {rel}")
 
-        # 2. Windows ICO + PyInstaller spec + Inno Setup wiring
         ico = ROOT / "windows" / "mavie.ico"
         self.assertTrue(ico.is_file(), "Missing windows/mavie.ico")
         ico_bytes = ico.read_bytes()
@@ -461,7 +299,6 @@ class MavieBrandPaletteAndIconsTests(unittest.TestCase):
         self.assertIn("SetupIconFile=mavie.ico", iss_txt)
         self.assertIn("UninstallDisplayIcon={app}\\{#MyAppExeName}", iss_txt)
 
-        # 3. Android vector adaptive icon + 5 density raster mipmap PNGs
         android_xml = (ROOT / "android" / "app" / "src" / "main" / "res" / "drawable" / "mavie_mark.xml").read_text("utf-8").lower()
         for tok in ("#ff7c3aed", "#ff3b82f6", "#ff06b6d4"):
             self.assertIn(tok, android_xml)
@@ -474,12 +311,10 @@ class MavieBrandPaletteAndIconsTests(unittest.TestCase):
             w, h, _ = _png_info(png_path)
             self.assertEqual((w, h), (expected_sz, expected_sz), f"Wrong size for {png_path}")
 
-        # 4. iOS 1024x1024 AppIcon.png + AccentColor
         ios_icon = ROOT / "apple" / "iOS" / "Assets.xcassets" / "AppIcon.appiconset" / "AppIcon.png"
         self.assertTrue(ios_icon.is_file(), "Missing iOS AppIcon.png")
         w, h, rows = _decode_png_rgba(ios_icon)
         self.assertEqual((w, h), (1024, 1024))
-        # Confirm vibrant purple/blue/turquoise pixels exist and no red-dominant ring pixels exist
         purple_blue_cyan_hits = 0
         red_orange_hits = 0
         for y in range(160, 864, 16):
@@ -494,7 +329,6 @@ class MavieBrandPaletteAndIconsTests(unittest.TestCase):
         self.assertGreater(purple_blue_cyan_hits, 20, "iOS AppIcon.png should contain purple-blue-turquoise ring pixels")
         self.assertEqual(red_orange_hits, 0, "iOS AppIcon.png must not contain red/orange pixels")
 
-        # 5. macOS Info.plist + build_macos.sh icon generation
         mac_plist = (ROOT / "apple" / "macOS" / "Info.plist").read_text("utf-8")
         self.assertIn("<string>AppIcon</string>", mac_plist)
         self.assertIn("<string>Mavie</string>", mac_plist)

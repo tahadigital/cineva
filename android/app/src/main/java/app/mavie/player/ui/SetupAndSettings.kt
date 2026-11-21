@@ -1,8 +1,6 @@
 package app.mavie.player.ui
 
 import android.net.Uri
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -15,10 +13,6 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.*
-import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.DeleteOutline
-import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -27,8 +21,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -36,13 +28,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import app.mavie.player.CloudAuthStep
-import app.mavie.player.data.CloudAccountState
-import kotlinx.coroutines.delay
-import java.time.Duration
-import java.time.Instant
-
-const val DEFAULT_CLOUD_URL = "https://cineva-app.netlify.app"
 
 @Composable
 fun MavieSetupScreen(
@@ -227,26 +212,7 @@ fun MavieSettingsScreen(
     onImport: () -> Unit,
     onSync: () -> Unit,
     onLogout: () -> Unit,
-    versionName: String = "2.1.0",
-    cloudState: CloudAccountState = CloudAccountState(),
-    cloudAuthStep: CloudAuthStep = CloudAuthStep.IDLE,
-    cloudPendingEmail: String = "",
-    cloudBusy: Boolean = false,
-    cloudError: String? = null,
-    cloudInfo: String? = null,
-    onSetAuthStep: (CloudAuthStep, String?) -> Unit = { _, _ -> },
-    onCloudRegister: (url: String, email: String, password: String, displayName: String) -> Unit = { _, _, _, _ -> },
-    onCloudLogin: (url: String, email: String, password: String) -> Unit = { _, _, _ -> },
-    onCloudVerifyEmail: (url: String, email: String, code: String) -> Unit = { _, _, _ -> },
-    onCloudResendVerification: (url: String, email: String) -> Unit = { _, _ -> },
-    onCloudForgotPassword: (url: String, email: String) -> Unit = { _, _ -> },
-    onCloudVerifyResetCode: (url: String, email: String, code: String) -> Unit = { _, _, _ -> },
-    onCloudResetPassword: (url: String, email: String, code: String, newPassword: String) -> Unit = { _, _, _, _ -> },
-    onCloudRedeem: (code: String) -> Unit = {},
-    onCloudRemoveDevice: (deviceId: String) -> Unit = {},
-    onCloudRefresh: () -> Unit = {},
-    onCloudSync: () -> Unit = {},
-    onCloudLogout: () -> Unit = {},
+    versionName: String = "2.2.0",
 ) {
     val context = LocalContext.current
     var confirmLogout by remember { mutableStateOf(false) }
@@ -306,30 +272,9 @@ fun MavieSettingsScreen(
                         Icon(Icons.Outlined.Devices, null, Modifier.size(19.dp)); Spacer(Modifier.width(8.dp)); Text("Masaüstü ile eşitle")
                     }
                 }
-                CloudAccountCard(
-                    cloudState = cloudState,
-                    cloudAuthStep = cloudAuthStep,
-                    cloudPendingEmail = cloudPendingEmail,
-                    cloudBusy = cloudBusy,
-                    cloudError = cloudError,
-                    cloudInfo = cloudInfo,
-                    onSetAuthStep = onSetAuthStep,
-                    onCloudRegister = onCloudRegister,
-                    onCloudLogin = onCloudLogin,
-                    onCloudVerifyEmail = onCloudVerifyEmail,
-                    onCloudResendVerification = onCloudResendVerification,
-                    onCloudForgotPassword = onCloudForgotPassword,
-                    onCloudVerifyResetCode = onCloudVerifyResetCode,
-                    onCloudResetPassword = onCloudResetPassword,
-                    onCloudRedeem = onCloudRedeem,
-                    onCloudRemoveDevice = onCloudRemoveDevice,
-                    onCloudRefresh = onCloudRefresh,
-                    onCloudSync = onCloudSync,
-                    onCloudLogout = onCloudLogout,
-                )
-                SettingsCard("Yasal Bilgiler & Lisanslar", "Gizlilik, kullanım koşulları ve açık kaynak bildirimleri.") {
+                SettingsCard("Yasal Bilgiler & Lisanslar", "Tamamen ücretsiz, hesapsız ve yerel öncelikli oynatıcı.") {
                     Text(
-                        "Mavie telifli içerik sağlamaz, barındırmaz veya dağıtmaz. Yalnızca kullanıcının eklediği açık veya yasal kaynakları oynatır.",
+                        "Mavie tamamen ücretsizdir ve hesap gerektirmez. Telifli içerik sağlamaz, barındırmaz veya dağıtmaz; yalnızca kullanıcının eklediği açık veya yasal kaynakları oynatır.",
                         color = MavieMuted, style = MaterialTheme.typography.bodySmall,
                     )
                     OutlinedButton(
@@ -351,7 +296,7 @@ fun MavieSettingsScreen(
                 }
                 Column(Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     MavieWordmark()
-                    Text("Sürüm $versionName · Android", Modifier.padding(top = 7.dp), color = MavieMuted, fontSize = 11.sp)
+                    Text("Sürüm $versionName · Android · Ücretsiz", Modifier.padding(top = 7.dp), color = MavieMuted, fontSize = 11.sp)
                 }
             }
         }
@@ -369,468 +314,6 @@ fun MavieSettingsScreen(
         confirmButton = { TextButton(onClick = { confirmLogout = false; onLogout() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Çıkış yap") } },
         dismissButton = { TextButton(onClick = { confirmLogout = false }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Vazgeç") } },
     )
-}
-
-@Composable
-private fun CloudAccountCard(
-    cloudState: CloudAccountState,
-    cloudAuthStep: CloudAuthStep,
-    cloudPendingEmail: String,
-    cloudBusy: Boolean,
-    cloudError: String?,
-    cloudInfo: String?,
-    onSetAuthStep: (CloudAuthStep, String?) -> Unit,
-    onCloudRegister: (String, String, String, String) -> Unit,
-    onCloudLogin: (String, String, String) -> Unit,
-    onCloudVerifyEmail: (String, String, String) -> Unit,
-    onCloudResendVerification: (String, String) -> Unit,
-    onCloudForgotPassword: (String, String) -> Unit,
-    onCloudVerifyResetCode: (String, String, String) -> Unit,
-    onCloudResetPassword: (String, String, String, String) -> Unit,
-    onCloudRedeem: (String) -> Unit,
-    onCloudRemoveDevice: (String) -> Unit,
-    onCloudRefresh: () -> Unit,
-    onCloudSync: () -> Unit,
-    onCloudLogout: () -> Unit,
-) {
-    SettingsCard(
-        "Mavie Hesabı & Pro Plan (İsteğe Bağlı)",
-        "Yalnızca plan, profil senkronizasyonu ve cihaz limiti bulutta tutulur; medya kaynaklarınız cihazınızda kalır.",
-    ) {
-        if (cloudState.announcementMessage.isNotBlank()) {
-            Surface(
-                color = MavieCoral.copy(alpha = 0.16f),
-                shape = RoundedCornerShape(6.dp),
-                border = BorderStroke(1.dp, MavieCoral.copy(alpha = 0.45f)),
-            ) {
-                Text(
-                    "${cloudState.announcementTitle}: ${cloudState.announcementMessage}",
-                    color = Color.White,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.fillMaxWidth().padding(10.dp),
-                )
-            }
-        }
-        AnimatedVisibility(visible = !cloudInfo.isNullOrBlank()) {
-            Surface(
-                color = Color(0xFF1A3429),
-                shape = RoundedCornerShape(6.dp),
-                border = BorderStroke(1.dp, Color(0xFF3E8E6E)),
-            ) {
-                Text(cloudInfo.orEmpty(), color = Color(0xFFC5F4DE), fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(10.dp))
-            }
-        }
-        AnimatedVisibility(visible = !cloudError.isNullOrBlank()) {
-            Surface(
-                color = Color(0xFF3B1A1D),
-                shape = RoundedCornerShape(6.dp),
-                border = BorderStroke(1.dp, Color(0xFFB84A52)),
-            ) {
-                Text(cloudError.orEmpty(), color = Color(0xFFFFD5D8), fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(10.dp))
-            }
-        }
-
-        if (cloudState.signedIn) {
-            var licenseInput by rememberSaveable { mutableStateOf("") }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(cloudState.displayName.ifBlank { cloudState.email }, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    Text(cloudState.email, color = MavieMuted, fontSize = 12.sp)
-                }
-                Surface(
-                    color = when {
-                        cloudState.trialActive -> MavieAmber.copy(alpha = 0.2f)
-                        cloudState.isPro -> MavieCoral.copy(alpha = 0.22f)
-                        else -> Color(0xFF282D3A)
-                    },
-                    shape = RoundedCornerShape(99.dp),
-                    border = BorderStroke(
-                        1.dp,
-                        when {
-                            cloudState.trialActive -> MavieAmber
-                            cloudState.isPro -> MavieCoral
-                            else -> Color(0xFF4B5163)
-                        },
-                    ),
-                ) {
-                    Text(
-                        text = when {
-                            cloudState.trialActive -> "3 GÜNLÜK PRO DENEME"
-                            cloudState.isPro -> "MAVIE PRO"
-                            else -> "NORMAL PLAN"
-                        },
-                        color = Color.White,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                    )
-                }
-            }
-            if (cloudState.emailVerified) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Icon(Icons.Rounded.Verified, null, tint = Color(0xFF8DCDB2), modifier = Modifier.size(16.dp))
-                    Text("E-posta doğrulandı · Max ${cloudState.maxDevices} cihaz", color = Color(0xFF8DCDB2), fontSize = 12.sp)
-                }
-            }
-
-            if (cloudState.trialActive && cloudState.trialEndsAt.isNotBlank()) {
-                TrialCountdownBanner(trialEndsAt = cloudState.trialEndsAt)
-            }
-
-            if (!cloudState.isPro) {
-                PlanComparisonCard()
-            }
-
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = licenseInput,
-                    onValueChange = { licenseInput = it.uppercase() },
-                    label = { Text("Pro Lisans Anahtarı") },
-                    placeholder = { Text("MAVIE-XXXX-XXXX-XXXX") },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f),
-                    enabled = !cloudBusy,
-                )
-                Button(
-                    onClick = {
-                        if (licenseInput.isNotBlank()) {
-                            onCloudRedeem(licenseInput.trim())
-                            licenseInput = ""
-                        }
-                    },
-                    enabled = licenseInput.isNotBlank() && !cloudBusy,
-                    modifier = Modifier.heightIn(min = 52.dp),
-                ) { Text("Etkinleştir") }
-            }
-
-            OutlinedButton(
-                onClick = onCloudSync,
-                enabled = !cloudBusy,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                shape = RoundedCornerShape(6.dp),
-            ) {
-                Icon(if (cloudState.isPro) Icons.Outlined.Refresh else Icons.Rounded.Lock, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(if (cloudState.isPro) "Hesap Verilerini Şimdi Eşitle (Bulut)" else "Bulut Eşitleme (Mavie Pro)")
-            }
-
-            HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
-            Text(
-                "Kayıtlı Cihazlar (${cloudState.devices.size} / ${cloudState.maxDevices})",
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 13.sp,
-            )
-            if (cloudState.devices.isEmpty()) {
-                Text("Bu hesapta henüz kayıtlı cihaz listelenmedi.", color = MavieMuted, fontSize = 12.sp)
-            } else {
-                cloudState.devices.forEach { dev ->
-                    Surface(
-                        color = Color(0xFF1E222E),
-                        shape = RoundedCornerShape(6.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(dev.name, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                                Text(dev.platform.uppercase(), color = MavieMuted, fontSize = 11.sp)
-                            }
-                            TextButton(
-                                onClick = { onCloudRemoveDevice(dev.id) },
-                                enabled = !cloudBusy,
-                                modifier = Modifier.heightIn(min = 48.dp).semantics {
-                                    contentDescription = "${dev.name} cihazını kaldır"
-                                },
-                                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                            ) {
-                                Icon(Icons.Rounded.DeleteOutline, null, Modifier.size(17.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Kaldır", fontSize = 12.sp)
-                            }
-                        }
-                    }
-                }
-            }
-
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                TextButton(onClick = onCloudRefresh, enabled = !cloudBusy, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text("Planı Yenile")
-                }
-                TextButton(onClick = onCloudLogout, enabled = !cloudBusy, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text("Hesaptan Çık", color = MaterialTheme.colorScheme.error)
-                }
-            }
-        } else {
-            var cloudUrl by rememberSaveable { mutableStateOf(cloudState.cloudUrl.ifBlank { DEFAULT_CLOUD_URL }) }
-            var authTab by rememberSaveable { mutableStateOf("login") }
-            var clName by rememberSaveable { mutableStateOf("") }
-            var clEmail by rememberSaveable { mutableStateOf(cloudPendingEmail) }
-            var clPass by remember { mutableStateOf("") }
-            var verifyCode by rememberSaveable { mutableStateOf("") }
-            var resetCode by rememberSaveable { mutableStateOf("") }
-            var resetNewPass by remember { mutableStateOf("") }
-            var revealCloudPass by remember { mutableStateOf(false) }
-
-            LaunchedEffect(cloudPendingEmail) {
-                if (cloudPendingEmail.isNotBlank() && clEmail.isBlank()) clEmail = cloudPendingEmail
-            }
-
-            OutlinedTextField(
-                value = cloudUrl,
-                onValueChange = { cloudUrl = it },
-                label = { Text("Portal Sunucu Adresi") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !cloudBusy,
-            )
-
-            when (cloudAuthStep) {
-                CloudAuthStep.IDLE -> {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = authTab == "login",
-                            onClick = { authTab = "login" },
-                            label = { Text("Giriş Yap") },
-                        )
-                        FilterChip(
-                            selected = authTab == "register",
-                            onClick = { authTab = "register" },
-                            label = { Text("Kayıt Ol (3 Gün Pro Deneme)") },
-                        )
-                    }
-                    if (authTab == "register") {
-                        OutlinedTextField(
-                            value = clName,
-                            onValueChange = { clName = it },
-                            label = { Text("Görünen Ad (İsteğe bağlı)") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = !cloudBusy,
-                        )
-                    }
-                    OutlinedTextField(
-                        value = clEmail,
-                        onValueChange = { clEmail = it },
-                        label = { Text("E-posta") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !cloudBusy,
-                    )
-                    OutlinedTextField(
-                        value = clPass,
-                        onValueChange = { clPass = it },
-                        label = { Text(if (authTab == "register") "Parola (en az 8 karakter)" else "Parola") },
-                        visualTransformation = if (revealCloudPass) VisualTransformation.None else PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !cloudBusy,
-                        trailingIcon = {
-                            IconButton(onClick = { revealCloudPass = !revealCloudPass }, modifier = Modifier.size(48.dp)) {
-                                Icon(
-                                    if (revealCloudPass) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                                    if (revealCloudPass) "Parolayı gizle" else "Parolayı göster",
-                                )
-                            }
-                        },
-                    )
-                    Button(
-                        onClick = {
-                            if (authTab == "register") onCloudRegister(cloudUrl, clEmail, clPass, clName)
-                            else onCloudLogin(cloudUrl, clEmail, clPass)
-                        },
-                        enabled = clEmail.isNotBlank() && (if (authTab == "register") clPass.length >= 8 else clPass.isNotBlank()) && !cloudBusy,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                    ) {
-                        if (cloudBusy) {
-                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
-                            Spacer(Modifier.width(8.dp))
-                        }
-                        Text(if (authTab == "register") "Kayıt Ol ve Doğrulama Kodu Al" else "Giriş Yap")
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        TextButton(
-                            onClick = { onSetAuthStep(CloudAuthStep.FORGOT_PASSWORD, clEmail) },
-                            enabled = !cloudBusy,
-                            modifier = Modifier.heightIn(min = 48.dp),
-                        ) { Text("Parolamı Unuttum") }
-                        if (cloudPendingEmail.isNotBlank()) {
-                            TextButton(
-                                onClick = { onSetAuthStep(CloudAuthStep.VERIFY_EMAIL, cloudPendingEmail) },
-                                enabled = !cloudBusy,
-                                modifier = Modifier.heightIn(min = 48.dp),
-                            ) { Text("Doğrulama Kodu Gir") }
-                        }
-                    }
-                    PlanComparisonCard()
-                }
-                CloudAuthStep.VERIFY_EMAIL -> {
-                    val targetEmail = cloudPendingEmail.ifBlank { clEmail }
-                    Text(
-                        "E-posta Doğrulama — 6 haneli kodu $targetEmail adresinden alıp girin.",
-                        color = Color.White,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.sp,
-                    )
-                    OutlinedTextField(
-                        value = verifyCode,
-                        onValueChange = { verifyCode = it.filter(Char::isDigit).take(6) },
-                        label = { Text("6 Haneli Doğrulama Kodu") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !cloudBusy,
-                    )
-                    Button(
-                        onClick = { onCloudVerifyEmail(cloudUrl, targetEmail, verifyCode) },
-                        enabled = targetEmail.isNotBlank() && verifyCode.length == 6 && !cloudBusy,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                    ) { Text("Doğrula ve 3 Günlük Pro Denemeyi Başlat") }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        TextButton(
-                            onClick = { onCloudResendVerification(cloudUrl, targetEmail) },
-                            enabled = targetEmail.isNotBlank() && !cloudBusy,
-                            modifier = Modifier.heightIn(min = 48.dp),
-                        ) { Text("Kodu Tekrar Gönder") }
-                        TextButton(
-                            onClick = { onSetAuthStep(CloudAuthStep.IDLE, null) },
-                            enabled = !cloudBusy,
-                            modifier = Modifier.heightIn(min = 48.dp),
-                        ) { Text("Girişe Dön") }
-                    }
-                }
-                CloudAuthStep.FORGOT_PASSWORD -> {
-                    Text("Parola Sıfırlama Kodu İste", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                    OutlinedTextField(
-                        value = clEmail,
-                        onValueChange = { clEmail = it },
-                        label = { Text("Kayıtlı E-posta") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !cloudBusy,
-                    )
-                    Button(
-                        onClick = { onCloudForgotPassword(cloudUrl, clEmail) },
-                        enabled = clEmail.isNotBlank() && !cloudBusy,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                    ) { Text("Sıfırlama Kodu Gönder") }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        TextButton(
-                            onClick = { onSetAuthStep(CloudAuthStep.RESET_PASSWORD, clEmail) },
-                            enabled = !cloudBusy,
-                            modifier = Modifier.heightIn(min = 48.dp),
-                        ) { Text("Kodum Var") }
-                        TextButton(
-                            onClick = { onSetAuthStep(CloudAuthStep.IDLE, null) },
-                            enabled = !cloudBusy,
-                            modifier = Modifier.heightIn(min = 48.dp),
-                        ) { Text("Girişe Dön") }
-                    }
-                }
-                CloudAuthStep.RESET_PASSWORD -> {
-                    val targetEmail = clEmail.ifBlank { cloudPendingEmail }
-                    Text("Yeni Parola Belirle ($targetEmail)", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedTextField(
-                            value = resetCode,
-                            onValueChange = { resetCode = it.filter(Char::isDigit).take(6) },
-                            label = { Text("6 Haneli Sıfırlama Kodu") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            singleLine = true,
-                            modifier = Modifier.weight(1f),
-                            enabled = !cloudBusy,
-                        )
-                        OutlinedButton(
-                            onClick = { onCloudVerifyResetCode(cloudUrl, targetEmail, resetCode) },
-                            enabled = targetEmail.isNotBlank() && resetCode.length == 6 && !cloudBusy,
-                            modifier = Modifier.heightIn(min = 52.dp),
-                        ) { Text("Kodu Kontrol Et") }
-                    }
-                    OutlinedTextField(
-                        value = resetNewPass,
-                        onValueChange = { resetNewPass = it },
-                        label = { Text("Yeni Parola (en az 8 karakter)") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !cloudBusy,
-                    )
-                    Button(
-                        onClick = { onCloudResetPassword(cloudUrl, targetEmail, resetCode, resetNewPass) },
-                        enabled = targetEmail.isNotBlank() && resetCode.length == 6 && resetNewPass.length >= 8 && !cloudBusy,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                    ) { Text("Parolayı Güncelle") }
-                    TextButton(
-                        onClick = { onSetAuthStep(CloudAuthStep.IDLE, null) },
-                        enabled = !cloudBusy,
-                        modifier = Modifier.heightIn(min = 48.dp),
-                    ) { Text("Girişe Dön") }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun TrialCountdownBanner(trialEndsAt: String) {
-    var remainingText by remember(trialEndsAt) { mutableStateOf(formatRemainingTrial(trialEndsAt)) }
-    LaunchedEffect(trialEndsAt) {
-        while (true) {
-            remainingText = formatRemainingTrial(trialEndsAt)
-            delay(30_000)
-        }
-    }
-    Surface(
-        color = MavieAmber.copy(alpha = 0.14f),
-        shape = RoundedCornerShape(8.dp),
-        border = BorderStroke(1.dp, MavieAmber.copy(alpha = 0.55f)),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Icon(Icons.Rounded.AutoAwesome, null, tint = MavieAmber, modifier = Modifier.size(20.dp))
-            Column(Modifier.weight(1f)) {
-                Text("3 Günlük Pro Denemeniz Aktif", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
-                Text(remainingText, fontSize = 12.sp, color = Color(0xFF67E8F9))
-            }
-        }
-    }
-}
-
-private fun formatRemainingTrial(iso: String): String = runCatching {
-    val end = Instant.parse(iso)
-    val diff = Duration.between(Instant.now(), end)
-    if (diff.isNegative || diff.isZero) "Deneme süresi sona erdi"
-    else {
-        val days = diff.toDays()
-        val hours = diff.minusDays(days).toHours()
-        val mins = diff.minusDays(days).minusHours(hours).toMinutes()
-        "${days} gün ${hours} saat ${mins} dk kaldı"
-    }
-}.getOrDefault("Pro deneme aktif")
-
-@Composable
-private fun PlanComparisonCard() {
-    Surface(
-        color = Color(0xFF1D212D),
-        shape = RoundedCornerShape(8.dp),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Normal vs Mavie Pro", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
-            Text("• Normal (Ücretsiz): 1 cihaz · Yerel oynatma · 1 profil", fontSize = 11.sp, color = MavieMuted)
-            Text("• Mavie Pro (3 Gün Deneme Dahil): 5 cihaz · Bulut eşitleme · Sınırsız profil & PIN · Gelişmiş EPG & ses/altyazı", fontSize = 11.sp, color = Color(0xFFE6E8F0))
-        }
-    }
 }
 
 @Composable

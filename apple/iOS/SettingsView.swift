@@ -40,8 +40,6 @@ public struct SettingsView: View {
 
     @State private var feedbackMessage: String?
     @State private var errorMessage: String?
-    @State private var showProAlert = false
-    @State private var proAlertMessage = ""
 
     public init(store: LibraryStore) {
         self.store = store
@@ -120,11 +118,6 @@ public struct SettingsView: View {
             }
             .sheet(isPresented: $showAddProfile) {
                 addProfileSheet
-            }
-            .alert("Mavie Pro Plan Gerekli", isPresented: $showProAlert) {
-                Button("Tamam", role: .cancel) {}
-            } message: {
-                Text(proAlertMessage)
             }
         }
     }
@@ -271,12 +264,7 @@ public struct SettingsView: View {
                     .foregroundStyle(.white)
                 Spacer()
                 Button {
-                    if !store.canAddAnotherProfile {
-                        proAlertMessage = "Birden fazla profil oluşturmak Mavie Pro plan gerektirir."
-                        showProAlert = true
-                    } else {
-                        showAddProfile = true
-                    }
+                    showAddProfile = true
                 } label: {
                     Label("Profil Ekle", systemImage: "person.crop.circle.badge.plus")
                 }
@@ -354,8 +342,8 @@ public struct SettingsView: View {
 
     private var aboutSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            MavieWordmark(subtitle: "Sürüm 2.1.0 · iOS / iPadOS", markSize: 30)
-            Text("Mavie, kullanıcı tarafından sağlanan yasal medya kaynakları ve açık lisanslı demo katalogları için geliştirilmiş yerel bir medya oynatıcıdır.")
+            MavieWordmark(subtitle: "Sürüm 2.2.0 · iOS / iPadOS · Ücretsiz", markSize: 30)
+            Text("Mavie tamamen ücretsiz ve hesap gerektirmeyen, kullanıcı tarafından sağlanan yasal medya kaynakları ve açık lisanslı demo katalogları için geliştirilmiş yerel bir medya oynatıcıdır.")
                 .font(.caption)
                 .foregroundStyle(MavieTheme.muted)
             Text("İletişim: privacy@mavie.app · legal@mavie.app")
@@ -373,7 +361,7 @@ public struct SettingsView: View {
                 Section("Profil Bilgileri") {
                     TextField("Profil adı", text: $newProfileName)
                     Toggle("Çocuk Profili", isOn: $newProfileKids)
-                    SecureField("İsteğe bağlı PIN (Pro)", text: $newProfilePin)
+                    SecureField("İsteğe bağlı PIN", text: $newProfilePin)
                         .keyboardType(.numberPad)
                 }
             }
@@ -390,10 +378,6 @@ public struct SettingsView: View {
                             newProfilePin = ""
                             newProfileKids = false
                             showAddProfile = false
-                        } catch MavieError.proRequired(let msg) {
-                            showAddProfile = false
-                            proAlertMessage = msg
-                            showProAlert = true
                         } catch {
                             errorMessage = error.localizedDescription
                             showAddProfile = false
