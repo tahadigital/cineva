@@ -48,33 +48,50 @@ final class MavieMacDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         overlayHostingView = NSHostingView(rootView: overlay)
         overlayHostingView.translatesAutoresizingMaskIntoConstraints = false
 
+        let visualEffect = NSVisualEffectView()
+        visualEffect.material = .underWindowBackground
+        visualEffect.blendingMode = .behindWindow
+        visualEffect.state = .active
+        visualEffect.translatesAutoresizingMaskIntoConstraints = false
+
         let container = NSView(frame: NSRect(x: 0, y: 0, width: 1220, height: 840))
+        container.addSubview(visualEffect)
         container.addSubview(webView)
         container.addSubview(overlayHostingView)
+
+        window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1220, height: 840),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Mavie"
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.titlebarAppearsTransparent = true
+        window.minSize = NSSize(width: 480, height: 620)
+        window.delegate = self
+        window.isReleasedWhenClosed = false
+        window.contentView = container
+
+        let webTopAnchor = (window.contentLayoutGuide as? NSLayoutGuide)?.topAnchor ?? container.topAnchor
         NSLayoutConstraint.activate([
+            visualEffect.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            visualEffect.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            visualEffect.topAnchor.constraint(equalTo: container.topAnchor),
+            visualEffect.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+
             webView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            webView.topAnchor.constraint(equalTo: container.topAnchor),
+            webView.topAnchor.constraint(equalTo: webTopAnchor),
             webView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+
             overlayHostingView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             overlayHostingView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             overlayHostingView.topAnchor.constraint(equalTo: container.topAnchor),
             overlayHostingView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
         ])
 
-        window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1220, height: 840),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "Mavie"
-        window.backgroundColor = NSColor(red: 14.0 / 255.0, green: 16.0 / 255.0, blue: 21.0 / 255.0, alpha: 1.0)
-        window.titlebarAppearsTransparent = true
-        window.minSize = NSSize(width: 480, height: 620)
-        window.delegate = self
-        window.isReleasedWhenClosed = false
-        window.contentView = container
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -219,9 +236,40 @@ final class MavieMacDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
             self?.preferencesWindow?.close()
         }
         let hosting = NSHostingController(rootView: view)
-        let win = NSWindow(contentViewController: hosting)
+        let fx = NSVisualEffectView()
+        fx.material = .underWindowBackground
+        fx.blendingMode = .behindWindow
+        fx.state = .active
+        fx.translatesAutoresizingMaskIntoConstraints = false
+
+        let wrapper = NSView()
+        wrapper.addSubview(fx)
+        hosting.view.translatesAutoresizingMaskIntoConstraints = false
+        wrapper.addSubview(hosting.view)
+        NSLayoutConstraint.activate([
+            fx.leadingAnchor.constraint(equalTo: wrapper.leadingAnchor),
+            fx.trailingAnchor.constraint(equalTo: wrapper.trailingAnchor),
+            fx.topAnchor.constraint(equalTo: wrapper.topAnchor),
+            fx.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor),
+            hosting.view.leadingAnchor.constraint(equalTo: wrapper.leadingAnchor),
+            hosting.view.trailingAnchor.constraint(equalTo: wrapper.trailingAnchor),
+            hosting.view.topAnchor.constraint(equalTo: wrapper.topAnchor),
+            hosting.view.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor),
+        ])
+
+        let win = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 620, height: 520),
+            styleMask: [.titled, .closable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
         win.title = "Mavie Tercihleri"
-        win.styleMask = [.titled, .closable]
+        win.titlebarAppearsTransparent = true
+        win.isOpaque = false
+        win.backgroundColor = .clear
+        win.isMovableByWindowBackground = true
+        win.appearance = NSAppearance(named: .darkAqua)
+        win.contentView = wrapper
         win.isReleasedWhenClosed = false
         win.center()
         preferencesWindow = win

@@ -40,7 +40,7 @@
     const animation = element.animate([
       {opacity: 0, transform: 'translate3d(0,12px,0)'},
       {opacity: 1, transform: 'translate3d(0,0,0)'},
-    ], {duration: 330, delay: Math.min(index * 22, 154), easing: 'cubic-bezier(.2,.7,.2,1)', fill: 'backwards'});
+    ], {duration: 330, delay: Math.min(index * 22, 154), easing: 'cubic-bezier(0.22, 1.25, 0.36, 1)', fill: 'backwards'});
     animations.add(animation);
     animation.finished.catch(() => {}).finally(() => animations.delete(animation));
   }

@@ -1,8 +1,15 @@
 import copy
 import datetime as dt
+import gzip
+import http.client
 import json
+import tempfile
+import threading
+import time
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest.mock import patch
 
 import discovery
 
@@ -100,3 +107,73 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual([p['kind'] for p in parsed], ['vod', 'series'])
         self.assertEqual(parsed[0]['genres'], ['Comedy'])
         self.assertEqual(parsed[1]['year'], '2026')
+
+    def test_get_handles_case_insensitive_gzip_bad_utf8_and_transient_retries(self):
+        attempts = {'count': 0}
+
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = 'HTTP/1.1'
+            def log_message(self, *_args): pass
+            def do_GET(self):
+                attempts['count'] += 1
+                if self.path == '/flaky':
+                    if attempts['count'] == 1:
+                        self.send_response(503)
+                        self.send_header('Content-Length', '0')
+                        self.end_headers()
+                        return
+                    if attempts['count'] == 2:
+                        self.send_response(200)
+                        self.send_header('Transfer-Encoding', 'chunked')
+                        self.end_headers()
+                        # Truncated chunk triggers IncompleteRead
+                        self.wfile.write(b'10\r\n{"partial":')
+                        self.wfile.flush()
+                        self.close_connection = True
+                        return
+                    body = gzip.compress(b'{"ok":true,"text":"' + b'\xff' + b'"}')
+                    self.send_response(200)
+                    self.send_header('Content-Encoding', 'GZIP')
+                    self.send_header('Content-Length', str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                elif self.path == '/magic-gzip':
+                    body = gzip.compress(b'{"magic":true}')
+                    self.send_response(200)
+                    self.send_header('Content-Length', str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+
+        srv = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        srv.daemon_threads = True
+        t = threading.Thread(target=srv.serve_forever, daemon=True)
+        t.start()
+        try:
+            with patch.object(discovery.time, 'sleep'):
+                text = discovery.get(f'http://127.0.0.1:{srv.server_port}/flaky', timeout=3, retries=2)
+                self.assertEqual(attempts['count'], 3)
+                parsed = json.loads(text)
+                self.assertTrue(parsed['ok'])
+                self.assertIn('\ufffd', parsed['text'])
+
+                magic = json.loads(discovery.get(f'http://127.0.0.1:{srv.server_port}/magic-gzip', timeout=3))
+                self.assertTrue(magic['magic'])
+        finally:
+            srv.shutdown()
+            srv.server_close()
+            t.join(timeout=2)
+
+    def test_transient_refresh_failure_backs_off_shortly_instead_of_900s(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(discovery, '_memory', None), \
+                 patch.object(discovery, '_running', False), \
+                 patch.object(discovery, '_attempt', 0), \
+                 patch.object(discovery, '_consecutive_failures', 0), \
+                 patch.object(discovery, '_next_retry_at', 0.0), \
+                 patch.object(discovery, 'get', side_effect=http.client.RemoteDisconnected('closed')):
+                discovery.refresh(tmp)
+                self.assertEqual(discovery._consecutive_failures, 1)
+                remaining = discovery._next_retry_at - time.time()
+                self.assertGreater(remaining, 0)
+                self.assertLessEqual(remaining, 20.0)
+                self.assertFalse(discovery._running)

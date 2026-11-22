@@ -1,5 +1,6 @@
 import datetime as dt
 import gzip
+import http.client
 import io
 import json
 import unittest
@@ -181,5 +182,42 @@ class GuideTests(unittest.TestCase):
         with patch.object(sports, '_cache', {('https://epg.example/guide.xml', DAY): (1000, res['events'])}), patch.object(sports.time, 'time', return_value=2000):
             def offline(*args, **kwargs):
                 raise OSError
-            stale = sports.get_listings(DAY, offline, epg_url='https://epg.example/guide.xml')
+            with patch.object(sports.time, 'sleep'):
+                stale = sports.get_listings(DAY, offline, epg_url='https://epg.example/guide.xml')
             self.assertTrue(stale['stale'])
+
+    def test_retries_transient_http_exception_and_handles_gzip_sporekrani(self):
+        calls = {'n': 0}
+
+        class Resp:
+            def __init__(self, data, headers=None):
+                self._data = data
+                self.headers = headers or {}
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self, _n=-1): return self._data
+
+        def flaky_fetch(*_args, **_kwargs):
+            calls['n'] += 1
+            if calls['n'] == 1:
+                raise http.client.RemoteDisconnected('dropped')
+            if calls['n'] == 2:
+                raise http.client.IncompleteRead(b'partial')
+            return Resp(gzip.compress(SAMPLE_SPOREKRANI_MODERN), {'Content-Encoding': 'GZIP'})
+
+        with patch.object(sports, '_cache', {}), patch.object(sports.time, 'time', return_value=1000), patch.object(sports.time, 'sleep'):
+            res = sports.get_listings(DAY, flaky_fetch, epg_url='')
+        self.assertEqual(calls['n'], 3)
+        self.assertEqual(len(res['events']), 2)
+
+        # Exhausted HTTPException should not escape raw
+        def always_broken(*_args, **_kwargs):
+            raise http.client.BadStatusLine('bad')
+
+        with patch.object(sports, '_cache', {}), patch.object(sports.time, 'sleep'):
+            with self.assertRaises(RuntimeError):
+                sports.get_listings(DAY, always_broken, epg_url='https://epg.example/q.php?id=1')
+
+        # Corrupt gzip in parse_xmltv raises RuntimeError instead of zlib.error
+        with self.assertRaises(RuntimeError):
+            sports.parse_xmltv(b'\x1f\x8bcorrupt-gzip', DAY)

@@ -392,4 +392,205 @@ final class MavieIOSTests: XCTestCase {
         let matches = SportsChannels.matchChannels(events: events, liveItems: live)
         XCTAssertEqual(matches["S Sport 1"]?.id, "live:ssport")
     }
+
+    func testM3uParserHandlesUtf8BomQuotedCommasPhpAndMixedKindCategories() {
+        let playlist = "\u{FEFF}" + """
+        #EXTM3U url-tvg="http://epg.example.test/guide.xml"
+        #EXTINF:-1 tvg-id="k1" tvg-name="Haber, Canlı" group-title="Ortak Grup",Kanal 1, HD
+        http://stream.example.test/get.php?username=demo&password=pass&type=m3u_plus&output=mpegts
+        #EXTINF:-1 group-title="Ortak Grup" type="movie",Örnek Film (2025)
+        https://cdn.example.test/movies/sample.mp4
+        """
+        let parsed = M3uParser.parse(playlist)
+        XCTAssertEqual(parsed.epgUrl, "http://epg.example.test/guide.xml")
+        XCTAssertEqual(parsed.items.count, 2)
+        XCTAssertEqual(parsed.items[0].name, "Kanal 1, HD")
+        XCTAssertEqual(parsed.items[0].extensionName, "ts")
+        XCTAssertEqual(parsed.items[0].kind, .live)
+        XCTAssertEqual(parsed.items[1].kind, .vod)
+        XCTAssertEqual(parsed.categories.count, 2)
+        XCTAssertTrue(parsed.categories.contains { $0.name == "Ortak Grup" && $0.kind == .live })
+        XCTAssertTrue(parsed.categories.contains { $0.name == "Ortak Grup" && $0.kind == .vod })
+        XCTAssertNotEqual(parsed.categories[0].id, parsed.categories[1].id)
+    }
+
+    func testXtreamStreamUrlBuilderPercentEncodesCredentialsAndDefaultsTs() throws {
+        let live = MediaItem(id: "live:42", providerId: "42", name: "Kanal", kind: .live, extensionName: "mp4")
+        let url = try XtreamClient.buildStreamURL(
+            host: "panel.example.test:8080",
+            username: "user/1",
+            password: "p?a#s%s word",
+            item: live,
+            preferHLSForLive: false
+        )
+        XCTAssertEqual(url.scheme, "http")
+        XCTAssertTrue(url.absoluteString.contains("/live/user%2F1/p%3Fa%23s%25s%20word/42.ts"))
+    }
+
+    @MainActor
+    func testLibraryStoreRemoveProfileGuardsDefaultAndResetsActive() throws {
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("mavie_prof_test_\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        let store = LibraryStore(storageDirectory: tmpDir)
+        XCTAssertThrowsError(try store.removeProfile(id: "default"))
+
+        let extra = try store.addProfile(name: "Misafir", pin: "2468")
+        try store.switchProfile(id: extra.id, pinAttempt: "2468")
+        XCTAssertTrue(store.profiles.first(where: { $0.id == extra.id })?.active ?? false)
+
+        try store.removeProfile(id: extra.id)
+        XCTAssertEqual(store.profiles.count, 1)
+        XCTAssertTrue(store.profiles.first(where: { $0.id == "default" })?.active ?? false)
+    }
+
+    func testSportsGuideServiceParsesXmltvAndRejectsDtd() throws {
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <tv>
+          <channel id="bein1.tr"><display-name>beIN Sports 1</display-name></channel>
+          <programme start="20261121170000 +0000" stop="20261121190000 +0000" channel="bein1.tr">
+            <title>Galatasaray - Beşiktaş</title>
+            <category>Futbol</category>
+            <category>Süper Lig</category>
+          </programme>
+        </tv>
+        """.data(using: .utf8)!
+
+        let events = try SportsGuideService.parseXMLTV(data: xml, dayIso: "2026-11-21")
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(events[0].time, "20:00")
+        XCTAssertEqual(events[0].channels, ["beIN Sports 1"])
+        XCTAssertTrue(events[0].featured)
+
+        let dtdXml = """
+        <!DOCTYPE tv [<!ENTITY xxe "bad">]>
+        <tv></tv>
+        """.data(using: .utf8)!
+        XCTAssertThrowsError(try SportsGuideService.parseXMLTV(data: dtdXml, dayIso: "2026-11-21"))
+    }
+
+    func testLanSyncIPv6DefaultPortAndCookieExtraction() throws {
+        let v6 = try LanSyncClient.validateLanAddress("[::1]")
+        XCTAssertEqual(v6.port, 8844)
+        XCTAssertTrue(v6.host == "::1" || v6.host == "[::1]")
+
+        let url = URL(string: "http://192.168.1.10:8844/api/pair")!
+        let resp = HTTPURLResponse(
+            url: url,
+            statusCode: 200,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Set-Cookie": "mavie_lan=tok123; Path=/; HttpOnly"]
+        )!
+        let cookie = LanSyncClient.extractCookieHeader(from: resp, url: url)
+        XCTAssertEqual(cookie, "mavie_lan=tok123")
+    }
+
+    func testMavieHTTPClientRetry403FallbackAndLoopbackProxyBypass() async throws {
+        XCTAssertEqual(MavieHTTPClient.loopbackSession.configuration.connectionProxyDictionary?.count, 0)
+        XCTAssertEqual(MavieHTTPClient.lanSession.configuration.connectionProxyDictionary?.count, 0)
+        XCTAssertEqual(MavieHTTPClient.sharedSession.configuration.requestCachePolicy, .reloadIgnoringLocalCacheData)
+
+        let session = MavieHTTPClient.makeSession(
+            bypassProxy: true,
+            requestTimeout: 5,
+            resourceTimeout: 10,
+            protocolClasses: [MavieTestURLProtocol.self]
+        )
+
+        var attempts = 0
+        MavieTestURLProtocol.handler = { req in
+            attempts += 1
+            let ua = req.value(forHTTPHeaderField: "User-Agent") ?? ""
+            if attempts == 1 {
+                XCTAssertEqual(ua, MavieHTTPClient.primaryUserAgent)
+                return (HTTPURLResponse(url: req.url!, statusCode: 403, httpVersion: nil, headerFields: nil)!, Data())
+            }
+            if attempts == 2 {
+                XCTAssertEqual(ua, MavieHTTPClient.browserUserAgent)
+                return (HTTPURLResponse(url: req.url!, statusCode: 503, httpVersion: nil, headerFields: nil)!, Data())
+            }
+            return (HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data("OK".utf8))
+        }
+        defer { MavieTestURLProtocol.handler = nil }
+
+        let req = URLRequest(url: URL(string: "http://mock.local/test")!)
+        let (data, http) = try await MavieHTTPClient.fetchData(for: req, session: session, retryDelays: [0.05])
+        XCTAssertEqual(http.statusCode, 200)
+        XCTAssertEqual(String(data: data, encoding: .utf8), "OK")
+        XCTAssertEqual(attempts, 3)
+    }
+
+    @MainActor
+    func testLibraryStoreM3uAndXtreamNonDestructiveGuardsWithMockURLProtocol() async throws {
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("mavie_mock_store_\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        let store = LibraryStore(storageDirectory: tmpDir)
+        let initialCount = store.items.count
+        XCTAssertGreaterThan(initialCount, 0)
+
+        let session = MavieHTTPClient.makeSession(
+            bypassProxy: true,
+            requestTimeout: 5,
+            resourceTimeout: 10,
+            protocolClasses: [MavieTestURLProtocol.self]
+        )
+
+        MavieTestURLProtocol.handler = { req in
+            let urlStr = req.url?.absoluteString ?? ""
+            if urlStr.hasPrefix("http://") {
+                throw URLError(.cannotConnectToHost)
+            }
+            let body = "#EXTM3U\n#EXTINF:-1,Fallback Kanal\nhttps://cdn.example.test/live/ch1.m3u8\n"
+            return (HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data(body.utf8))
+        }
+        defer { MavieTestURLProtocol.handler = nil }
+
+        await store.importM3uFromURL("mock.example.test/list.m3u", session: session)
+        XCTAssertNil(store.lastError)
+        XCTAssertEqual(store.sourceMode, .m3u)
+        XCTAssertEqual(store.items.count, 1)
+        XCTAssertEqual(store.connection.m3uUrl, "https://mock.example.test/list.m3u")
+
+        // Failing Xtream stream fetches must preserve existing M3U catalog
+        MavieTestURLProtocol.handler = { req in
+            let q = req.url?.query ?? ""
+            if !q.contains("action=") {
+                let auth = #"{"user_info":{"auth":1,"status":"Active","max_connections":"1"}}"#
+                return (HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data(auth.utf8))
+            }
+            return (HTTPURLResponse(url: req.url!, statusCode: 502, httpVersion: nil, headerFields: nil)!, Data())
+        }
+
+        await store.connectXtream(host: "http://xtream.example.test", username: "u1", password: "p1", session: session)
+        XCTAssertNotNil(store.lastError)
+        XCTAssertEqual(store.sourceMode, .m3u)
+        XCTAssertEqual(store.items.count, 1)
+        XCTAssertEqual(store.items.first?.name, "Fallback Kanal")
+    }
+}
+
+private final class MavieTestURLProtocol: URLProtocol {
+    static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        guard let handler = Self.handler else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+            return
+        }
+        do {
+            let (resp, data) = try handler(request)
+            client?.urlProtocol(self, didReceive: resp, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
 }

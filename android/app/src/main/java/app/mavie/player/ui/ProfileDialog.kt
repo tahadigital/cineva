@@ -1,8 +1,11 @@
 package app.mavie.player.ui
 
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -58,21 +61,24 @@ fun ProfilePickerDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF171A22),
+        containerColor = MavieGlassDialogFill,
+        shape = RoundedCornerShape(24.dp),
         titleContentColor = Color.White,
         title = { Text("Profiller", fontWeight = FontWeight.Bold) },
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Her profilin favorileri, izleme geçmişi ve listeleri ayrı tutulur.", color = MavieMuted, fontSize = 12.sp)
                 profiles.forEach { profile ->
-                    val badgeColor = runCatching { Color(android.graphics.Color.parseColor(profile.avatarColor)) }.getOrDefault(MavieCoral)
+                    val badgeColor = runCatching { Color(android.graphics.Color.parseColor(profile.avatarColor)) }.getOrDefault(MaviePurple)
+                    val rowInteraction = remember { MutableInteractionSource() }
+                    val rowFocused by rowInteraction.collectIsFocusedAsState()
                     Row(
                         Modifier.fillMaxWidth()
                             .heightIn(min = 56.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFF212633))
-                            .border(1.5.dp, if (profile.active) MavieCoral else Color.Transparent, RoundedCornerShape(10.dp))
+                            .mavieGlassSurface(RoundedCornerShape(16.dp), focused = profile.active || rowFocused)
                             .clickable(
+                                interactionSource = rowInteraction,
+                                indication = LocalIndication.current,
                                 role = Role.Button,
                                 onClickLabel = "${profile.name} profiline geç",
                             ) {
@@ -115,12 +121,12 @@ fun ProfilePickerDialog(
                             singleLine = true,
                             modifier = Modifier.weight(1f),
                         )
-                        Button(
+                        MavieGradientButton(
                             onClick = { onSwitch(target.id, pinInput) },
                             modifier = Modifier.heightIn(min = 48.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MavieCoral),
+                            shape = RoundedCornerShape(14.dp),
                         ) {
-                            Text("Aç")
+                            Text("Aç", color = Color.White)
                         }
                     }
                 }
@@ -190,7 +196,7 @@ fun ProfilePickerDialog(
                         }
                     }
                 }
-                Button(
+                MavieGradientButton(
                     onClick = {
                         if (newName.isNotBlank()) {
                             onCreate(newName.trim(), selectedColor, newIsKids, newPin)
@@ -200,8 +206,8 @@ fun ProfilePickerDialog(
                     },
                     enabled = newName.isNotBlank(),
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MavieCoral, contentColor = Color.White),
-                ) { Text("Profil Oluştur") }
+                    shape = RoundedCornerShape(14.dp),
+                ) { Text("Profil Oluştur", color = Color.White) }
             }
         },
         confirmButton = {

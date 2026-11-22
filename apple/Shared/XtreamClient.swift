@@ -8,6 +8,14 @@ public struct XtreamAuthResult: Codable, Sendable, Equatable {
 
 public enum XtreamClient {
     private static let providerIdAllowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")
+    private static let rfc3986Unreserved = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
+
+    private static func percentEncodeSegment(_ raw: String) throws -> String {
+        guard let encoded = raw.addingPercentEncoding(withAllowedCharacters: rfc3986Unreserved) else {
+            throw MavieError.invalidURL("Yayın adresi karakterleri kodlanamadı.")
+        }
+        return encoded
+    }
 
     public static func validateBaseURL(_ raw: String) throws -> URL {
         var trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -69,18 +77,33 @@ public enum XtreamClient {
         guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else {
             throw MavieError.invalidURL("Yayın adresi oluşturulamadı.")
         }
-        var path = components.path
-        while path.hasSuffix("/") { path.removeLast() }
+        var basePath = components.percentEncodedPath
+        while basePath.hasSuffix("/") { basePath.removeLast() }
 
-        let safeExt = item.extensionName.isEmpty ? "mp4" : item.extensionName
+        let encUser = try percentEncodeSegment(username)
+        let encPass = try percentEncodeSegment(password)
+        let encId = try percentEncodeSegment(item.providerId)
+
+        let rawExt = item.extensionName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let safeExt = rawExt.isEmpty ? "mp4" : rawExt
         switch item.kind {
         case .live:
-            let liveExt = preferHLSForLive ? "m3u8" : (safeExt.isEmpty ? "ts" : safeExt)
-            components.path = "\(path)/live/\(username)/\(password)/\(item.providerId).\(liveExt)"
+            let liveExt: String
+            if preferHLSForLive {
+                liveExt = "m3u8"
+            } else if rawExt.isEmpty || rawExt.lowercased() == "mp4" {
+                liveExt = "ts"
+            } else {
+                liveExt = rawExt
+            }
+            let encExt = try percentEncodeSegment(liveExt)
+            components.percentEncodedPath = "\(basePath)/live/\(encUser)/\(encPass)/\(encId).\(encExt)"
         case .vod:
-            components.path = "\(path)/movie/\(username)/\(password)/\(item.providerId).\(safeExt)"
+            let encExt = try percentEncodeSegment(safeExt)
+            components.percentEncodedPath = "\(basePath)/movie/\(encUser)/\(encPass)/\(encId).\(encExt)"
         case .episode:
-            components.path = "\(path)/series/\(username)/\(password)/\(item.providerId).\(safeExt)"
+            let encExt = try percentEncodeSegment(safeExt)
+            components.percentEncodedPath = "\(basePath)/series/\(encUser)/\(encPass)/\(encId).\(encExt)"
         case .series:
             throw MavieError.validation("Dizi öğesi doğrudan oynatılamaz; lütfen bir bölüm seçin.")
         }
@@ -304,13 +327,13 @@ public enum XtreamClient {
 
     // MARK: - Live Async Requests
 
-    public static func authenticate(host: String, username: String, password: String, session: URLSession = .shared) async throws -> XtreamAuthResult {
+    public static func authenticate(host: String, username: String, password: String, session: URLSession = MavieHTTPClient.sharedSession) async throws -> XtreamAuthResult {
         let url = try buildPlayerApiURL(host: host, username: username, password: password)
         let data = try await fetchData(url: url, session: session)
         return try parseAuth(data: data)
     }
 
-    public static func fetchCategories(host: String, username: String, password: String, kind: MediaKind, session: URLSession = .shared) async throws -> [MediaCategory] {
+    public static func fetchCategories(host: String, username: String, password: String, kind: MediaKind, session: URLSession = MavieHTTPClient.sharedSession) async throws -> [MediaCategory] {
         let action: String
         switch kind {
         case .live: action = "get_live_categories"
@@ -322,7 +345,7 @@ public enum XtreamClient {
         return try parseCategories(data: data, kind: kind)
     }
 
-    public static func fetchStreams(host: String, username: String, password: String, kind: MediaKind, categories: [String: String], session: URLSession = .shared) async throws -> [MediaItem] {
+    public static func fetchStreams(host: String, username: String, password: String, kind: MediaKind, categories: [String: String], session: URLSession = MavieHTTPClient.sharedSession) async throws -> [MediaItem] {
         let action: String
         switch kind {
         case .live: action = "get_live_streams"
@@ -334,13 +357,13 @@ public enum XtreamClient {
         return try parseStreams(data: data, kind: kind, categories: categories)
     }
 
-    public static func fetchSeriesDetail(host: String, username: String, password: String, series: MediaItem, session: URLSession = .shared) async throws -> MediaDetail {
+    public static func fetchSeriesDetail(host: String, username: String, password: String, series: MediaItem, session: URLSession = MavieHTTPClient.sharedSession) async throws -> MediaDetail {
         let url = try buildPlayerApiURL(host: host, username: username, password: password, action: "get_series_info", extraParams: ["series_id": series.providerId])
         let data = try await fetchData(url: url, session: session)
         return try parseSeriesDetail(data: data, series: series)
     }
 
-    public static func fetchVodDetail(host: String, username: String, password: String, item: MediaItem, session: URLSession = .shared) async throws -> MediaDetail {
+    public static func fetchVodDetail(host: String, username: String, password: String, item: MediaItem, session: URLSession = MavieHTTPClient.sharedSession) async throws -> MediaDetail {
         let url = try buildPlayerApiURL(host: host, username: username, password: password, action: "get_vod_info", extraParams: ["vod_id": item.providerId])
         let data = try await fetchData(url: url, session: session)
         return try parseVodDetail(data: data, item: item)
@@ -348,19 +371,10 @@ public enum XtreamClient {
 
     private static func fetchData(url: URL, session: URLSession) async throws -> Data {
         var req = URLRequest(url: url)
-        req.timeoutInterval = 25
-        req.setValue("Mavie/2.1", forHTTPHeaderField: "User-Agent")
-        do {
-            let (data, response) = try await session.data(for: req)
-            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                throw MavieError.network("Xtream sunucusu HTTP \(http.statusCode) döndürdü.")
-            }
-            return data
-        } catch let err as MavieError {
-            throw err
-        } catch {
-            throw MavieError.network("Xtream sunucusuna bağlanılamadı: \(error.localizedDescription)")
-        }
+        req.timeoutInterval = 30
+        req.setValue(MavieHTTPClient.primaryUserAgent, forHTTPHeaderField: "User-Agent")
+        let (data, _) = try await MavieHTTPClient.fetchData(for: req, session: session, context: "Xtream sunucusu")
+        return data
     }
 
     // MARK: - Helpers

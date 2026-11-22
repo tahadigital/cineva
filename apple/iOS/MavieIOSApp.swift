@@ -115,12 +115,12 @@ private struct MavieRootShell: View {
                             .accessibilityLabel(tab.title)
                     }
                     .scrollContentBackground(.hidden)
-                    .background(MavieTheme.bgDeep)
+                    .background(MavieTheme.cinemaBackdrop)
                     .navigationTitle("Mavie")
                 } detail: {
                     tabContent(for: selectedTab)
                 }
-                .tint(MavieTheme.coral)
+                .tint(MavieTheme.turquoise)
             } else {
                 TabView(selection: $selectedTab) {
                     ForEach(MavieTab.allCases) { tab in
@@ -131,10 +131,11 @@ private struct MavieRootShell: View {
                             .tag(tab)
                     }
                 }
-                .tint(MavieTheme.coral)
+                .toolbarBackground(.ultraThinMaterial, for: .tabBar)
+                .tint(MavieTheme.turquoise)
             }
         }
-        .background(MavieTheme.bg.ignoresSafeArea())
+        .background(MavieTheme.cinemaBackdrop.ignoresSafeArea())
     }
 
     @ViewBuilder
@@ -277,9 +278,14 @@ public struct MediaPosterCard: View {
                 Button(action: onToggleFavorite) {
                     Image(systemName: isFavorite ? "heart.fill" : "heart")
                         .font(.subheadline.weight(.bold))
-                        .foregroundStyle(isFavorite ? MavieTheme.coral : .white)
+                        .foregroundStyle(isFavorite ? MavieTheme.cyanDot : .white)
                         .frame(width: 44, height: 44)
-                        .background(.ultraThinMaterial, in: Circle())
+                        .background(
+                            Circle()
+                                .fill(.ultraThinMaterial)
+                                .overlay(Circle().fill(MavieTheme.glassTint))
+                                .overlay(Circle().strokeBorder(MavieTheme.specularBorder, lineWidth: 1))
+                        )
                 }
                 .padding(6)
                 .accessibilityLabel(isFavorite ? "\(item.name) favorilerden çıkar" : "\(item.name) favorilere ekle")

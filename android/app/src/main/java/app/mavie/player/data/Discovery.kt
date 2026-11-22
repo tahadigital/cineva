@@ -89,12 +89,26 @@ data class DiscoveryResult(val shelves: List<RecommendationShelf> = emptyList(),
 
 /** Downloads only public discovery catalogs (Cinemeta + Netflix Türkiye Top 10 + optional TMDB).
  * Viewing history and IPTV credentials never leave the device. */
-internal class DiscoveryFeed(context: Context, private val tmdbApiKey: String = "") {
-    private val file = File(context.filesDir, "discovery-public.json")
-    private val client = OkHttpClient.Builder()
+internal class DiscoveryFeed internal constructor(
+    private val file: File,
+    baseClient: OkHttpClient = MavieBaseHttpClient,
+    private val tmdbApiKey: String = "",
+    private val cinemetaBaseUrl: String = "https://v3-cinemeta.strem.io",
+    private val netflixBaseUrl: String = "https://www.netflix.com",
+) {
+    constructor(
+        context: Context,
+        tmdbApiKey: String = "",
+        baseClient: OkHttpClient = MavieBaseHttpClient,
+    ) : this(File(context.filesDir, "discovery-public.json"), baseClient, tmdbApiKey)
+
+    private val client = baseClient.newBuilder()
         .connectTimeout(12, TimeUnit.SECONDS)
         .readTimeout(18, TimeUnit.SECONDS)
         .callTimeout(25, TimeUnit.SECONDS)
+        .followRedirects(true)
+        .followSslRedirects(true)
+        .retryOnConnectionFailure(true)
         .build()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _updates = MutableStateFlow(0L)
@@ -112,9 +126,9 @@ internal class DiscoveryFeed(context: Context, private val tmdbApiKey: String = 
         return data
     }
 
-    private fun get(url: String): String = client.newCall(
+    private suspend fun get(url: String): String = client.newCall(
         Request.Builder().url(url).header("User-Agent", "Mozilla/5.0 Mavie/2.2").build()
-    ).execute().use {
+    ).readCancellable {
         if (!it.isSuccessful) error("Discovery unavailable")
         val body = it.body ?: error("Empty discovery")
         body.byteStream().use { stream ->
@@ -130,6 +144,8 @@ internal class DiscoveryFeed(context: Context, private val tmdbApiKey: String = 
         }
     }
 
+    internal suspend fun refreshNow() = refresh()
+
     private suspend fun refresh() = coroutineScope {
         val year = LocalDate.now(IstanbulZone).year
         val specs = listOf("movie", "series").flatMap { kind ->
@@ -138,17 +154,23 @@ internal class DiscoveryFeed(context: Context, private val tmdbApiKey: String = 
                     .map { Triple(kind, "top", "/genre=$it") }
         }
         val gate = Semaphore(4)
+        val cinemetaBase = cinemetaBaseUrl.trimEnd('/')
+        val netflixBase = netflixBaseUrl.trimEnd('/')
         val cinemetaResults = specs.map { (kind, catalog, extra) ->
             async {
                 gate.acquire()
                 try {
-                    runCatching {
+                    try {
                         Triple(
                             kind,
                             catalog == "top" && extra.isEmpty(),
-                            JSONObject(get("https://v3-cinemeta.strem.io/catalog/$kind/$catalog$extra.json")).getJSONArray("metas"),
+                            JSONObject(get("$cinemetaBase/catalog/$kind/$catalog$extra.json")).getJSONArray("metas"),
                         )
-                    }.getOrNull()
+                    } catch (cancel: CancellationException) {
+                        throw cancel
+                    } catch (_: Exception) {
+                        null
+                    }
                 } finally {
                     gate.release()
                 }
@@ -175,8 +197,15 @@ internal class DiscoveryFeed(context: Context, private val tmdbApiKey: String = 
         }
 
         val charts = JSONArray()
-        for (url in listOf("https://www.netflix.com/tudum/top10/turkey", "https://www.netflix.com/tudum/top10/turkey/tv")) {
-            runCatching { parseNetflix(get(url)) }.getOrNull()?.let { a ->
+        for (url in listOf("$netflixBase/tudum/top10/turkey", "$netflixBase/tudum/top10/turkey/tv")) {
+            val parsed = try {
+                parseNetflix(get(url))
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (_: Exception) {
+                null
+            }
+            parsed?.let { a ->
                 for (i in 0 until a.length()) charts.put(a.getJSONObject(i))
             }
         }
@@ -185,8 +214,8 @@ internal class DiscoveryFeed(context: Context, private val tmdbApiKey: String = 
                 gate.acquire()
                 try {
                     val entry = charts.getJSONObject(index)
-                    runCatching {
-                        val html = get("https://www.netflix.com/tr/title/${entry.optLong("netflixId")}")
+                    try {
+                        val html = get("$netflixBase/tr/title/${entry.optLong("netflixId")}")
                         val block = Regex("""<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>""", RegexOption.DOT_MATCHES_ALL)
                             .find(html)?.groupValues?.get(1)
                         if (block != null) {
@@ -198,6 +227,10 @@ internal class DiscoveryFeed(context: Context, private val tmdbApiKey: String = 
                                 entry.put("genre", info.optString("genre"))
                             }
                         }
+                    } catch (cancel: CancellationException) {
+                        throw cancel
+                    } catch (_: Exception) {
+                        // Best-effort title localization; keep original Netflix entry.
                     }
                     entry
                 } finally {
@@ -211,10 +244,14 @@ internal class DiscoveryFeed(context: Context, private val tmdbApiKey: String = 
             val week = LocalDate.now(IstanbulZone).toString()
             val tmdbResults = listOf("movie" to "trending/movie/week", "tv" to "trending/tv/week").map { (type, endpoint) ->
                 async {
-                    runCatching {
+                    try {
                         val json = JSONObject(get("https://api.themoviedb.org/3/$endpoint?api_key=$tmdbApiKey&language=tr-TR"))
                         type to json.optJSONArray("results")
-                    }.getOrNull()
+                    } catch (cancel: CancellationException) {
+                        throw cancel
+                    } catch (_: Exception) {
+                        null
+                    }
                 }
             }.awaitAll().filterNotNull()
             for ((type, rows) in tmdbResults) {

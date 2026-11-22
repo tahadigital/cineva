@@ -1,9 +1,11 @@
 package app.mavie.player.ui
 
 import android.net.Uri
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -28,6 +30,55 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import java.util.Locale
+
+internal sealed interface ParsedSetupInput {
+    data class UseM3u(val m3uUrl: String) : ParsedSetupInput
+    data class UseXtream(val host: String, val username: String, val password: String) : ParsedSetupInput
+    data object KeepXtream : ParsedSetupInput
+}
+
+internal fun normalizeSetupUrl(rawInput: String): String {
+    val trimmed = rawInput.trim()
+    val raw = if ('?' in trimmed) trimmed else trimmed.trimEnd('/')
+    return if (raw.isNotBlank() && !raw.contains("://")) "http://$raw" else raw
+}
+
+internal fun detectXtreamOrM3uInput(
+    rawHost: String,
+    currentUser: String = "",
+    currentPass: String = "",
+): ParsedSetupInput {
+    val trimmed = rawHost.trim()
+    if (trimmed.isBlank()) return ParsedSetupInput.KeepXtream
+    val normalized = normalizeSetupUrl(trimmed)
+    val parsed = normalized.toHttpUrlOrNull() ?: return ParsedSetupInput.KeepXtream
+    val pathLower = parsed.encodedPath.lowercase(Locale.ROOT)
+    val typeParam = parsed.queryParameter("type").orEmpty().lowercase(Locale.ROOT)
+    if (pathLower.endsWith(".m3u") ||
+        pathLower.endsWith(".m3u8") ||
+        pathLower.endsWith("/get.php") ||
+        pathLower == "/get.php" ||
+        typeParam.startsWith("m3u")
+    ) {
+        return ParsedSetupInput.UseM3u(normalized)
+    }
+    if (pathLower.endsWith("/player_api.php") || pathLower == "/player_api.php") {
+        val prefix = parsed.encodedPath.substringBeforeLast("/player_api.php").trimEnd('/')
+        val baseHost = parsed.newBuilder()
+            .encodedPath(if (prefix.isEmpty()) "/" else "$prefix/")
+            .query(null)
+            .fragment(null)
+            .build()
+            .toString()
+            .trimEnd('/')
+        val user = parsed.queryParameter("username")?.takeIf { it.isNotBlank() } ?: currentUser.trim()
+        val pass = parsed.queryParameter("password")?.takeIf { it.isNotBlank() } ?: currentPass
+        return ParsedSetupInput.UseXtream(baseHost, user, pass)
+    }
+    return ParsedSetupInput.KeepXtream
+}
 
 @Composable
 fun MavieSetupScreen(
@@ -50,10 +101,7 @@ fun MavieSetupScreen(
     var localError by remember { mutableStateOf<String?>(null) }
     val keyboard = LocalSoftwareKeyboardController.current
 
-    fun normalize(rawInput: String): String {
-        val raw = rawInput.trim().trimEnd('/')
-        return if (raw.isNotBlank() && !raw.contains("://")) "http://$raw" else raw
-    }
+    fun normalize(rawInput: String): String = normalizeSetupUrl(rawInput)
 
     fun submit() {
         if (loading) return
@@ -77,6 +125,19 @@ fun MavieSetupScreen(
             }
             return
         }
+        when (val detected = detectXtreamOrM3uInput(host, username, password)) {
+            is ParsedSetupInput.UseM3u -> {
+                keyboard?.hide()
+                onM3uSubmit(name.trim().ifBlank { "M3U Listesi" }, detected.m3uUrl, normalizedEpg)
+                return
+            }
+            is ParsedSetupInput.UseXtream -> {
+                host = detected.host
+                if (detected.username.isNotBlank()) username = detected.username
+                if (detected.password.isNotBlank()) password = detected.password
+            }
+            ParsedSetupInput.KeepXtream -> Unit
+        }
         val normalizedHost = normalize(host)
         val uri = runCatching { Uri.parse(normalizedHost) }.getOrNull()
         localError = when {
@@ -91,7 +152,15 @@ fun MavieSetupScreen(
         }
     }
 
+    val glassFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = MavieTurquoise,
+        unfocusedBorderColor = Color.White.copy(alpha = 0.16f),
+        unfocusedContainerColor = Color(0x660E1322),
+        focusedContainerColor = Color(0x99131A2E),
+    )
+
     Box(Modifier.fillMaxSize().background(MavieBackground)) {
+        MavieAmbientBackdrop()
         Column(
             Modifier.fillMaxSize().systemBarsPadding().imePadding().verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 24.dp),
@@ -106,15 +175,15 @@ fun MavieSetupScreen(
                 Modifier.padding(top = 10.dp), color = MavieMuted, style = MaterialTheme.typography.bodyMedium,
             )
             Spacer(Modifier.height(18.dp))
-            OutlinedButton(
+            MavieGlassPillButton(
                 onClick = { if (!loading) onDemo() },
                 enabled = !loading,
-                modifier = Modifier.fillMaxWidth().widthIn(max = 520.dp).height(48.dp),
-                shape = RoundedCornerShape(6.dp),
+                modifier = Modifier.fillMaxWidth().widthIn(max = 520.dp).heightIn(min = 48.dp),
+                shape = RoundedCornerShape(16.dp),
             ) {
-                Icon(Icons.Filled.PlayArrow, null, Modifier.size(20.dp))
+                Icon(Icons.Filled.PlayArrow, null, Modifier.size(20.dp), tint = MavieCyanDot)
                 Spacer(Modifier.width(8.dp))
-                Text("Açık Sinema ile Hemen Dene (Demo)")
+                Text("Açık Sinema ile Hemen Dene (Demo)", color = Color.White)
             }
             Spacer(Modifier.height(10.dp))
             TextButton(
@@ -122,45 +191,96 @@ fun MavieSetupScreen(
                 enabled = !loading,
                 modifier = Modifier.fillMaxWidth().widthIn(max = 520.dp).heightIn(min = 48.dp),
             ) {
-                Icon(Icons.Outlined.FolderOpen, null, Modifier.size(18.dp))
+                Icon(Icons.Outlined.FolderOpen, null, Modifier.size(18.dp), tint = MavieMuted)
                 Spacer(Modifier.width(8.dp))
-                Text("Cihazdan Yerel Video Aç (.mp4, .mkv, .avi)")
+                Text("Cihazdan Yerel Video Aç (.mp4, .mkv, .avi)", color = Color.White)
             }
             Spacer(Modifier.height(14.dp))
-            Surface(shape = RoundedCornerShape(8.dp), color = MaviePanel, modifier = Modifier.widthIn(max = 520.dp)) {
+            Box(Modifier.widthIn(max = 520.dp).mavieGlassSurface(RoundedCornerShape(24.dp))) {
                 Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     Text("Medya kaynağı bağla", style = MaterialTheme.typography.titleMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(selected = mode == "m3u", onClick = { mode = "m3u"; localError = null }, label = { Text("M3U / Liste") })
-                        FilterChip(selected = mode == "xtream", onClick = { mode = "xtream"; localError = null }, label = { Text("Xtream Sunucu") })
+                        val chipColors = FilterChipDefaults.filterChipColors(
+                            containerColor = Color(0x80182038),
+                            labelColor = MavieMuted,
+                            selectedContainerColor = MaviePurple.copy(alpha = 0.88f),
+                            selectedLabelColor = Color.White,
+                        )
+                        FilterChip(
+                            selected = mode == "m3u",
+                            onClick = { mode = "m3u"; localError = null },
+                            label = { Text("M3U / Liste") },
+                            shape = CircleShape,
+                            colors = chipColors,
+                            border = FilterChipDefaults.filterChipBorder(
+                                enabled = true,
+                                selected = mode == "m3u",
+                                borderColor = Color.White.copy(alpha = 0.14f),
+                                selectedBorderColor = MavieCyanDot.copy(alpha = 0.7f),
+                            ),
+                        )
+                        FilterChip(
+                            selected = mode == "xtream",
+                            onClick = { mode = "xtream"; localError = null },
+                            label = { Text("Xtream Sunucu") },
+                            shape = CircleShape,
+                            colors = chipColors,
+                            border = FilterChipDefaults.filterChipBorder(
+                                enabled = true,
+                                selected = mode == "xtream",
+                                borderColor = Color.White.copy(alpha = 0.14f),
+                                selectedBorderColor = MavieCyanDot.copy(alpha = 0.7f),
+                            ),
+                        )
                     }
                     if (mode == "m3u") {
                         OutlinedTextField(
                             value = name, onValueChange = { name = it; localError = null }, label = { Text("Liste adı") },
                             singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !loading,
+                            shape = RoundedCornerShape(14.dp), colors = glassFieldColors,
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                         )
                         OutlinedTextField(
                             value = m3uUrl, onValueChange = { m3uUrl = it; localError = null }, label = { Text("M3U / M3U8 adresi") },
                             placeholder = { Text("https://example.com/playlist.m3u8", fontSize = 13.sp) }, singleLine = true,
                             modifier = Modifier.fillMaxWidth(), enabled = !loading,
+                            shape = RoundedCornerShape(14.dp), colors = glassFieldColors,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
                         )
                     } else {
                         OutlinedTextField(
-                            value = host, onValueChange = { host = it; localError = null }, label = { Text("Sunucu adresi") },
-                            placeholder = { Text("https://sunucun:8080", fontSize = 13.sp) }, singleLine = true,
+                            value = host,
+                            onValueChange = { raw ->
+                                localError = null
+                                when (val detected = detectXtreamOrM3uInput(raw, username, password)) {
+                                    is ParsedSetupInput.UseM3u -> {
+                                        m3uUrl = detected.m3uUrl
+                                        mode = "m3u"
+                                    }
+                                    is ParsedSetupInput.UseXtream -> {
+                                        host = detected.host
+                                        if (detected.username.isNotBlank()) username = detected.username
+                                        if (detected.password.isNotBlank()) password = detected.password
+                                    }
+                                    ParsedSetupInput.KeepXtream -> host = raw
+                                }
+                            },
+                            label = { Text("Sunucu adresi") },
+                            placeholder = { Text("http://sunucun:8080", fontSize = 13.sp) }, singleLine = true,
                             modifier = Modifier.fillMaxWidth(), enabled = !loading,
+                            shape = RoundedCornerShape(14.dp), colors = glassFieldColors,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
                         )
                         OutlinedTextField(
                             value = username, onValueChange = { username = it; localError = null }, label = { Text("Kullanıcı adı") },
                             singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !loading,
+                            shape = RoundedCornerShape(14.dp), colors = glassFieldColors,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, autoCorrectEnabled = false, imeAction = ImeAction.Next),
                         )
                         OutlinedTextField(
                             value = password, onValueChange = { password = it; localError = null }, label = { Text("Parola") },
                             singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !loading,
+                            shape = RoundedCornerShape(14.dp), colors = glassFieldColors,
                             visualTransformation = if (reveal) VisualTransformation.None else PasswordVisualTransformation(),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
                             trailingIcon = {
@@ -174,17 +294,23 @@ fun MavieSetupScreen(
                         value = epgUrl, onValueChange = { epgUrl = it; localError = null }, label = { Text("XMLTV EPG adresi (İsteğe bağlı)") },
                         placeholder = { Text("https://example.com/guide.xml", fontSize = 13.sp) }, singleLine = true,
                         modifier = Modifier.fillMaxWidth(), enabled = !loading,
+                        shape = RoundedCornerShape(14.dp), colors = glassFieldColors,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
                         keyboardActions = KeyboardActions(onDone = { submit() }),
                     )
                     val message = localError ?: error
                     if (message != null) Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                    Button(onClick = { submit() }, enabled = !loading, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(6.dp)) {
+                    MavieGradientButton(
+                        onClick = { submit() },
+                        enabled = !loading,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
+                        shape = RoundedCornerShape(16.dp),
+                    ) {
                         if (loading) {
-                            CircularProgressIndicator(Modifier.size(19.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                            CircularProgressIndicator(Modifier.size(19.dp), strokeWidth = 2.dp, color = Color.White)
                             Spacer(Modifier.width(10.dp))
                         }
-                        Text(if (loading) "Kütüphanen hazırlanıyor…" else "Bağlan")
+                        Text(if (loading) "Kütüphanen hazırlanıyor…" else "Bağlan", color = Color.White)
                     }
                 }
             }
@@ -238,15 +364,15 @@ fun MavieSettingsScreen(
                         Text(accountName.ifBlank { "Medya kaynağı" }, Modifier.padding(start = 10.dp), fontWeight = FontWeight.SemiBold)
                     }
                     if (catalogSummary.isNotBlank()) Text(catalogSummary, style = MaterialTheme.typography.bodySmall, color = MavieMuted)
-                    Button(
+                    MavieGradientButton(
                         onClick = onRefresh,
                         enabled = !refreshing,
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                        shape = RoundedCornerShape(6.dp),
+                        shape = RoundedCornerShape(16.dp),
                     ) {
-                        if (refreshing) CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-                        else Icon(Icons.Outlined.Refresh, null, Modifier.size(19.dp))
-                        Spacer(Modifier.width(8.dp)); Text(if (refreshing) "Yenileniyor…" else "Kütüphaneyi yenile")
+                        if (refreshing) CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp, color = Color.White)
+                        else Icon(Icons.Outlined.Refresh, null, Modifier.size(19.dp), tint = Color.White)
+                        Spacer(Modifier.width(8.dp)); Text(if (refreshing) "Yenileniyor…" else "Kütüphaneyi yenile", color = Color.White)
                     }
                     if (error != null) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
@@ -254,14 +380,18 @@ fun MavieSettingsScreen(
                     OutlinedButton(
                         onClick = onExport,
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                        shape = RoundedCornerShape(6.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, MavieSpecularBorderBrush),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0x73182038), contentColor = Color.White),
                     ) {
                         Icon(Icons.Outlined.FileDownload, null, Modifier.size(19.dp)); Spacer(Modifier.width(8.dp)); Text("Yedek dışa aktar")
                     }
                     OutlinedButton(
                         onClick = onImport,
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                        shape = RoundedCornerShape(6.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, MavieSpecularBorderBrush),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0x73182038), contentColor = Color.White),
                     ) {
                         Icon(Icons.Outlined.FileUpload, null, Modifier.size(19.dp)); Spacer(Modifier.width(8.dp)); Text("Yedek içe aktar")
                     }
@@ -280,7 +410,9 @@ fun MavieSettingsScreen(
                     OutlinedButton(
                         onClick = { showLicenses = true },
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                        shape = RoundedCornerShape(6.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, MavieSpecularBorderBrush),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0x73182038), contentColor = Color.White),
                     ) {
                         Icon(Icons.Outlined.Description, null, Modifier.size(19.dp))
                         Spacer(Modifier.width(8.dp))
@@ -303,12 +435,16 @@ fun MavieSettingsScreen(
     }
     if (showLicenses) AlertDialog(
         onDismissRequest = { showLicenses = false },
+        containerColor = MavieGlassDialogFill,
+        shape = RoundedCornerShape(24.dp),
         title = { Text("Yasal Bilgiler & Lisanslar") },
         text = { Text(noticeText, modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()), fontSize = 12.sp, lineHeight = 18.sp) },
         confirmButton = { TextButton(onClick = { showLicenses = false }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Kapat") } },
     )
     if (confirmLogout) AlertDialog(
         onDismissRequest = { confirmLogout = false },
+        containerColor = MavieGlassDialogFill,
+        shape = RoundedCornerShape(24.dp),
         title = { Text("Kaynaktan çıkılsın mı?") },
         text = { Text("Bu cihazda yeniden izlemek için kaynak bilgilerini tekrar girmen veya demo modunu seçmen gerekir.") },
         confirmButton = { TextButton(onClick = { confirmLogout = false; onLogout() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Çıkış yap") } },
@@ -318,7 +454,7 @@ fun MavieSettingsScreen(
 
 @Composable
 private fun SettingsCard(title: String, subtitle: String, content: @Composable ColumnScope.() -> Unit) {
-    Surface(color = MaviePanel, shape = RoundedCornerShape(8.dp)) {
+    Box(Modifier.fillMaxWidth().mavieGlassSurface(RoundedCornerShape(20.dp))) {
         Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium)
             Text(subtitle, color = MavieMuted, style = MaterialTheme.typography.bodySmall)
@@ -336,19 +472,29 @@ fun MavieCollectionPicker(
 ) {
     var name by rememberSaveable { mutableStateOf("") }
     AlertDialog(
-        onDismissRequest = onDismiss, title = { Text("Listeye ekle") }, text = {
+        onDismissRequest = onDismiss,
+        containerColor = MavieGlassDialogFill,
+        shape = RoundedCornerShape(24.dp),
+        title = { Text("Listeye ekle") },
+        text = {
             Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
                 collections.forEach { collection ->
-                    TextButton(onClick = { onSelect(collection) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                        Icon(Icons.Outlined.Folder, null, Modifier.size(20.dp))
-                        Text(collection.title, Modifier.weight(1f).padding(start = 10.dp))
+                    TextButton(
+                        onClick = { onSelect(collection) },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    ) {
+                        Icon(Icons.Outlined.Folder, null, Modifier.size(20.dp), tint = MavieTurquoise)
+                        Text(collection.title, Modifier.weight(1f).padding(start = 10.dp), color = Color.White)
                         Text("${collection.count}", color = MavieMuted)
                     }
                 }
-                if (collections.isNotEmpty()) HorizontalDivider(Modifier.padding(vertical = 12.dp))
+                if (collections.isNotEmpty()) HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Color.White.copy(alpha = 0.12f))
                 OutlinedTextField(
                     value = name, onValueChange = { name = it.take(100) }, label = { Text("Yeni liste adı") },
-                    placeholder = { Text("Örneğin: Hafta sonu", fontSize = 12.sp) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Örneğin: Hafta sonu", fontSize = 12.sp) }, singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         },

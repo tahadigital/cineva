@@ -449,7 +449,7 @@ class PlaybackManager:
             self._update_buffer(session)
             return self._buffer_state(session)
 
-    def pause(self, session_id: str, paused: bool) -> None:
+    def pause(self, session_id: str, paused: bool) -> dict:
         """Keep a user's pause independent from the prefetch controller's stop."""
         with self._lock:
             session = self._sessions.get(session_id)
@@ -457,8 +457,14 @@ class PlaybackManager:
                 raise FileNotFoundError("Oynatma oturumu sona erdi.")
             desired = bool(paused)
             session.paused = desired
+            soft_pause = getattr(signal, "SIGSTOP" if desired else "SIGCONT", None) is None
             self._sync_process_pause(session, strict=True)
             session.last_used = time.monotonic()
+            return {
+                "paused": session.paused,
+                "processPaused": session.process_paused,
+                "softPause": soft_pause,
+            }
 
     @staticmethod
     def _buffer_state(session: _Session) -> dict:
@@ -468,12 +474,11 @@ class PlaybackManager:
 
     def _sync_process_pause(self, session: _Session, strict: bool = False) -> None:
         desired = session.paused or session.flow_paused
-        if desired == session.process_paused or session.process.poll() is not None:
-            return
         pause_signal = getattr(signal, "SIGSTOP" if desired else "SIGCONT", None)
         if pause_signal is None:
-            if strict:
-                raise RuntimeError("Bu bilgisayarda yayın duraklatma desteklenmiyor.")
+            session.process_paused = False
+            return
+        if desired == session.process_paused or session.process.poll() is not None:
             return
         try:
             session.process.send_signal(pause_signal)

@@ -1,12 +1,24 @@
 package app.mavie.player.data
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import okhttp3.OkHttpClient
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.SocketPolicy
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
+import java.io.File
 import java.time.LocalDate
+import java.util.concurrent.TimeUnit
+import kotlin.io.path.createTempDirectory
 
 class DiscoveryTest {
     private val fixture = JSONObject(javaClass.classLoader!!.getResource("discovery.json")!!.readText())
@@ -121,6 +133,39 @@ class DiscoveryTest {
             fail("A cancelled library load must stop before producing recommendations.")
         } catch (_: CancellationException) {
             assertEquals(100, checks)
+        }
+    }
+
+    @Test(timeout = 10_000)
+    fun discoveryFeedRefreshPropagatesCancellationWithoutSwallowing() = runBlocking {
+        val tempDir = createTempDirectory("discovery-cancel").toFile()
+        try {
+            MockWebServer().use { server ->
+                repeat(4) {
+                    server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
+                }
+                val baseUrl = server.url("/").toString().trimEnd('/')
+                val feed = DiscoveryFeed(
+                    file = File(tempDir, "discovery-public.json"),
+                    baseClient = OkHttpClient(),
+                    cinemetaBaseUrl = baseUrl,
+                    netflixBaseUrl = baseUrl,
+                )
+                var caughtCancel = false
+                val job = launch(Dispatchers.IO) {
+                    try {
+                        feed.refreshNow()
+                    } catch (cancel: CancellationException) {
+                        caughtCancel = true
+                        throw cancel
+                    }
+                }
+                assertNotNull(server.takeRequest(3, TimeUnit.SECONDS))
+                withTimeout(2_000) { job.cancelAndJoin() }
+                assertTrue("CancellationException must propagate out of DiscoveryFeed.refreshNow()", caughtCancel)
+            }
+        } finally {
+            tempDir.deleteRecursively()
         }
     }
 }

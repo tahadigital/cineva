@@ -296,7 +296,7 @@ public enum DiscoveryEngine {
         return entries.sorted { $0.rank < $1.rank }
     }
 
-    public static func refreshPublicFeed(session: URLSession = .shared) async -> DiscoveryFeedPayload? {
+    public static func refreshPublicFeed(session: URLSession = MavieHTTPClient.sharedSession) async -> DiscoveryFeedPayload? {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = istanbulTimeZone
         let currentYear = cal.component(.year, from: Date())
@@ -313,16 +313,21 @@ public enum DiscoveryEngine {
 
         var metasById: [String: DiscoveryFeedEntry] = [:]
         var successCount = 0
+        let maxConcurrent = 4
 
         await withTaskGroup(of: [(String, DiscoveryFeedEntry)].self) { group in
-            for spec in specs {
+            func enqueue(_ spec: (kind: String, catalog: String, extra: String)) {
                 group.addTask {
                     guard let url = URL(string: "\(cinemetaBase)/catalog/\(spec.kind)/\(spec.catalog)\(spec.extra).json") else { return [] }
                     var req = URLRequest(url: url)
                     req.timeoutInterval = 15
                     req.setValue("Mozilla/5.0 Mavie/2.2", forHTTPHeaderField: "User-Agent")
-                    guard let (data, resp) = try? await session.data(for: req),
-                          (resp as? HTTPURLResponse)?.statusCode == 200,
+                    guard let (data, _) = try? await MavieHTTPClient.fetchData(
+                        for: req,
+                        session: session,
+                        context: "Keşif servisi",
+                        retryDelays: [0.3, 0.9]
+                    ),
                           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                           let rows = obj["metas"] as? [[String: Any]] else { return [] }
                     let isTop = spec.catalog == "top" && spec.extra.isEmpty
@@ -350,7 +355,18 @@ public enum DiscoveryEngine {
                     return out
                 }
             }
+
+            var nextIdx = 0
+            while nextIdx < min(maxConcurrent, specs.count) {
+                enqueue(specs[nextIdx])
+                nextIdx += 1
+            }
+
             for await batch in group {
+                if nextIdx < specs.count {
+                    enqueue(specs[nextIdx])
+                    nextIdx += 1
+                }
                 if !batch.isEmpty { successCount += 1 }
                 for (id, entry) in batch {
                     if let existing = metasById[id], entry.globalRank >= existing.globalRank {
@@ -370,9 +386,14 @@ public enum DiscoveryEngine {
                 var req = URLRequest(url: url)
                 req.timeoutInterval = 15
                 req.setValue("curl/8.7.1", forHTTPHeaderField: "User-Agent")
-                if let (data, resp) = try? await session.data(for: req),
-                   (resp as? HTTPURLResponse)?.statusCode == 200,
-                   let html = String(data: data, encoding: .utf8) {
+                if let (data, resp) = try? await MavieHTTPClient.fetchData(
+                    for: req,
+                    session: session,
+                    context: "Netflix Türkiye",
+                    fallbackUserAgent: MavieHTTPClient.browserUserAgent,
+                    retryDelays: [0.3, 0.9]
+                ) {
+                    let html = MavieHTTPClient.decodeText(data, response: resp)
                     charts.append(contentsOf: parseNetflix(html: html))
                 }
             }
@@ -380,7 +401,7 @@ public enum DiscoveryEngine {
 
         if !charts.isEmpty {
             let localized: [DiscoveryFeedEntry] = await withTaskGroup(of: DiscoveryFeedEntry.self) { group in
-                for entry in charts {
+                func enqueueEntry(_ entry: DiscoveryFeedEntry) {
                     group.addTask {
                         guard entry.netflixId > 0,
                               let url = URL(string: "https://www.netflix.com/tr/title/\(entry.netflixId)") else { return entry }
@@ -388,27 +409,49 @@ public enum DiscoveryEngine {
                         var req = URLRequest(url: url)
                         req.timeoutInterval = 12
                         req.setValue("curl/8.7.1", forHTTPHeaderField: "User-Agent")
-                        if let (data, resp) = try? await session.data(for: req),
-                           (resp as? HTTPURLResponse)?.statusCode == 200,
-                           let html = String(data: data, encoding: .utf8) {
+                        if let (data, resp) = try? await MavieHTTPClient.fetchData(
+                            for: req,
+                            session: session,
+                            context: "Netflix başlık",
+                            fallbackUserAgent: MavieHTTPClient.browserUserAgent,
+                            retryDelays: [0.3, 0.9]
+                        ) {
+                            let html = MavieHTTPClient.decodeText(data, response: resp)
                             let full = NSRange(html.startIndex..., in: html)
-                            if let m = ldJsonRegex.firstMatch(in: html, range: full),
-                               let r = Range(m.range(at: 1), in: html),
-                               let blockData = String(html[r]).data(using: .utf8),
-                               let info = try? JSONSerialization.jsonObject(with: blockData) as? [String: Any] {
-                                if let trName = info["name"] as? String, !trName.isEmpty {
+                            for m in ldJsonRegex.matches(in: html, range: full) {
+                                guard let r = Range(m.range(at: 1), in: html),
+                                      let blockData = String(html[r]).data(using: .utf8),
+                                      let info = try? JSONSerialization.jsonObject(with: blockData) as? [String: Any] else { continue }
+                                if updated.aliases.isEmpty, let trName = info["name"] as? String, !trName.isEmpty {
                                     updated.aliases = [trName]
                                 }
-                                if let trGenre = info["genre"] as? String, !trGenre.isEmpty {
-                                    updated.genres = genreSet(trGenre)
+                                if updated.genres.isEmpty {
+                                    if let trGenre = info["genre"] as? String, !trGenre.isEmpty {
+                                        updated.genres = genreSet(trGenre)
+                                    } else if let trGenres = info["genre"] as? [String], !trGenres.isEmpty {
+                                        updated.genres = genreSet(trGenres.joined(separator: ","))
+                                    }
                                 }
                             }
                         }
                         return updated
                     }
                 }
+
+                var nextIdx = 0
+                while nextIdx < min(maxConcurrent, charts.count) {
+                    enqueueEntry(charts[nextIdx])
+                    nextIdx += 1
+                }
+
                 var collected: [DiscoveryFeedEntry] = []
-                for await e in group { collected.append(e) }
+                for await e in group {
+                    if nextIdx < charts.count {
+                        enqueueEntry(charts[nextIdx])
+                        nextIdx += 1
+                    }
+                    collected.append(e)
+                }
                 return collected
             }
             charts = localized

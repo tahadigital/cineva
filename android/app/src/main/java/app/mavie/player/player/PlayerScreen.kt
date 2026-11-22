@@ -16,10 +16,13 @@ import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -105,6 +108,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -127,8 +131,17 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import app.mavie.player.ui.MavieCoral
+import app.mavie.player.ui.MavieBrandDiagonalGradient
+import app.mavie.player.ui.MavieCyanDot
+import app.mavie.player.ui.MavieGlassDialogFill
+import app.mavie.player.ui.MavieGlassPillButton
+import app.mavie.player.ui.MavieGlassPillFill
+import app.mavie.player.ui.MavieGradientButton
+import app.mavie.player.ui.MaviePurple
+import app.mavie.player.ui.MavieTurquoise
+import app.mavie.player.ui.mavieGlassSurface
 import app.mavie.player.ui.playbackTime
+import app.mavie.player.ui.rememberPressScale
 import app.mavie.player.ui.rememberReducedMotion
 import coil.compose.AsyncImage
 import kotlinx.coroutines.delay
@@ -380,13 +393,13 @@ fun PlayerScreen(
         }
         if (showBuffering && playback.error == null) {
             Column(
-                Modifier.align(Alignment.Center).clip(RoundedCornerShape(18.dp))
-                    .background(Color(0xFF10131B).copy(alpha = .84f))
+                Modifier.align(Alignment.Center)
+                    .mavieGlassSurface(RoundedCornerShape(22.dp))
                     .padding(horizontal = 24.dp, vertical = 18.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                CircularProgressIndicator(color = MavieCoral, strokeWidth = 3.dp, modifier = Modifier.size(34.dp))
+                CircularProgressIndicator(color = MavieTurquoise, strokeWidth = 3.dp, modifier = Modifier.size(34.dp))
                 Text(if (isLive) "Canlı yayın hazırlanıyor…" else "Yayın açılıyor…", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 Text("Ses ve altyazı parçaları senkronize ediliyor", color = Color.White.copy(alpha = .68f), fontSize = 11.sp)
             }
@@ -394,18 +407,17 @@ fun PlayerScreen(
         gestureFeedback?.let { label ->
             Box(
                 Modifier.align(Alignment.TopCenter).padding(top = 56.dp)
-                    .clip(RoundedCornerShape(99.dp)).background(Color.Black.copy(alpha = .72f))
+                    .mavieGlassSurface(CircleShape)
                     .padding(horizontal = 18.dp, vertical = 8.dp),
             ) { Text(label, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
         }
         if (locked && unlockHintVisible && !inPip) {
-            Button(
+            MavieGlassPillButton(
                 onClick = { locked = false; controlsVisible = true; unlockHintVisible = false },
                 modifier = Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.safeDrawing)
                     .padding(bottom = 28.dp).heightIn(min = 48.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
-                shape = RoundedCornerShape(99.dp),
-            ) { Text("Kilidi Aç", fontWeight = FontWeight.Bold) }
+                shape = CircleShape,
+            ) { Text("Kilidi Aç", fontWeight = FontWeight.Bold, color = Color.White) }
         }
         AnimatedVisibility(
             visible = !locked && !inPip && (controlsVisible || !playback.playing || playback.error != null),
@@ -419,7 +431,12 @@ fun PlayerScreen(
                     .windowInsetsPadding(WindowInsets.safeDrawing)
                     .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .mavieGlassSurface(CircleShape, topColor = Color(0xA6121728), bottomColor = Color(0x8C0B0F1C))
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     PlayerControl(
                         icon = Icons.AutoMirrored.Rounded.ArrowBack,
                         label = "Oynatıcıdan çık",
@@ -529,15 +546,24 @@ fun PlayerScreen(
                             dragging = false
                         },
                         enabled = duration > 0 && (playback.seekable || playback.ended),
-                        colors = SliderDefaults.colors(thumbColor = MavieCoral, activeTrackColor = MavieCoral, inactiveTrackColor = Color.White.copy(alpha = .34f)),
+                        colors = SliderDefaults.colors(
+                            thumbColor = MavieCyanDot,
+                            activeTrackColor = MaviePurple,
+                            inactiveTrackColor = Color.White.copy(alpha = .28f),
+                        ),
                         modifier = Modifier.fillMaxWidth().height(36.dp).semantics { contentDescription = "İçerikte ileri geri sar" },
                     )
                 } else {
-                    Text("●  CANLI", color = MavieCoral, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 10.dp))
+                    Text("●  CANLI", color = MavieCyanDot, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 10.dp))
                 }
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
                     val compactWidth = maxWidth < 600.dp
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .mavieGlassSurface(CircleShape, topColor = Color(0xA6121728), bottomColor = Color(0x8C0B0F1C))
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         TextButton(
                             onClick = { trackDialog = "audio"; controlsVisible = true; interactionVersion++ },
                             modifier = Modifier.heightIn(min = 48.dp),
@@ -635,7 +661,7 @@ fun PlayerScreen(
                                 ) {
                                     Text(
                                         if (sleepMinutes > 0) "${sleepMinutes}dk" else "Uyku",
-                                        color = if (sleepMinutes > 0) MavieCoral else Color.White.copy(alpha = .85f),
+                                        color = if (sleepMinutes > 0) MavieCyanDot else Color.White.copy(alpha = .85f),
                                         fontSize = 11.sp,
                                     )
                                 }
@@ -672,18 +698,22 @@ fun PlayerScreen(
         }
         playback.error?.let { message ->
             Column(
-                Modifier.align(Alignment.Center).padding(24.dp).clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xFF17191F).copy(alpha = .97f)).padding(24.dp),
+                Modifier.align(Alignment.Center).padding(24.dp)
+                    .mavieGlassSurface(
+                        RoundedCornerShape(24.dp),
+                        topColor = Color(0xEB181F36),
+                        bottomColor = Color(0xEB0E1322),
+                    )
+                    .padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text("Yayına bağlanamadık", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
                 Text(message, color = Color(0xFFB9BDC6), fontSize = 13.sp, modifier = Modifier.padding(vertical = 14.dp))
-                Button(
+                MavieGradientButton(
                     onClick = controller::retry,
                     modifier = Modifier.heightIn(min = 48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
-                    shape = RoundedCornerShape(4.dp),
-                ) { Text("Yeniden dene") }
+                    shape = RoundedCornerShape(14.dp),
+                ) { Text("Yeniden dene", color = Color.White) }
             }
         }
     }
@@ -707,7 +737,9 @@ fun PlayerScreen(
     if (episodeDrawerOpen && episodes.isNotEmpty()) {
         AlertDialog(
             onDismissRequest = { episodeDrawerOpen = false },
-            containerColor = Color(0xFF191C24), titleContentColor = Color.White,
+            containerColor = MavieGlassDialogFill,
+            shape = RoundedCornerShape(24.dp),
+            titleContentColor = Color.White,
             title = { Text("Bölümler", fontSize = 20.sp, fontWeight = FontWeight.SemiBold) },
             text = {
                 Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
@@ -716,8 +748,11 @@ fun PlayerScreen(
                         Row(
                             Modifier.fillMaxWidth()
                                 .heightIn(min = 48.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (active) MavieCoral.copy(alpha = .24f) else Color.Transparent)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (active) MaviePurple.copy(alpha = .28f) else Color.Transparent)
+                                .let { mod ->
+                                    if (active) mod.border(1.dp, MavieTurquoise.copy(alpha = 0.5f), RoundedCornerShape(12.dp)) else mod
+                                }
                                 .clickable { episodeDrawerOpen = false; if (!active) onSelectEpisode(epId) }
                                 .padding(horizontal = 10.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -735,7 +770,7 @@ fun PlayerScreen(
             },
             confirmButton = {
                 TextButton(onClick = { episodeDrawerOpen = false }, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text("Kapat", color = MavieCoral)
+                    Text("Kapat", color = MavieTurquoise)
                 }
             },
         )
@@ -745,15 +780,16 @@ fun PlayerScreen(
 @Composable
 private fun NextEpisodeCard(next: UpNextEpisode, seconds: Int, onPlay: () -> Unit, onDismiss: () -> Unit) {
     Column(
-        Modifier.widthIn(max = 384.dp).clip(RoundedCornerShape(6.dp))
-            .background(Color(0xF5212121)).padding(horizontal = 18.dp, vertical = 12.dp),
+        Modifier.widthIn(max = 384.dp)
+            .mavieGlassSurface(RoundedCornerShape(22.dp), topColor = Color(0xEB1B233C), bottomColor = Color(0xEB101526))
+            .padding(horizontal = 18.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             if (next.artwork.isNotBlank()) {
                 AsyncImage(
                     next.artwork, contentDescription = null,
-                    modifier = Modifier.size(width = 84.dp, height = 49.dp).clip(RoundedCornerShape(3.dp)),
+                    modifier = Modifier.size(width = 84.dp, height = 49.dp).clip(RoundedCornerShape(12.dp)),
                     contentScale = ContentScale.Crop,
                 )
             }
@@ -766,13 +802,12 @@ private fun NextEpisodeCard(next: UpNextEpisode, seconds: Int, onPlay: () -> Uni
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) { Text("Şimdi değil", color = Color.White) }
             Spacer(Modifier.width(8.dp))
-            Button(
+            MavieGradientButton(
                 onClick = onPlay,
                 modifier = Modifier.heightIn(min = 48.dp),
-                shape = RoundedCornerShape(4.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
+                shape = RoundedCornerShape(14.dp),
             ) {
-                Text("Sonraki bölümü oynat", fontSize = 13.sp)
+                Text("Sonraki bölümü oynat", fontSize = 13.sp, color = Color.White)
             }
         }
     }
@@ -789,6 +824,9 @@ private fun PlayerControl(
     iconSize: Int = 24,
     onClick: () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val focused by interactionSource.collectIsFocusedAsState()
+    val scale = rememberPressScale(interactionSource)
     TooltipBox(
         positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
         tooltip = { PlainTooltip { Text(label) } },
@@ -797,11 +835,20 @@ private fun PlayerControl(
         IconButton(
             onClick = onClick,
             enabled = enabled,
+            interactionSource = interactionSource,
             modifier = Modifier
+                .graphicsLayer { scaleX = scale; scaleY = scale }
                 .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                 .size(size.dp)
                 .clip(CircleShape)
-                .background(if (prominent) Color.Black.copy(alpha = .42f) else Color.Transparent)
+                .background(if (prominent) MavieGlassPillFill else Color.Transparent)
+                .let { mod ->
+                    when {
+                        focused -> mod.border(2.dp, MavieCyanDot, CircleShape)
+                        prominent -> mod.border(1.5.dp, MavieBrandDiagonalGradient, CircleShape)
+                        else -> mod
+                    }
+                }
                 .semantics {
                     contentDescription = label
                     role = Role.Button
@@ -832,7 +879,9 @@ private fun TrackChoiceDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF191C24), titleContentColor = Color.White,
+        containerColor = MavieGlassDialogFill,
+        shape = RoundedCornerShape(24.dp),
+        titleContentColor = Color.White,
         title = { Text(title, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) },
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
@@ -844,7 +893,7 @@ private fun TrackChoiceDialog(
                     Text("Altyazı senkronu: ${"%.1f".format(subtitleDelayMs / 1000.0)} sn", color = Color(0xFFD0D4DC), fontSize = 12.sp)
                     Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(onClick = { onAdjustDelay(-500L) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("-0.5 sn", color = Color.White) }
-                        TextButton(onClick = onResetDelay, modifier = Modifier.heightIn(min = 48.dp)) { Text("Sıfırla", color = MavieCoral) }
+                        TextButton(onClick = onResetDelay, modifier = Modifier.heightIn(min = 48.dp)) { Text("Sıfırla", color = MavieTurquoise) }
                         TextButton(onClick = { onAdjustDelay(500L) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("+0.5 sn", color = Color.White) }
                     }
                 }
@@ -852,7 +901,7 @@ private fun TrackChoiceDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) {
-                Text("Kapat", color = MavieCoral)
+                Text("Kapat", color = MavieTurquoise)
             }
         },
     )
@@ -864,7 +913,7 @@ private fun TrackChoiceRow(label: String, selected: Boolean, onClick: () -> Unit
         Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(onClick = onClick).padding(vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RadioButton(selected = selected, onClick = onClick, colors = RadioButtonDefaults.colors(selectedColor = MavieCoral, unselectedColor = Color(0xFF646B78)))
+        RadioButton(selected = selected, onClick = onClick, colors = RadioButtonDefaults.colors(selectedColor = MavieTurquoise, unselectedColor = Color(0xFF646B78)))
         Text(label, color = Color.White, fontSize = 13.sp, modifier = Modifier.weight(1f).padding(end = 6.dp))
     }
 }

@@ -61,14 +61,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         refreshProfiles()
         viewModelScope.launch { repository.discoveryUpdates.collect { if(it>0 && account.value!=null && library.tab==LibraryTab.HOME)loadLibrary() } }
         viewModelScope.launch {
+            var firstEmission = true
             var previous: String? = null
             account.collect { current ->
-                if(current?.id != previous) {
-                    loadJob?.cancel();detailJob?.cancel();playJob?.cancel();playGeneration++
-                    knownItems.clear();detail=null;settings=false;player=null;library=LibraryUiState(loading=current!=null)
-                    previous=current?.id
+                val accountChanged = firstEmission || current?.id != previous
+                firstEmission = false
+                if (accountChanged) {
+                    loadJob?.cancel(); detailJob?.cancel(); playJob?.cancel(); playGeneration++
+                    knownItems.clear(); detail = null; settings = false; player = null
+                    previous = current?.id
+                    if (current != null) {
+                        library = LibraryUiState(loading = true)
+                        loadLibrary()
+                    } else {
+                        library = LibraryUiState()
+                    }
                 }
-                if(current!=null)loadLibrary() else library=LibraryUiState()
             }
         }
     }

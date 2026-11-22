@@ -58,7 +58,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Run Android Unit Tests & Build Release APK + AAB
         working-directory: android
-        run: ./gradlew :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin :app:assembleRelease :app:bundleRelease
+        run: |
+          ./gradlew :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin :app:assembleRelease
+          ./gradlew :app:bundleRelease
       - name: Verify Android Release Outputs
         run: |
           test -n "$(find android/app/build/outputs/apk/release -name '*.apk' | head -n 1)"

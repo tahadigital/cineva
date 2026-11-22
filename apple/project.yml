@@ -23,6 +23,7 @@ targets:
           - "**/*.spec"
           - "**/*.plist"
           - "**/*.entitlements"
+          - "**/scripts/**"
       - path: Shared
     entitlements:
       path: macOS/MavieMac.entitlements

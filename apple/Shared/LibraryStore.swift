@@ -120,7 +120,7 @@ public final class LibraryStore: ObservableObject {
         )
     }
 
-    public func refreshDiscoveryIfNeeded(force: Bool = false) async {
+    public func refreshDiscoveryIfNeeded(force: Bool = false, session: URLSession = MavieHTTPClient.sharedSession) async {
         guard sourceMode != .demo else { return }
         let now = Date().timeIntervalSince1970
         if !force && now - discoveryFeed.updatedAt < 6 * 3600 { return }
@@ -128,7 +128,7 @@ public final class LibraryStore: ObservableObject {
         discoveryRefreshing = true
         discoveryRefreshAttempt = now
         defer { discoveryRefreshing = false }
-        if let payload = await DiscoveryEngine.refreshPublicFeed() {
+        if let payload = await DiscoveryEngine.refreshPublicFeed(session: session) {
             discoveryFeed = payload
             if let data = try? JSONEncoder().encode(payload) {
                 try? data.write(to: discoveryCacheURL, options: [.atomic])
@@ -159,6 +159,7 @@ public final class LibraryStore: ObservableObject {
     public func importM3uText(_ text: String, m3uUrl: String = "") {
         let parsed = M3uParser.parse(text)
         guard !parsed.items.isEmpty else {
+            statusBanner = nil
             lastError = "M3U listesinde geçerli yayın veya video adresi bulunamadı."
             return
         }
@@ -182,80 +183,197 @@ public final class LibraryStore: ObservableObject {
         saveState()
     }
 
-    public func importM3uFromURL(_ urlString: String) async {
+    public func updateEpgUrl(_ raw: String) throws {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            guard let url = URL(string: trimmed),
+                  let scheme = url.scheme?.lowercased(),
+                  scheme == "http" || scheme == "https",
+                  let host = url.host,
+                  !host.isEmpty else {
+                throw MavieError.invalidURL("Geçerli bir XMLTV EPG adresi girin (http:// veya https://).")
+            }
+        }
+        connection.epgUrl = trimmed
+        account.epgUrl = trimmed
+        lastError = nil
+        statusBanner = trimmed.isEmpty ? "Özel EPG adresi temizlendi." : "XMLTV EPG adresi kaydedildi."
+        saveState()
+    }
+
+    public func importM3uFromURL(_ urlString: String, session: URLSession = MavieHTTPClient.sharedSession) async {
         isBusy = true
         lastError = nil
+        statusBanner = nil
         defer { isBusy = false }
         do {
-            var normalized = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !normalized.contains("://") { normalized = "https://" + normalized }
-            guard let url = URL(string: normalized),
-                  let scheme = url.scheme?.lowercased(),
-                  scheme == "http" || scheme == "https" else {
+            let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
                 throw MavieError.invalidURL("Geçerli bir M3U adresi girin.")
             }
-            var req = URLRequest(url: url)
-            req.timeoutInterval = 25
-            let (data, response) = try await URLSession.shared.data(for: req)
-            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                throw MavieError.network("M3U listesi indirilemedi (HTTP \(http.statusCode)).")
+            let hadScheme = trimmed.contains("://")
+            let primaryString = hadScheme ? trimmed : "http://" + trimmed
+            guard let primaryURL = URL(string: primaryString),
+                  let scheme = primaryURL.scheme?.lowercased(),
+                  scheme == "http" || scheme == "https",
+                  let host = primaryURL.host,
+                  !host.isEmpty else {
+                throw MavieError.invalidURL("Geçerli bir M3U adresi girin.")
             }
-            guard let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) else {
-                throw MavieError.parsing("M3U dosyası okunamadı.")
+
+            var resolvedURL = primaryURL
+            let fetched: (Data, HTTPURLResponse)
+            do {
+                var req = URLRequest(url: primaryURL)
+                req.timeoutInterval = 60
+                fetched = try await MavieHTTPClient.fetchData(for: req, session: session, context: "M3U sunucusu")
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let primaryErr {
+                if !hadScheme, let fallbackURL = URL(string: "https://" + trimmed) {
+                    var fallbackReq = URLRequest(url: fallbackURL)
+                    fallbackReq.timeoutInterval = 60
+                    do {
+                        fetched = try await MavieHTTPClient.fetchData(for: fallbackReq, session: session, context: "M3U sunucusu")
+                        resolvedURL = fallbackURL
+                    } catch {
+                        throw primaryErr
+                    }
+                } else {
+                    throw primaryErr
+                }
             }
-            importM3uText(text, m3uUrl: normalized)
+
+            let (data, httpResp) = fetched
+            guard !data.isEmpty else {
+                throw MavieError.network("Sunucudan boş M3U yanıtı alındı.")
+            }
+            let text = MavieHTTPClient.decodeText(data, response: httpResp)
+            importM3uText(text, m3uUrl: resolvedURL.absoluteString)
+        } catch is CancellationError {
+            lastError = nil
         } catch {
-            lastError = error.localizedDescription
+            lastError = MavieHTTPClient.classifyURLError(error, context: "M3U sunucusu")
         }
     }
 
-    public func connectXtream(host: String, username: String, password: String) async {
+    public func connectXtream(
+        host: String,
+        username: String,
+        password: String,
+        session: URLSession = MavieHTTPClient.sharedSession
+    ) async {
         isBusy = true
         lastError = nil
+        statusBanner = nil
         defer { isBusy = false }
         do {
-            let auth = try await XtreamClient.authenticate(host: host, username: username, password: password)
-            async let liveCatsTask = XtreamClient.fetchCategories(host: host, username: username, password: password, kind: .live)
-            async let vodCatsTask = XtreamClient.fetchCategories(host: host, username: username, password: password, kind: .vod)
-            async let seriesCatsTask = XtreamClient.fetchCategories(host: host, username: username, password: password, kind: .series)
+            let trimmedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
+            let hadScheme = trimmedHost.contains("://")
+            var resolvedHost = trimmedHost
+            let auth: XtreamAuthResult
+            do {
+                auth = try await XtreamClient.authenticate(host: resolvedHost, username: username, password: password, session: session)
+            } catch let primaryErr {
+                if !hadScheme, !trimmedHost.isEmpty {
+                    let httpsHost = "https://" + trimmedHost
+                    if let fallbackAuth = try? await XtreamClient.authenticate(host: httpsHost, username: username, password: password, session: session) {
+                        resolvedHost = httpsHost
+                        auth = fallbackAuth
+                    } else {
+                        throw primaryErr
+                    }
+                } else {
+                    throw primaryErr
+                }
+            }
 
-            let liveCats = (try? await liveCatsTask) ?? []
-            let vodCats = (try? await vodCatsTask) ?? []
-            let seriesCats = (try? await seriesCatsTask) ?? []
+            let finalHost = resolvedHost
+
+            @Sendable func fetchCatResult(_ kind: MediaKind) async -> Result<[MediaCategory], Error> {
+                do {
+                    return .success(try await XtreamClient.fetchCategories(host: finalHost, username: username, password: password, kind: kind, session: session))
+                } catch {
+                    return .failure(error)
+                }
+            }
+
+            @Sendable func fetchStreamResult(_ kind: MediaKind, categories: [String: String]) async -> Result<[MediaItem], Error> {
+                do {
+                    return .success(try await XtreamClient.fetchStreams(host: finalHost, username: username, password: password, kind: kind, categories: categories, session: session))
+                } catch {
+                    return .failure(error)
+                }
+            }
+
+            async let liveCatsTask = fetchCatResult(.live)
+            async let vodCatsTask = fetchCatResult(.vod)
+            async let seriesCatsTask = fetchCatResult(.series)
+
+            let liveCats = (try? await liveCatsTask.get()) ?? []
+            let vodCats = (try? await vodCatsTask.get()) ?? []
+            let seriesCats = (try? await seriesCatsTask.get()) ?? []
 
             let liveMap = Dictionary(uniqueKeysWithValues: liveCats.map { ($0.id, $0.name) })
             let vodMap = Dictionary(uniqueKeysWithValues: vodCats.map { ($0.id, $0.name) })
             let seriesMap = Dictionary(uniqueKeysWithValues: seriesCats.map { ($0.id, $0.name) })
 
-            async let liveTask = XtreamClient.fetchStreams(host: host, username: username, password: password, kind: .live, categories: liveMap)
-            async let vodTask = XtreamClient.fetchStreams(host: host, username: username, password: password, kind: .vod, categories: vodMap)
-            async let seriesTask = XtreamClient.fetchStreams(host: host, username: username, password: password, kind: .series, categories: seriesMap)
+            async let liveTask = fetchStreamResult(.live, categories: liveMap)
+            async let vodTask = fetchStreamResult(.vod, categories: vodMap)
+            async let seriesTask = fetchStreamResult(.series, categories: seriesMap)
 
-            let liveItems = (try? await liveTask) ?? []
-            let vodItems = (try? await vodTask) ?? []
-            let seriesItems = (try? await seriesTask) ?? []
+            let liveRes = await liveTask
+            let vodRes = await vodTask
+            let seriesRes = await seriesTask
+
+            var failedKinds: [String] = []
+            var firstFailure: Error?
+            var combinedItems: [MediaItem] = []
+
+            for (label, res) in [("Canlı", liveRes), ("Film", vodRes), ("Dizi", seriesRes)] {
+                switch res {
+                case .success(let list):
+                    combinedItems.append(contentsOf: list)
+                case .failure(let err):
+                    failedKinds.append(label)
+                    if firstFailure == nil { firstFailure = err }
+                }
+            }
+
+            if failedKinds.count == 3, let firstFailure {
+                throw firstFailure
+            }
+            guard !combinedItems.isEmpty else {
+                throw MavieError.network("Xtream sunucusunda oynatılabilir içerik bulunamadı.")
+            }
 
             sourceMode = .xtream
             connection.sourceType = .xtream
-            connection.host = host
+            connection.host = resolvedHost
             connection.username = username
             connection.password = password
             categories = liveCats + vodCats + seriesCats
-            items = liveItems + vodItems + seriesItems
+            items = combinedItems
             account = AccountInfo(
                 id: "xtream_\(username)",
                 username: username,
-                host: host,
+                host: resolvedHost,
                 name: "Xtream · \(username)",
                 status: auth.status,
                 expiresAt: auth.expiresAt,
                 maxConnections: auth.maxConnections,
                 sourceType: .xtream
             )
-            statusBanner = "Xtream bağlandı: \(items.count) içerik."
+            if failedKinds.isEmpty {
+                statusBanner = "Xtream bağlandı: \(items.count) içerik."
+            } else {
+                statusBanner = "Xtream bağlandı: \(items.count) içerik (kısmi hata: \(failedKinds.joined(separator: ", ")))."
+            }
             saveState()
+        } catch is CancellationError {
+            lastError = nil
         } catch {
-            lastError = error.localizedDescription
+            lastError = MavieHTTPClient.classifyURLError(error, context: "Xtream sunucusu")
         }
     }
 
@@ -443,6 +561,25 @@ public final class LibraryStore: ObservableObject {
         saveState()
     }
 
+    public func removeProfile(id: String) throws {
+        guard id != "default", profiles.count > 1 else {
+            throw MavieError.validation("Varsayılan veya tek profil silinemez.")
+        }
+        guard let idx = profiles.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        let wasActive = profiles[idx].active
+        profiles.remove(at: idx)
+        if wasActive || !profiles.contains(where: \.active) {
+            if let defIdx = profiles.firstIndex(where: { $0.id == "default" }) {
+                profiles[defIdx].active = true
+            } else if !profiles.isEmpty {
+                profiles[0].active = true
+            }
+        }
+        saveState()
+    }
+
     // MARK: - Home Sections & Search
 
     public var continueWatchingItems: [MediaItem] {
@@ -490,7 +627,7 @@ public final class LibraryStore: ObservableObject {
 
     // MARK: - LAN Sync & Local Backup
 
-    public func syncWithLanServer(address: String, pairingCode: String) async throws {
+    public func syncWithLanServer(address: String, pairingCode: String, session: URLSession = MavieHTTPClient.lanSession) async throws {
         isBusy = true
         lastError = nil
         defer { isBusy = false }
@@ -500,7 +637,7 @@ public final class LibraryStore: ObservableObject {
         guard let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw MavieError.parsing("Yerel yedek verisi JSON nesnesine dönüştürülemedi.")
         }
-        let remoteObj = try await LanSyncClient.merge(address: address, code: pairingCode, localExportDictionary: dict)
+        let remoteObj = try await LanSyncClient.merge(address: address, code: pairingCode, localExportDictionary: dict, session: session)
         let rawData = try JSONSerialization.data(withJSONObject: remoteObj)
         let remotePayload: LibrarySyncPayload
         do {

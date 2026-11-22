@@ -19,8 +19,10 @@ import ssl
 import threading
 import time
 import unicodedata
+import urllib.error
 import urllib.parse
 import urllib.request
+import zlib
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -73,6 +75,8 @@ _EXTRA_GENRE_ALIASES = {
 _lock = threading.Lock()
 _running = False
 _attempt = 0
+_consecutive_failures = 0
+_next_retry_at = 0.0
 _memory = None
 TLS = ssl.create_default_context(cafile='/etc/ssl/cert.pem' if Path('/etc/ssl/cert.pem').exists() else None)
 _PREFIX_RE = re.compile(r'^\s*(?:tr|en|us|uk|de|fr|es|vip)\s*[:|]\s*')
@@ -98,23 +102,55 @@ def _tmdb_key(explicit=None):
     return (explicit or os.environ.get('MAVIE_TMDB_API_KEY') or os.environ.get('CINEVA_TMDB_API_KEY') or '').strip()
 
 
-def get(url, timeout=18):
-    request = urllib.request.Request(
-        url,
-        headers={'User-Agent': 'curl/8.7.1', 'Accept': '*/*', 'Accept-Encoding': 'gzip'},
-    )
-    with urllib.request.urlopen(request, context=TLS, timeout=timeout) as response:
+def _gunzip_limited(raw, max_bytes):
+    dec = zlib.decompressobj(16 + zlib.MAX_WBITS)
+    chunks = []
+    total = 0
+    view = memoryview(raw)
+    for offset in range(0, len(raw), 65536):
+        part = dec.decompress(view[offset:offset + 65536], max_bytes - total + 1)
+        total += len(part)
+        if total > max_bytes:
+            raise ValueError('Discovery response too large')
+        chunks.append(part)
+    tail = dec.flush(max_bytes - total + 1)
+    total += len(tail)
+    if total > max_bytes:
+        raise ValueError('Discovery response too large')
+    chunks.append(tail)
+    return b''.join(chunks)
+
+
+def get(url, timeout=18, retries=2):
+    retryable_codes = (408, 429, 500, 502, 503, 504)
+    last_error = None
+    for attempt in range(retries + 1):
+        request = urllib.request.Request(
+            url,
+            headers={'User-Agent': 'curl/8.7.1', 'Accept': '*/*', 'Accept-Encoding': 'gzip'},
+        )
         try:
-            raw = response.read(5 * 1024 * 1024 + 1)
-        except http.client.IncompleteRead as error:
-            raw = error.partial
-        if len(raw) > 5 * 1024 * 1024:
-            raise ValueError('Discovery response too large')
-        if response.headers.get('Content-Encoding') == 'gzip':
-            raw = gzip.decompress(raw)
-        if len(raw) > 10 * 1024 * 1024:
-            raise ValueError('Discovery response too large')
-        return raw.decode('utf-8')
+            with urllib.request.urlopen(request, context=TLS, timeout=timeout) as response:
+                raw = response.read(5 * 1024 * 1024 + 1)
+                if len(raw) > 5 * 1024 * 1024:
+                    raise ValueError('Discovery response too large')
+                headers = getattr(response, 'headers', None)
+                enc = (headers.get('Content-Encoding', '') if headers else '').lower()
+                if 'gzip' in enc or raw[:2] == b'\x1f\x8b':
+                    raw = _gunzip_limited(raw, 10 * 1024 * 1024)
+                return raw.decode('utf-8', errors='replace')
+        except urllib.error.HTTPError as error:
+            last_error = error
+            code = error.code
+            error.close()
+            if code not in retryable_codes or attempt >= retries:
+                raise
+        except (urllib.error.URLError, TimeoutError, http.client.HTTPException, OSError, zlib.error, EOFError) as error:
+            last_error = error
+            if attempt >= retries:
+                raise
+        time.sleep(0.25 * (2 ** attempt))
+    raise last_error
 
 
 def get_json(url, timeout=12):
@@ -195,9 +231,10 @@ def parse_tmdb_results(rows, media_type, page_offset=0):
 
 
 def refresh(directory, api_key=None, language='tr-TR'):
-    global _running, _memory
+    global _running, _memory, _consecutive_failures, _next_retry_at
     path = Path(directory) / 'discovery-public.json'
     key_value = _tmdb_key(api_key)
+    succeeded = False
     try:
         now = dt.datetime.now(ZONE).date()
         requests = [
@@ -216,7 +253,8 @@ def refresh(directory, api_key=None, language='tr-TR'):
             data = json.loads(get(f'{CINEMETA}/catalog/{kind}/{catalog}{extra}.json'))
             return kind, catalog, extra, data.get('metas', [])
 
-        old = _memory or {}
+        with _lock:
+            old = dict(_memory) if _memory else {}
         metas = {m['id']: m for m in old.get('metas', []) if isinstance(m, dict) and m.get('id')}
         successes = 0
         has_cinemeta = False
@@ -299,12 +337,19 @@ def refresh(directory, api_key=None, language='tr-TR'):
             'hasTmdb': has_tmdb or bool(old.get('hasTmdb')),
         }
         temp = path.with_suffix('.tmp')
-        temp.write_text(json.dumps(result, ensure_ascii=False))
+        temp.write_text(json.dumps(result, ensure_ascii=False), encoding='utf-8')
         temp.replace(path)
         with _lock:
             _memory = result
+            _consecutive_failures = 0
+            _next_retry_at = 0.0
+            succeeded = True
     finally:
         with _lock:
+            if not succeeded:
+                _consecutive_failures += 1
+                backoff = min(900.0, 15.0 * (2 ** (_consecutive_failures - 1)))
+                _next_retry_at = time.time() + backoff
             _running = False
 
 
@@ -313,12 +358,18 @@ def snapshot(directory, enabled=True):
     with _lock:
         if _memory is None:
             try:
-                _memory = json.loads((Path(directory) / 'discovery-public.json').read_text())
+                _memory = json.loads((Path(directory) / 'discovery-public.json').read_text(encoding='utf-8', errors='replace'))
             except (OSError, ValueError):
                 _memory = {}
-        if enabled and time.time() - _memory.get('updatedAt', 0) > 21600 and not _running and time.time() - _attempt > 900:
+        now = time.time()
+        if (
+            enabled
+            and now - _memory.get('updatedAt', 0) > 21600
+            and not _running
+            and now >= _next_retry_at
+        ):
             _running = True
-            _attempt = time.time()
+            _attempt = now
             threading.Thread(target=refresh, args=(directory,), daemon=True).start()
         return dict(_memory)
 

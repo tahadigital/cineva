@@ -12,6 +12,9 @@ public struct SportsView: View {
     @State private var errorMessage: String?
     @State private var searchQuery = ""
     @State private var selectedSport = ""
+    @State private var guideSource = "auto"
+    @State private var activeSourceType = "sporekrani"
+    @State private var isGuideConfigured = true
 
     public init(store: LibraryStore, onPlay: @escaping (MediaItem, MediaDetail?) -> Void) {
         self.store = store
@@ -117,14 +120,21 @@ public struct SportsView: View {
                                     Text(day.label)
                                         .font(.caption.weight(.semibold))
                                         .padding(.horizontal, 14)
-                                        .padding(.vertical, 8)
-                                        .background(
-                                            selectedDayIso == day.id ? AnyShapeStyle(MavieTheme.brandGradient) : AnyShapeStyle(MavieTheme.panel),
-                                            in: Capsule()
-                                        )
+                                        .frame(minHeight: 44)
+                                        .mavieGlassPill(selected: selectedDayIso == day.id)
                                         .foregroundStyle(.white)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(MavieInteractiveCardButtonStyle())
+                            }
+                        }
+                    }
+
+                    if !store.connection.epgUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                sourceModeChip(title: "Otomatik (XMLTV)", mode: "auto")
+                                sourceModeChip(title: "XMLTV EPG", mode: "xmltv")
+                                sourceModeChip(title: "Spor Ekranı", mode: "sporekrani")
                             }
                         }
                     }
@@ -163,7 +173,7 @@ public struct SportsView: View {
                                 Text("ÖNE ÇIKAN KARŞILAŞMA")
                                     .font(.caption2.weight(.bold))
                                     .tracking(1.4)
-                                    .foregroundStyle(MavieTheme.turquoise)
+                                    .foregroundStyle(MavieTheme.cyanDot)
                                 Text(hero.title)
                                     .font(.title3.weight(.bold))
                                     .foregroundStyle(.white)
@@ -175,17 +185,24 @@ public struct SportsView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(16)
                             .background(
-                                LinearGradient(
-                                    colors: [MavieTheme.purple.opacity(0.28), MavieTheme.turquoise.opacity(0.16)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            )
-                            .overlay(
                                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .strokeBorder(MavieTheme.border, lineWidth: 1)
+                                    .fill(.ultraThinMaterial)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                            .fill(
+                                                LinearGradient(
+                                                    colors: [MavieTheme.purple.opacity(0.28), MavieTheme.turquoise.opacity(0.18)],
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                )
+                                            )
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                            .strokeBorder(MavieTheme.specularAccentBorder, lineWidth: 1)
+                                    )
                             )
+                            .shadow(color: MavieTheme.purple.opacity(0.22), radius: 14, y: 6)
                         }
 
                         if !events.isEmpty {
@@ -198,7 +215,7 @@ public struct SportsView: View {
                                     .foregroundStyle(.white)
                             }
                             .padding(10)
-                            .background(MavieTheme.panel, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .mavieCard(cornerRadius: 12)
 
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 8) {
@@ -210,7 +227,12 @@ public struct SportsView: View {
                             }
                         }
 
-                        if filteredEvents.isEmpty {
+                        if !isGuideConfigured {
+                            Text("XMLTV EPG adresi ayarlanmamış. Ayarlar ekranından bir EPG URL'si ekleyin.")
+                                .font(.subheadline)
+                                .foregroundStyle(MavieTheme.muted)
+                                .padding(.vertical, 16)
+                        } else if filteredEvents.isEmpty {
                             Text(events.isEmpty ? "Bu gün için yayın bilgisi listelenmiyor." : "Bu filtreye uyan yayın yok.")
                                 .font(.subheadline)
                                 .foregroundStyle(MavieTheme.muted)
@@ -242,7 +264,7 @@ public struct SportsView: View {
                             }
                         }
 
-                        Text("Yayın bilgileri · Spor Ekranı (Türkiye saati)")
+                        Text(activeSourceType == "xmltv" ? "Yayın bilgileri · XMLTV EPG (Türkiye saati)" : "Yayın bilgileri · Spor Ekranı (Türkiye saati)")
                             .font(.caption2)
                             .foregroundStyle(MavieTheme.muted)
                             .padding(.top, 4)
@@ -268,19 +290,44 @@ public struct SportsView: View {
                     await loadGuide(force: false)
                 }
             }
+            .onChange(of: store.items) { _ in
+                matchedChannels = SportsChannels.matchChannels(events: events, liveItems: store.items)
+            }
+            .onChange(of: store.connection.epgUrl) { _ in
+                Task { await loadGuide(force: false) }
+            }
         }
+    }
+
+    private func sourceModeChip(title: String, mode: String) -> some View {
+        let selected = guideSource == mode
+        return Button {
+            if guideSource != mode {
+                guideSource = mode
+                selectedSport = ""
+                Task { await loadGuide(force: false) }
+            }
+        } label: {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 12)
+                .frame(minHeight: 44)
+                .mavieGlassPill(selected: selected)
+                .foregroundStyle(.white)
+        }
+        .buttonStyle(MavieInteractiveCardButtonStyle())
     }
 
     private func sportChip(title: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
                 .font(.caption.weight(.semibold))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(selected ? Color.white : MavieTheme.panel, in: Capsule())
-                .foregroundStyle(selected ? Color.black : Color.white)
+                .padding(.horizontal, 14)
+                .frame(minHeight: 44)
+                .mavieGlassPill(selected: selected)
+                .foregroundStyle(.white)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(MavieInteractiveCardButtonStyle())
     }
 
     @ViewBuilder
@@ -294,23 +341,20 @@ public struct SportsView: View {
                         } label: {
                             Label(label, systemImage: "play.fill")
                                 .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(Color.white, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                .foregroundStyle(.black)
+                                .padding(.horizontal, 12)
+                                .frame(minHeight: 38)
+                                .mavieGlassPill(selected: true, cornerRadius: 10)
+                                .foregroundStyle(.white)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(MavieInteractiveCardButtonStyle())
                         .accessibilityLabel("\(event.title) · \(label) kanalını aç")
                     } else {
                         Text("\(label) · Listende yok")
                             .font(.caption2)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
                             .foregroundStyle(MavieTheme.muted)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .strokeBorder(MavieTheme.border, lineWidth: 1)
-                            )
+                            .mavieGlassPill(selected: false, cornerRadius: 10)
                     }
                 }
             }
@@ -322,9 +366,16 @@ public struct SportsView: View {
         isLoading = true
         errorMessage = nil
         do {
-            let response = try await SportsGuideService.shared.load(dayIso: selectedDayIso, force: force)
+            let response = try await SportsGuideService.shared.load(
+                dayIso: selectedDayIso,
+                epgUrl: store.connection.epgUrl,
+                sourceMode: guideSource,
+                force: force
+            )
             events = response.events
             isStale = response.stale
+            activeSourceType = response.sourceType
+            isGuideConfigured = response.configured
             matchedChannels = SportsChannels.matchChannels(events: response.events, liveItems: store.items)
         } catch {
             errorMessage = error.localizedDescription

@@ -26,7 +26,7 @@ internal fun readProviderJson(input: InputStream, byteLimit: Long=100*1024*1024L
     return JsonReader(characters).use { reader ->
         var values=0
         fun value(depth: Int): Any {
-            if(depth>64||++values>3_000_000)throw IptvException("Sağlayıcının yanıtı işlenemedi.")
+            if(depth>64||++values>10_000_000)throw IptvException("Sağlayıcının yanıtı işlenemedi.")
             return when(reader.peek()) {
                 JsonToken.BEGIN_OBJECT -> {
                     val objectValue=JSONObject();reader.beginObject()

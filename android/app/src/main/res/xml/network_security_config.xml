@@ -7,7 +7,7 @@
         <domain includeSubdomains="true">mavie.app</domain>
         <domain includeSubdomains="true">maviemovie.netlify.app</domain>
         <domain includeSubdomains="true">sporekrani.com</domain>
-        <domain includeSubdomains="true">v3-cinemeta.strem.io</domain>
+        <domain includeSubdomains="true">strem.io</domain>
         <domain includeSubdomains="true">netflix.com</domain>
         <domain includeSubdomains="true">blender.org</domain>
     </domain-config>

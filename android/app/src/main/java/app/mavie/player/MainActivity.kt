@@ -17,6 +17,7 @@ import androidx.activity.viewModels
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -165,12 +166,14 @@ private fun DesktopSyncDialog(onDismiss: () -> Unit, onSync: (String, String) ->
     var code by rememberSaveable { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = MavieGlassDialogFill,
+        shape = RoundedCornerShape(24.dp),
         title = { Text("Masaüstü ile kayıtları birleştir") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("İsteğe bağlıdır. Aynı Wi-Fi ağında masaüstü Mavie uygulaması açıkken favoriler, listeler ve en yeni izleme konumları birleştirilir.")
-                OutlinedTextField(value = address, onValueChange = { address = it }, label = { Text("Masaüstü yerel ağ adresi") }, placeholder = { Text("http://192.168.1.10:8844") }, singleLine = true)
-                OutlinedTextField(value = code, onValueChange = { code = it.filter(Char::isDigit).take(6) }, label = { Text("Altı haneli eşleştirme kodu") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
+                OutlinedTextField(value = address, onValueChange = { address = it }, label = { Text("Masaüstü yerel ağ adresi") }, placeholder = { Text("http://192.168.1.10:8844") }, singleLine = true, shape = RoundedCornerShape(14.dp))
+                OutlinedTextField(value = code, onValueChange = { code = it.filter(Char::isDigit).take(6) }, label = { Text("Altı haneli eşleştirme kodu") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, shape = RoundedCornerShape(14.dp))
             }
         },
         confirmButton = { TextButton(onClick = { onSync(address, code) }, enabled = address.isNotBlank() && code.length == 6, modifier = Modifier.heightIn(min = 48.dp)) { Text("Birleştir") } },

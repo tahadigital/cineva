@@ -1,10 +1,20 @@
 package app.mavie.player.sports
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.SocketPolicy
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.time.LocalDate
+import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPOutputStream
 
 class SportsGuideTest {
@@ -81,5 +91,28 @@ class SportsGuideTest {
         assertEquals(SportsChannels.key("Smart Spor HD"), SportsChannels.key("TR: Spor Smart HD"))
         assertEquals(SportsChannels.key("TRT Spor Star"), SportsChannels.key("TR: TRT Spor Yıldız HD"))
         assertNotEquals(SportsChannels.key("Public Sports 1"), SportsChannels.key("Public Sports 2"))
+    }
+
+    @Test(timeout = 10_000)
+    fun loadPropagatesCancellationAndCancelsInFlightHttpCall() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
+            var caughtCancel = false
+            val job = launch(Dispatchers.IO) {
+                try {
+                    SportsGuide.load(
+                        day = day,
+                        force = true,
+                        epgUrl = server.url("/epg.xml").toString(),
+                    )
+                } catch (cancel: CancellationException) {
+                    caughtCancel = true
+                    throw cancel
+                }
+            }
+            assertNotNull(server.takeRequest(3, TimeUnit.SECONDS))
+            withTimeout(2_000) { job.cancelAndJoin() }
+            assertTrue("CancellationException must propagate out of SportsGuide.load()", caughtCancel)
+        }
     }
 }

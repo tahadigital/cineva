@@ -16,3 +16,24 @@ internal fun InputStream.readBounded(maximum: Int=25*1024*1024): ByteArray {
     }
     return output.toByteArray()
 }
+
+internal fun InputStream.limitBytes(
+    maximum: Long,
+    errorMessage: String = "Dosya çok büyük.",
+): InputStream = object : InputStream() {
+    private var consumed = 0L
+
+    private fun track(count: Int): Int {
+        if (count > 0) {
+            consumed += count
+            if (consumed > maximum) throw IptvException(errorMessage)
+        }
+        return count
+    }
+
+    override fun read(): Int = this@limitBytes.read().also { if (it >= 0) track(1) }
+
+    override fun read(b: ByteArray, off: Int, len: Int): Int = track(this@limitBytes.read(b, off, len))
+
+    override fun close() = this@limitBytes.close()
+}

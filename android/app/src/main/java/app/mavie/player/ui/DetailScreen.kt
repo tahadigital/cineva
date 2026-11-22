@@ -5,8 +5,13 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -73,28 +78,41 @@ fun MavieDetailScreen(
                     if (meta.isNotBlank()) Text(meta, color = MavieMuted, fontSize = 12.sp, lineHeight = 18.sp)
                     val playbackTarget = if (media.kind == "series") featuredEpisode else media
                     if (playbackTarget != null) {
-                        Button(onClick = { if (media.kind == "series") onEpisode(playbackTarget) else onPlay(media) },
-                            modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(4.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black)) {
-                            Icon(Icons.Filled.PlayArrow, null, Modifier.size(25.dp)); Spacer(Modifier.width(8.dp))
-                            Text(when {
-                                media.kind == "live" -> "Yayını aç"
-                                playbackTarget.canResume -> "Devam et · ${playbackTime(playbackTarget.progressPositionMs)}"
-                                media.kind == "series" && playbackTarget.episodeNumber > 0 -> "${playbackTarget.episodeNumber}. bölümü oynat"
-                                else -> "İzlemeye başla"
-                            })
+                        MavieGradientButton(
+                            onClick = { if (media.kind == "series") onEpisode(playbackTarget) else onPlay(media) },
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                            shape = RoundedCornerShape(16.dp),
+                        ) {
+                            Icon(Icons.Filled.PlayArrow, null, Modifier.size(25.dp), tint = Color.White); Spacer(Modifier.width(8.dp))
+                            Text(
+                                when {
+                                    media.kind == "live" -> "Yayını aç"
+                                    playbackTarget.canResume -> "Devam et · ${playbackTime(playbackTarget.progressPositionMs)}"
+                                    media.kind == "series" && playbackTarget.episodeNumber > 0 -> "${playbackTarget.episodeNumber}. bölümü oynat"
+                                    else -> "İzlemeye başla"
+                                },
+                                color = Color.White,
+                            )
                         }
                         if (playbackTarget.canResume && playbackTarget.progressDurationMs > 0) {
-                            LinearProgressIndicator(progress = { playbackTarget.progressFraction }, modifier = Modifier.fillMaxWidth().height(3.dp),
-                                color = MavieCoral, trackColor = Color(0xFF3A3A3A))
+                            LinearProgressIndicator(
+                                progress = { playbackTarget.progressFraction },
+                                modifier = Modifier.fillMaxWidth().height(3.dp).clip(CircleShape),
+                                color = MavieTurquoise,
+                                trackColor = Color.White.copy(alpha = 0.16f),
+                            )
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(
+                        OutlinedButton(
                             onClick = { onFavorite(media) },
-                            shape = RoundedCornerShape(4.dp),
+                            shape = RoundedCornerShape(14.dp),
                             modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                            colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
+                            border = BorderStroke(1.dp, MavieSpecularBorderBrush),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = Color(0x88182038),
+                                contentColor = Color.White,
+                            ),
                         ) {
                             AnimatedContent(
                                 targetState = media.favorite,
@@ -103,17 +121,21 @@ fun MavieDetailScreen(
                             ) { favorite ->
                                 Icon(
                                     if (favorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder, null,
-                                    tint = if (favorite) MavieCoral else MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(19.dp),
+                                    tint = if (favorite) MavieCyanDot else Color.White, modifier = Modifier.size(19.dp),
                                 )
                             }
                             Spacer(Modifier.width(8.dp))
                             Text(if (media.favorite) "Favorilerimde" else "Favorilere ekle", fontSize = 12.sp)
                         }
-                        TextButton(
+                        OutlinedButton(
                             onClick = { onAddToCollection(media) },
-                            shape = RoundedCornerShape(4.dp),
+                            shape = RoundedCornerShape(14.dp),
                             modifier = Modifier.heightIn(min = 48.dp),
-                            colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
+                            border = BorderStroke(1.dp, MavieSpecularBorderBrush),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = Color(0x88182038),
+                                contentColor = Color.White,
+                            ),
                         ) {
                             Icon(Icons.Outlined.Add, null, Modifier.size(20.dp))
                             Spacer(Modifier.width(5.dp))
@@ -125,9 +147,13 @@ fun MavieDetailScreen(
                                 modifier = Modifier.heightIn(min = 48.dp).semantics {
                                     contentDescription = "İzleme kaydını sıfırla"
                                 },
-                                shape = RoundedCornerShape(4.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.dp, MavieSpecularBorderBrush),
                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = Color(0x88182038),
+                                    contentColor = Color.White,
+                                ),
                             ) {
                                 Icon(Icons.Outlined.Refresh, null, Modifier.size(18.dp))
                                 Spacer(Modifier.width(4.dp))
@@ -240,9 +266,9 @@ fun MavieDetailScreen(
                 ) {
                     FilledIconButton(
                         onClick = onBack,
-                        modifier = Modifier.size(48.dp),
+                        modifier = Modifier.size(48.dp).border(1.dp, MavieSpecularBorderBrush, CircleShape),
                         shape = CircleShape,
-                        colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color.Black.copy(alpha = .48f), contentColor = Color.White),
+                        colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color(0x9912182B), contentColor = Color.White),
                     ) {
                         Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Geri dön")
                     }
@@ -262,14 +288,27 @@ private fun CreditLine(label: String, value: String) {
 
 @Composable
 private fun EpisodeRow(episode: UiMedia, onPlay: () -> Unit, onAdd: () -> Unit) {
-    Column(Modifier.fillMaxWidth().clickable(onClickLabel = "Bölümü oynat", onClick = onPlay).padding(horizontal = 16.dp)) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val focused by interactionSource.collectIsFocusedAsState()
+    Column(
+        Modifier.fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .mavieGlassSurface(RoundedCornerShape(16.dp), focused = focused)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClickLabel = "Bölümü oynat",
+                onClick = onPlay,
+            )
+            .padding(10.dp),
+    ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(Modifier.size(width = 114.dp, height = 64.dp).clip(RoundedCornerShape(3.dp))) {
+            Box(Modifier.size(width = 114.dp, height = 64.dp).clip(RoundedCornerShape(12.dp))) {
                 PosterArt(episode, Modifier.fillMaxSize(), backdrop = true)
                 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .22f)))
                 Icon(Icons.Outlined.PlayCircleOutline, null, tint = Color.White, modifier = Modifier.align(Alignment.Center).size(29.dp))
                 if (episode.canResume) LinearProgressIndicator(progress = { episode.progressFraction },
-                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp), color = MavieCoral, trackColor = Color(0xFF454545))
+                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp), color = MavieTurquoise, trackColor = Color.White.copy(alpha = 0.16f))
             }
             Column(Modifier.weight(1f)) {
                 Text(if (episode.episodeNumber > 0) "${episode.episodeNumber}. ${episode.title}" else episode.title,

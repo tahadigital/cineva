@@ -15,8 +15,9 @@ public struct M3uParseResult: Sendable, Equatable {
 
 public enum M3uParser {
     private static let attrRegex = try! NSRegularExpression(pattern: #"([A-Za-z0-9_-]+)="([^"]*)""#)
-    private static let extRegex = try! NSRegularExpression(pattern: #"\.([a-z0-9]{2,5})(?:[?#]|$)"#, options: [.caseInsensitive])
-    private static let vodExtensions: Set<String> = ["mp4", "mkv", "avi", "mov", "webm", "m4v"]
+    private static let extRegex = try! NSRegularExpression(pattern: #"\.([a-z0-9]{2,6})(?:[?#]|$)"#, options: [.caseInsensitive])
+    private static let vodExtensions: Set<String> = ["mp4", "mkv", "avi", "mov", "webm", "m4v", "flv", "wmv"]
+    private static let scriptExtensions: Set<String> = ["php", "cgi", "asp", "aspx", "jsp", "html", "htm", "cfm", "pl"]
 
     private struct PendingEntry {
         var name: String
@@ -32,9 +33,12 @@ public enum M3uParser {
         var categoryMap: [String: MediaCategory] = [:]
         var pending: PendingEntry?
 
-        let lines = text.components(separatedBy: .newlines)
+        let cleanText = text.replacingOccurrences(of: "\u{FEFF}", with: "")
+        let lines = cleanText.components(separatedBy: .newlines)
         for raw in lines {
-            let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            let line = raw
+                .replacingOccurrences(of: "\u{FEFF}", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             if line.isEmpty { continue }
 
             if line.hasPrefix("#EXTM3U") {
@@ -45,13 +49,9 @@ public enum M3uParser {
 
             if line.hasPrefix("#EXTINF:") {
                 let attrs = extractAttributes(from: line)
-                let title: String
-                if let commaIndex = line.firstIndex(of: ",") {
-                    title = String(line[line.index(after: commaIndex)...]).trimmingCharacters(in: .whitespacesAndNewlines)
-                } else {
-                    title = attrs["tvg-name"] ?? ""
-                }
-                let finalName = String((title.isEmpty ? (attrs["tvg-name"] ?? "Adsız Yayın") : title).prefix(500))
+                let fallbackName = attrs["tvg-name"] ?? ""
+                let title = extractTitle(from: line, fallback: fallbackName)
+                let finalName = String((title.isEmpty ? (fallbackName.isEmpty ? "Adsız Yayın" : fallbackName) : title).prefix(500))
                 let group = String((attrs["group-title"] ?? "").prefix(200))
                 pending = PendingEntry(
                     name: finalName.isEmpty ? "Adsız Yayın" : finalName,
@@ -79,11 +79,12 @@ public enum M3uParser {
                 )
                 pending = nil
 
-                let ext = extractExtension(from: line) ?? "m3u8"
-                let isVod = meta.type == "movie" || meta.type == "vod" || vodExtensions.contains(ext)
+                let inferredExt = extractExtension(from: line)
+                let isVod = meta.type == "movie" || meta.type == "vod" || (inferredExt.map { vodExtensions.contains($0) } ?? false)
+                let ext = inferredExt ?? (isVod ? "mp4" : "m3u8")
                 let kind: MediaKind = isVod ? .vod : .live
                 let digest = sha1Hex("\(kind.rawValue):\(line)", length: 16)
-                let categoryId = sha1Hex(meta.group, length: 10)
+                let categoryId = sha1Hex("\(kind.rawValue):\(meta.group)", length: 10)
 
                 if categoryMap[categoryId] == nil {
                     categoryMap[categoryId] = MediaCategory(id: categoryId, name: meta.group, kind: kind)
@@ -110,6 +111,25 @@ public enum M3uParser {
         return M3uParseResult(epgUrl: epgUrl, items: items, categories: categories)
     }
 
+    private static func extractTitle(from line: String, fallback: String) -> String {
+        var inQuotes = false
+        var idx = line.startIndex
+        while idx < line.endIndex {
+            let ch = line[idx]
+            if ch == "\"" {
+                inQuotes.toggle()
+            } else if ch == "," && !inQuotes {
+                let after = line[line.index(after: idx)...].trimmingCharacters(in: .whitespacesAndNewlines)
+                if !after.isEmpty {
+                    return after
+                }
+                break
+            }
+            idx = line.index(after: idx)
+        }
+        return fallback
+    }
+
     private static func extractAttributes(from line: String) -> [String: String] {
         var result: [String: String] = [:]
         let nsRange = NSRange(line.startIndex..<line.endIndex, in: line)
@@ -123,13 +143,40 @@ public enum M3uParser {
     }
 
     private static func extractExtension(from url: String) -> String? {
+        if let components = URLComponents(string: url) {
+            if let output = components.queryItems?
+                .first(where: { $0.name.lowercased() == "output" || $0.name.lowercased() == "format" })?
+                .value?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased() {
+                if output == "mpegts" || output == "ts" {
+                    return "ts"
+                }
+                if output == "hls" || output == "m3u8" {
+                    return "m3u8"
+                }
+            }
+            let path = components.path
+            let nsPath = NSRange(path.startIndex..<path.endIndex, in: path)
+            if let match = extRegex.firstMatch(in: path, range: nsPath),
+               match.numberOfRanges >= 2,
+               let extRange = Range(match.range(at: 1), in: path) {
+                let candidate = String(path[extRange]).lowercased()
+                if !scriptExtensions.contains(candidate) {
+                    return candidate
+                }
+            }
+            return nil
+        }
+
         let nsRange = NSRange(url.startIndex..<url.endIndex, in: url)
         guard let match = extRegex.firstMatch(in: url, range: nsRange),
               match.numberOfRanges >= 2,
               let extRange = Range(match.range(at: 1), in: url) else {
             return nil
         }
-        return String(url[extRange]).lowercased()
+        let candidate = String(url[extRange]).lowercased()
+        return scriptExtensions.contains(candidate) ? nil : candidate
     }
 
     private static func safeImage(_ value: String) -> String {

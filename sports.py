@@ -8,12 +8,15 @@ from __future__ import annotations
 import datetime as dt
 import functools
 import gzip
+import http.client
 import json
 import re
 import threading
 import time
 import unicodedata
+import urllib.error
 import xml.etree.ElementTree as ET
+import zlib
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 try:
@@ -188,13 +191,33 @@ def _parse_xmltv_time(raw, target_tz=ZONE):
     return naive.replace(tzinfo=target_tz)
 
 
+def _gunzip_limited(raw_payload, max_bytes):
+    dec = zlib.decompressobj(16 + zlib.MAX_WBITS)
+    chunks = []
+    total = 0
+    view = memoryview(raw_payload)
+    for offset in range(0, len(raw_payload), 65536):
+        part = dec.decompress(view[offset:offset + 65536], max_bytes - total + 1)
+        total += len(part)
+        if total > max_bytes:
+            raise RuntimeError('EPG rehberi çok büyük.')
+        chunks.append(part)
+    tail = dec.flush(max_bytes - total + 1)
+    total += len(tail)
+    if total > max_bytes:
+        raise RuntimeError('EPG rehberi çok büyük.')
+    chunks.append(tail)
+    return b''.join(chunks)
+
+
 def parse_xmltv(raw_payload, day, tz=ZONE):
     """Parse standard XMLTV guide bytes safely without entity expansion."""
     if isinstance(raw_payload, bytes):
         if raw_payload[:2] == b'\x1f\x8b':
-            raw_payload = gzip.decompress(raw_payload)
-            if len(raw_payload) > MAX_PAGE * 2:
-                raise RuntimeError('EPG rehberi çok büyük.')
+            try:
+                raw_payload = _gunzip_limited(raw_payload, MAX_PAGE * 2)
+            except (zlib.error, EOFError, OSError):
+                raise RuntimeError('XMLTV yayın rehberi açılamadı.') from None
         text = raw_payload.decode('utf-8', errors='replace')
     else:
         text = str(raw_payload)
@@ -279,24 +302,55 @@ def get_listings(day, fetch, epg_url='', refresh=False, tz=ZONE, source_mode='au
         cached = _cache.get(cache_key)
         if not cached or now - cached[0] >= (15 if refresh else fresh_ttl):
             try:
+                req_headers = (
+                    {'User-Agent': 'Mavie/2.2 (XMLTV EPG)', 'Accept-Encoding': 'gzip'}
+                    if use_xmltv
+                    else {'User-Agent': 'Mavie/2.2 (sports schedule)', 'Accept-Encoding': 'gzip'}
+                )
+                req_timeout = 15 if use_xmltv else 9
+                max_bytes = MAX_PAGE if use_xmltv else MAX_SPOREKRANI_PAGE
+                retryable_codes = (408, 429, 500, 502, 503, 504)
+                payload = b''
+                enc = ''
+                for attempt in range(3):
+                    try:
+                        with fetch(source, timeout=req_timeout, headers=req_headers) as response:
+                            payload = response.read(max_bytes + 1)
+                            headers = getattr(response, 'headers', None)
+                            enc = (headers.get('Content-Encoding', '') if headers else '').lower()
+                        break
+                    except urllib.error.HTTPError as err:
+                        code = err.code
+                        err.close()
+                        if code not in retryable_codes or attempt >= 2:
+                            raise RuntimeError(f'HTTP {code}') from None
+                    except (http.client.HTTPException, urllib.error.URLError, TimeoutError, OSError):
+                        if attempt >= 2:
+                            raise
+                    time.sleep(0.15 * (2 ** attempt))
+
+                if len(payload) > max_bytes:
+                    raise RuntimeError('XMLTV rehberi çok büyük.' if use_xmltv else 'Spor yayın rehberi çok büyük.')
                 if use_xmltv:
-                    with fetch(source, timeout=15, headers={'User-Agent': 'Mavie/2.2 (XMLTV EPG)'}) as response:
-                        payload = response.read(MAX_PAGE + 1)
-                    if len(payload) > MAX_PAGE:
-                        raise RuntimeError('XMLTV rehberi çok büyük.')
+                    if 'gzip' in enc and payload[:2] != b'\x1f\x8b':
+                        try:
+                            payload = _gunzip_limited(payload, MAX_PAGE * 2)
+                        except (zlib.error, EOFError, OSError):
+                            raise RuntimeError('XMLTV yayın rehberi açılamadı.') from None
                     events = parse_xmltv(payload, day, tz)
                 else:
-                    with fetch(source, timeout=9, headers={'User-Agent': 'Mavie/2.2 (sports schedule)'}) as response:
-                        payload = response.read(MAX_SPOREKRANI_PAGE + 1)
-                    if len(payload) > MAX_SPOREKRANI_PAGE:
-                        raise RuntimeError('Spor yayın rehberi çok büyük.')
+                    if 'gzip' in enc or payload[:2] == b'\x1f\x8b':
+                        try:
+                            payload = _gunzip_limited(payload, MAX_SPOREKRANI_PAGE * 2)
+                        except (zlib.error, EOFError, OSError):
+                            raise RuntimeError('Spor yayın rehberi açılamadı.') from None
                     events = parse_sporekrani(payload.decode('utf-8', errors='replace'), day)
                 cached = _cache[cache_key] = (time.time(), events)
                 for old in list(_cache):
                     if now - _cache[old][0] > MAX_STALE:
                         _cache.pop(old, None)
                 stale = False
-            except (OSError, RuntimeError, UnicodeError, ValueError):
+            except (OSError, RuntimeError, UnicodeError, ValueError, http.client.HTTPException):
                 if not cached or now - cached[0] > MAX_STALE:
                     msg = (
                         'XMLTV yayın rehberine ulaşılamadı. Bağlantıyı kontrol edin.'

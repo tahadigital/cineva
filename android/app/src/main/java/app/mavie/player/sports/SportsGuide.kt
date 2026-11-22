@@ -1,10 +1,11 @@
 package app.mavie.player.sports
 
+import app.mavie.player.data.MavieBaseHttpClient
+import app.mavie.player.data.readCancellable
 import app.mavie.player.readBounded
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import org.json.JSONTokener
@@ -80,8 +81,14 @@ internal object SportsChannels {
 internal object SportsGuide {
     private data class Cached(val fetchedAt: Long, val events: List<SportBroadcast>)
     private val cache = ConcurrentHashMap<String, Cached>()
-    private val client = OkHttpClient.Builder().followRedirects(true)
-        .callTimeout(18, TimeUnit.SECONDS).build()
+    private val client = MavieBaseHttpClient.newBuilder()
+        .connectTimeout(12, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .callTimeout(30, TimeUnit.SECONDS)
+        .followRedirects(true)
+        .followSslRedirects(true)
+        .retryOnConnectionFailure(true)
+        .build()
     private val spaces = Regex("\\s+")
     private val commentaryNoise = Regex("basin toplantisi|spor bulteni|mac (?:onu|sonu|ozel)|tekrar")
     private val startTime = Regex("(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d")
@@ -268,7 +275,7 @@ internal object SportsGuide {
             val ua = if (useXmltv) "Mavie/2.2 (XMLTV EPG)" else "Mavie/2.2 (sports schedule)"
             val maxBytes = if (useXmltv) MaxPageBytes else MaxSporEkraniBytes
             val request = Request.Builder().url(targetUrl).header("User-Agent", ua).build()
-            val bytes = client.newCall(request).execute().use { response ->
+            val bytes = client.newCall(request).readCancellable { response ->
                 if (!response.isSuccessful) throw IOException("Guide HTTP ${response.code}")
                 val body = response.body ?: throw IOException("Empty guide response")
                 body.byteStream().readBounded(maxBytes)

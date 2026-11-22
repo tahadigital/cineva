@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Mavie: local personal media, M3U/Xtream/XMLTV EPG catalog, state and playback service."""
 from __future__ import annotations
-import argparse, base64, collections, contextlib, datetime as dt, hashlib, html, http.cookies
+import argparse, base64, collections, contextlib, datetime as dt, hashlib, html, http.client, http.cookies
 import ipaddress, json, math, mimetypes, os, re, secrets, signal, socket, sqlite3, sys
-import threading, time, unicodedata, ssl, urllib.error, urllib.parse, urllib.request
+import threading, time, unicodedata, ssl, urllib.error, urllib.parse, urllib.request, zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from playback import PlaybackManager, BITMAP_SUBTITLES, _infer_language as infer_subtitle_language
@@ -129,13 +129,13 @@ def meta_set(key, value):
 
 
 def load_config():
-    try: return json.loads(CONFIG_FILE.read_text())
+    try: return json.loads(CONFIG_FILE.read_text(encoding='utf-8', errors='replace'))
     except (OSError, ValueError): return {}
 
 
 def save_config(c):
     tmp = CONFIG_FILE.with_suffix('.tmp')
-    tmp.write_text(json.dumps(c, ensure_ascii=False))
+    tmp.write_text(json.dumps(c, ensure_ascii=False), encoding='utf-8')
     os.chmod(tmp, 0o600)
     tmp.replace(CONFIG_FILE)
 
@@ -149,13 +149,70 @@ def validate_host(value):
     return urllib.parse.urlunsplit((u.scheme, u.netloc, u.path.rstrip('/'), '', ''))
 
 
+def validate_source_url(value):
+    u = urllib.parse.urlsplit(str(value).strip())
+    if u.scheme not in ('http', 'https') or not u.hostname or u.username or u.password or u.fragment:
+        raise ValueError('Kaynak adresini http:// veya https:// ile girin.')
+    try: _ = u.port
+    except ValueError: raise ValueError('Kaynak portu geçersiz.') from None
+    return urllib.parse.urlunsplit((u.scheme, u.netloc, u.path, u.query, ''))
+
+
+_RFC1918_NETWORKS = (
+    ipaddress.IPv4Network('10.0.0.0/8'),
+    ipaddress.IPv4Network('172.16.0.0/12'),
+    ipaddress.IPv4Network('192.168.0.0/16'),
+)
+_lan_override_tls = threading.local()
+
+
+def _allow_lan_sources():
+    override = getattr(_lan_override_tls, 'allow_lan', None)
+    if override is not None:
+        return bool(override)
+    env_val = os.environ.get('MAVIE_ALLOW_LAN_SOURCES', '').strip().lower()
+    if env_val in ('1', 'true', 'yes', 'on'):
+        return True
+    prov = globals().get('provider')
+    if prov is not None and isinstance(getattr(prov, 'config', None), dict):
+        return bool(prov.config.get('allowLanSources'))
+    return False
+
+
+@contextlib.contextmanager
+def _lan_override(enabled):
+    prev = getattr(_lan_override_tls, 'allow_lan', None)
+    _lan_override_tls.allow_lan = enabled
+    try:
+        yield
+    finally:
+        _lan_override_tls.allow_lan = prev
+
+
 def safe_public_url(url):
     u = urllib.parse.urlsplit(url)
     if u.scheme not in ('http', 'https') or not u.hostname or u.username or u.password:
         raise ValueError('Geçersiz kaynak adresi.')
     try:
-        addresses = socket.getaddrinfo(u.hostname, u.port or (443 if u.scheme == 'https' else 80), type=socket.SOCK_STREAM)
-        if any(not ipaddress.ip_address(a[4][0]).is_global for a in addresses):
+        port = u.port
+    except ValueError:
+        raise ValueError('Geçersiz kaynak portu.') from None
+    allow_lan = _allow_lan_sources()
+    try:
+        addresses = socket.getaddrinfo(u.hostname, port or (443 if u.scheme == 'https' else 80), type=socket.SOCK_STREAM)
+        for a in addresses:
+            raw_ip = str(a[4][0]).split('%', 1)[0]
+            try:
+                ip = ipaddress.ip_address(raw_ip)
+            except ValueError:
+                raise ValueError('Geçersiz kaynak adresi.') from None
+            target_ip = getattr(ip, 'ipv4_mapped', None) or ip
+            if target_ip.is_loopback or target_ip.is_link_local or target_ip.is_multicast or target_ip.is_unspecified:
+                raise ValueError('Yerel ağ adresi kaynak olarak kullanılamaz.')
+            if target_ip.is_global:
+                continue
+            if allow_lan and isinstance(target_ip, ipaddress.IPv4Address) and any(target_ip in net for net in _RFC1918_NETWORKS):
+                continue
             raise ValueError('Yerel ağ adresi kaynak olarak kullanılamaz.')
     except socket.gaierror: raise ValueError('Kaynak sunucusu bulunamadı.') from None
     return url
@@ -171,9 +228,87 @@ TLS_CONTEXT = ssl.create_default_context(cafile='/etc/ssl/cert.pem' if Path('/et
 OPENER = urllib.request.build_opener(SafeRedirect(), urllib.request.HTTPSHandler(context=TLS_CONTEXT))
 
 
+def _http_error_message(code):
+    if code == 401:
+        return 'Kaynak sunucu kimlik doğrulamasını reddetti (HTTP 401). Bilgilerinizi kontrol edin.'
+    if code == 403:
+        return 'Kaynak sunucu erişimi reddetti (HTTP 403).'
+    if code == 404:
+        return 'İstenen katalog veya M3U adresi sunucuda bulunamadı (HTTP 404).'
+    if code == 429:
+        return 'Kaynak sunucu çok fazla istek nedeniyle geçici sınırlama uyguladı (HTTP 429). Kısa süre sonra yeniden deneyin.'
+    if 500 <= code < 600 or code == 408:
+        return f'Kaynak sunucu geçici bir hata döndürdü (HTTP {code}). Biraz sonra yeniden deneyin.'
+    return f'Kaynak sunucu isteği reddetti (HTTP {code}).'
+
+
+def _gunzip_limited(raw_bytes, max_bytes, content_encoding=''):
+    enc = str(content_encoding or '').lower()
+    if 'gzip' not in enc and raw_bytes[:2] != b'\x1f\x8b':
+        return raw_bytes
+    dec = zlib.decompressobj(16 + zlib.MAX_WBITS)
+    chunks = []
+    total = 0
+    view = memoryview(raw_bytes)
+    for offset in range(0, len(raw_bytes), 65536):
+        part = dec.decompress(view[offset:offset + 65536], max_bytes - total + 1)
+        total += len(part)
+        if total > max_bytes:
+            raise ValueError('Sunucu yanıtı açıldığında çok büyük.')
+        chunks.append(part)
+    tail = dec.flush(max_bytes - total + 1)
+    total += len(tail)
+    if total > max_bytes:
+        raise ValueError('Sunucu yanıtı açıldığında çok büyük.')
+    chunks.append(tail)
+    return b''.join(chunks)
+
+
 def remote(url, timeout=35, headers=None):
     safe_public_url(url)
     return OPENER.open(urllib.request.Request(url, headers={'User-Agent': UA, **(headers or {})}), timeout=timeout)
+
+
+def remote_read(url, timeout=35, headers=None, max_bytes=30 * 1024 * 1024, retries=2):
+    req_headers = {'Accept-Encoding': 'gzip', **(headers or {})}
+    retryable_codes = (408, 429, 500, 502, 503, 504)
+    started = time.monotonic()
+    for attempt in range(retries + 1):
+        remaining = timeout if attempt == 0 else max(1.0, timeout - (time.monotonic() - started))
+        try:
+            with remote(url, timeout=remaining, headers=req_headers) as r:
+                resp_headers = getattr(r, 'headers', None)
+                cl = resp_headers.get('Content-Length') if resp_headers else None
+                if cl is not None:
+                    try:
+                        if int(cl) > max_bytes:
+                            raise ValueError('Sunucu yanıtı çok büyük.')
+                    except ValueError as ve:
+                        if 'çok büyük' in str(ve):
+                            raise
+                raw = r.read(max_bytes + 1)
+                if len(raw) > max_bytes:
+                    raise ValueError('Sunucu yanıtı çok büyük.')
+                enc = resp_headers.get('Content-Encoding', '') if resp_headers else ''
+                return _gunzip_limited(raw, max_bytes, enc)
+        except urllib.error.HTTPError as err:
+            code = err.code
+            err.close()
+            if code not in retryable_codes or attempt >= retries or (time.monotonic() - started) >= timeout:
+                raise RuntimeError(_http_error_message(code)) from None
+        except TimeoutError:
+            if attempt >= retries or (time.monotonic() - started) >= timeout:
+                raise RuntimeError('Kaynak sunucu zaman aşımına uğradı. Ağ bağlantısını kontrol edip yeniden deneyin.') from None
+        except (urllib.error.URLError, http.client.HTTPException, OSError) as err:
+            is_timeout = isinstance(getattr(err, 'reason', None), TimeoutError)
+            if attempt >= retries or (is_timeout and (time.monotonic() - started) >= timeout):
+                if is_timeout:
+                    raise RuntimeError('Kaynak sunucu zaman aşımına uğradı. Ağ bağlantısını kontrol edip yeniden deneyin.') from None
+                raise RuntimeError('Sunucuya ulaşılamadı. Ağ bağlantısını kontrol edip yeniden deneyin.') from None
+        except (zlib.error, EOFError):
+            if attempt >= retries or (time.monotonic() - started) >= timeout:
+                raise RuntimeError('Sunucu geçerli sıkıştırılmış veri göndermedi.') from None
+        time.sleep(0.3 if attempt == 0 else 0.8)
 
 
 class Provider:
@@ -193,12 +328,12 @@ class Provider:
         if action: q['action'] = action
         q.update(kwargs)
         try:
-            with remote(self.config['host'] + '/player_api.php?' + urllib.parse.urlencode(q), timeout=60) as r:
-                payload = r.read(200 * 1024 * 1024 + 1)
-                if len(payload) > 200 * 1024 * 1024: raise ValueError('Sunucu kataloğu çok büyük.')
-                return json.loads(payload)
-        except (urllib.error.URLError, TimeoutError, OSError):
-            raise RuntimeError('Sunucuya ulaşılamadı. Ağ bağlantısını kontrol edip yeniden deneyin.') from None
+            payload = remote_read(
+                self.config['host'] + '/player_api.php?' + urllib.parse.urlencode(q),
+                timeout=60,
+                max_bytes=200 * 1024 * 1024,
+            )
+            return json.loads(payload.decode('utf-8-sig', errors='replace'))
         except (json.JSONDecodeError, UnicodeDecodeError):
             raise RuntimeError('Sunucu geçerli katalog verisi göndermedi.') from None
     def account(self):
@@ -276,6 +411,26 @@ def normalize_item(d, kind, cats, parent=None):
 UPSERT_ITEM = '''INSERT INTO items VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET kind=excluded.kind,provider_id=excluded.provider_id,name=excluded.name,search=excluded.search,poster=excluded.poster,category_id=excluded.category_id,category_name=excluded.category_name,year=excluded.year,rating=excluded.rating,extension=excluded.extension,added=excluded.added,extra=excluded.extra'''
 
 
+_prefetch_lock = threading.Lock()
+_prefetched_m3u = None
+
+
+def _set_prefetched_m3u(url, parsed):
+    global _prefetched_m3u
+    with _prefetch_lock:
+        _prefetched_m3u = {'url': url, 'parsed': parsed, 'ts': time.monotonic()}
+
+
+def _pop_prefetched_m3u(url):
+    global _prefetched_m3u
+    with _prefetch_lock:
+        entry = _prefetched_m3u
+        _prefetched_m3u = None
+    if entry and entry['url'] == url and time.monotonic() - entry['ts'] < 60.0:
+        return entry['parsed']
+    return None
+
+
 def sync_catalog():
     if not sync_lock.acquire(blocking=False): return
     sync_state.update(syncing=True, error=None)
@@ -303,13 +458,18 @@ def sync_catalog():
                                 item['extension'], item['added'], json.dumps(extra, ensure_ascii=False)))
         elif provider.mode == 'm3u':
             account = provider.account()
-            with remote(provider.config['m3uUrl'], timeout=45) as r:
-                raw = r.read(30 * 1024 * 1024 + 1)
-            if len(raw) > 30 * 1024 * 1024: raise ValueError('M3U listesi çok büyük.')
-            parsed = m3u.parse_m3u(raw.decode('utf-8-sig', errors='replace'))
-            if parsed['epgUrl'] and not provider.config.get('epgUrl'):
-                provider.config['discoveredEpgUrl'] = parsed['epgUrl']
-                save_config(provider.config)
+            parsed = _pop_prefetched_m3u(provider.config['m3uUrl'])
+            if parsed is None:
+                raw = remote_read(provider.config['m3uUrl'], timeout=60, max_bytes=200 * 1024 * 1024)
+                parsed = m3u.parse_m3u(raw.decode('utf-8-sig', errors='replace'))
+            if parsed.get('epgUrl') and not provider.config.get('epgUrl'):
+                try:
+                    valid_epg = validate_source_url(parsed['epgUrl'])
+                except ValueError:
+                    valid_epg = ''
+                if valid_epg:
+                    provider.config['discoveredEpgUrl'] = valid_epg
+                    save_config(provider.config)
             seen_cats = {}
             now_ts = time.time()
             for item in parsed['items']:
@@ -336,6 +496,8 @@ def sync_catalog():
                     if isinstance(d, dict):
                         row = normalize_item(d, kind, cats)
                         if row: allrows.append(row)
+        if provider.mode in ('m3u', 'xtream') and not allrows:
+            raise ValueError('Kaynakta oynatılabilir içerik bulunamadı. Mevcut katalog korundu.')
         with connect() as c:
             # Atomic replacement; favorites/progress/list references survive refreshes.
             c.execute("DELETE FROM items WHERE kind != 'episode'")
@@ -345,7 +507,14 @@ def sync_catalog():
             c.execute('INSERT OR REPLACE INTO meta VALUES(?,?)', ('catalog_updated', json.dumps(stamp())))
             c.execute('INSERT OR REPLACE INTO meta VALUES(?,?)', ('account', json.dumps(account)))
     except Exception as e:
-        sync_state['error'] = str(e) if isinstance(e, (ValueError, RuntimeError)) else 'Katalog güncellenemedi. Mevcut içerikler korundu.'
+        if isinstance(e, (ValueError, RuntimeError)):
+            sync_state['error'] = str(e)
+        elif isinstance(e, urllib.error.HTTPError):
+            sync_state['error'] = _http_error_message(e.code)
+        elif isinstance(e, (urllib.error.URLError, TimeoutError, http.client.HTTPException, OSError)):
+            sync_state['error'] = 'Kaynağa ulaşılamadı. Ağ bağlantısını kontrol edip mevcut içeriklerle devam edin.'
+        else:
+            sync_state['error'] = 'Katalog güncellenemedi. Mevcut içerikler korundu.'
     finally:
         sync_state['syncing'] = False
         sync_lock.release()
@@ -730,7 +899,8 @@ def stop_session(sid):
         connections = list(s.get('connections', ())) if s else []
         if source: connections.extend(source.get('connections', ()))
     abort_connections(connections)
-    playback.stop(sid)
+    if playback is not None:
+        playback.stop(sid)
 
 
 def stop_all():
@@ -1124,8 +1294,13 @@ class Handler(BaseHTTPRequestHandler):
         return True
     def handle_error(self, e):
         if isinstance(e, (BrokenPipeError, ConnectionResetError)): return
-        code = 400 if isinstance(e, ValueError) else (502 if isinstance(e, (RuntimeError, urllib.error.URLError, TimeoutError)) else 500)
-        message = str(e) if isinstance(e, (ValueError, RuntimeError)) else 'İşlem tamamlanamadı. Yeniden deneyin.'
+        code = 400 if isinstance(e, ValueError) else (502 if isinstance(e, (RuntimeError, urllib.error.URLError, TimeoutError, http.client.HTTPException)) else 500)
+        if isinstance(e, (ValueError, RuntimeError)):
+            message = str(e)
+        elif isinstance(e, urllib.error.HTTPError):
+            message = _http_error_message(e.code)
+        else:
+            message = 'İşlem tamamlanamadı. Yeniden deneyin.'
         payload = {'error': message}
         if isinstance(e, PlaybackError):
             if e.code == 'superseded': code = 409
@@ -1184,7 +1359,7 @@ class Handler(BaseHTTPRequestHandler):
                 if p == '/api/sports':
                     day = sports.selected_date(q.get('date', [''])[0])
                     epg_url = q.get('epgUrl', [''])[0].strip() or provider.config.get('epgUrl') or provider.config.get('discoveredEpgUrl', '')
-                    if epg_url: validate_host(epg_url)
+                    if epg_url: epg_url = validate_source_url(epg_url)
                     source_mode = q.get('source', ['auto'])[0].strip().lower() or 'auto'
                     if source_mode not in ('auto', 'sporekrani', 'xmltv'):
                         raise ValueError('Geçersiz spor rehberi kaynağı.')
@@ -1282,24 +1457,41 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({'ok': True})
             if p == '/api/settings' and method == 'POST':
                 if not self.is_local: return self.send_json({'error': 'Medya kaynağını yalnızca ana cihaz üzerinden değiştirebilirsiniz.'}, 403)
+                if sync_state['syncing']: raise ValueError('Katalog güncelleniyor. Bittikten sonra kaynağı değiştirin.')
                 source_type = str(d.get('type') or ('local' if d.get('localDir') else ('m3u' if d.get('m3uUrl') else 'xtream'))).strip().lower()
-                epg_url = validate_host(d['epgUrl']) if str(d.get('epgUrl', '')).strip() else ''
+                epg_url = validate_source_url(d['epgUrl']) if str(d.get('epgUrl', '')).strip() else ''
+                allow_lan_opt = bool(d['allowLanSources']) if 'allowLanSources' in d else None
                 if source_type == 'local':
                     local_dir = str(local_media.validate_local_dir(d.get('localDir', '')))
                     config = {'type': 'local', 'name': string(d.get('name') or 'Yerel Klasör', 80), 'localDir': local_dir, 'epgUrl': epg_url}
+                    if epg_url:
+                        with _lan_override(allow_lan_opt): safe_public_url(epg_url)
                     test_provider = Provider(config); account = test_provider.account()
                     changed = config.get('localDir') != provider.config.get('localDir') or provider.mode != 'local'
                 elif source_type == 'm3u':
-                    m3u_url = validate_host(d.get('m3uUrl', ''))
+                    m3u_url = validate_source_url(d.get('m3uUrl', ''))
                     config = {'type': 'm3u', 'name': string(d.get('name') or 'M3U Listesi', 80), 'm3uUrl': m3u_url, 'epgUrl': epg_url}
+                    if allow_lan_opt:
+                        config['allowLanSources'] = True
+                    with _lan_override(allow_lan_opt):
+                        safe_public_url(m3u_url)
+                        if epg_url: safe_public_url(epg_url)
+                        raw = remote_read(m3u_url, timeout=35, max_bytes=200 * 1024 * 1024)
+                    parsed = m3u.parse_m3u(raw.decode('utf-8-sig', errors='replace'))
+                    if not parsed['items']:
+                        raise ValueError('M3U listesinde oynatılabilir yayın veya içerik bulunamadı.')
+                    _set_prefetched_m3u(m3u_url, parsed)
                     test_provider = Provider(config); account = test_provider.account()
                     changed = config.get('m3uUrl') != provider.config.get('m3uUrl') or provider.mode != 'm3u'
                 else:
                     config = {'type': 'xtream', 'name': string(d.get('name') or 'Sunucu', 80), 'host': validate_host(d.get('host', '')), 'username': str(d.get('username') or provider.config.get('username', '')).strip()[:200], 'password': str(d.get('password') or provider.config.get('password', ''))[:200], 'epgUrl': epg_url}
+                    if allow_lan_opt:
+                        config['allowLanSources'] = True
                     if not config['username'] or not config['password']: raise ValueError('Kullanıcı adı ve şifre gerekli.')
-                    test_provider = Provider(config); account = test_provider.account()
+                    with _lan_override(allow_lan_opt):
+                        if epg_url: safe_public_url(epg_url)
+                        test_provider = Provider(config); account = test_provider.account()
                     changed = provider.mode != 'xtream' or any(config[k] != provider.config.get(k) for k in ('host', 'username', 'password'))
-                if sync_state['syncing']: raise ValueError('Katalog güncelleniyor. Bittikten sonra kaynağı değiştirin.')
                 if changed:
                     stop_all()
                     with connect() as c:
@@ -1371,8 +1563,9 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json({'ok': True, **(window or {})})
                 if method == 'POST' and p.endswith('/pause'):
                     if not s: return self.send_json({'error': 'Oynatma oturumu sona erdi.'}, 410)
-                    if s.get('sourceToken'): playback.pause(sid, bool(d.get('paused')))
-                    return self.send_json({'ok': True})
+                    desired = bool(d.get('paused'))
+                    pause_state = playback.pause(sid, desired) if s.get('sourceToken') else {'paused': desired, 'processPaused': False, 'softPause': False}
+                    return self.send_json({'ok': True, **(pause_state or {})})
             if p == '/api/track-preferences' and method == 'POST':
                 iid = str(d.get('id', '')); get_row(iid)
                 return self.send_json({'ok': True, 'selection': save_track_preferences(iid, d)})
@@ -1437,11 +1630,11 @@ class Handler(BaseHTTPRequestHandler):
             if owner is not None: owner['source_error'] = {'error': message, 'code': code}
         return PlaybackError(message, code=code)
     def serve_sidecar_subtitle(self, tail):
+        parts = tail.strip('/').split('/')
+        if len(parts) != 2 or not parts[1].endswith('.vtt') or '..' in parts:
+            return self.send_json({'error': 'Altyazı adresi geçersiz.'}, 404)
         if provider.mode != 'local':
             return self.send_json({'error': 'Yerel altyazı yalnızca yerel klasör modunda kullanılabilir.'}, 403)
-        parts = tail.strip('/').split('/')
-        if len(parts) != 2 or not parts[1].endswith('.vtt'):
-            return self.send_json({'error': 'Altyazı adresi geçersiz.'}, 404)
         iid = urllib.parse.unquote(parts[0])
         try:
             idx = int(parts[1][:-4])
@@ -1518,8 +1711,8 @@ class Handler(BaseHTTPRequestHandler):
             e.close()
             if e.code == 416:
                 return self.send_json({'error': 'Bu zaman aralığı sunucu tarafından desteklenmiyor.'}, 416)
-            raise self.source_failure('IPTV sağlayıcısı bu içeriğin video bağlantısını açamadı. Daha sonra yeniden deneyin.', 'upstream_unavailable', sid, source_token) from None
-        except (urllib.error.URLError, TimeoutError, OSError):
+            raise self.source_failure(_http_error_message(e.code), 'upstream_unavailable', sid, source_token) from None
+        except (urllib.error.URLError, TimeoutError, http.client.HTTPException, OSError):
             raise self.source_failure('IPTV video sunucusuna ulaşılamadı. Daha sonra yeniden deneyin.', 'upstream_unavailable', sid, source_token) from None
         with upstream as r:
             with resource_lock:
@@ -1533,15 +1726,23 @@ class Handler(BaseHTTPRequestHandler):
                     owner['connections'].add(r)
             typ = r.headers.get('Content-Type', 'application/octet-stream').split(';')[0]
             if typ.lower() in ('text/html', 'application/xhtml+xml', 'image/svg+xml'):
-                if not r.read(1):
+                try:
+                    has_body = bool(r.read(1))
+                except (http.client.HTTPException, OSError, TimeoutError):
+                    has_body = False
+                if not has_body:
                     raise self.source_failure('IPTV sağlayıcısı bu içerik için video göndermiyor (boş yanıt). Daha sonra yeniden deneyin.', 'upstream_empty', sid, source_token)
                 raise self.source_failure('IPTV sağlayıcısı video yerine bir hata sayfası döndürdü. Daha sonra yeniden deneyin.', 'upstream_unavailable', sid, source_token)
             final_url = r.geturl()
             is_hls = 'mpegurl' in typ.lower() or urllib.parse.urlsplit(final_url).path.endswith('.m3u8')
             if sid and is_hls:
-                content = r.read(3 * 1024 * 1024 + 1)
-                if len(content) > 3 * 1024 * 1024: raise RuntimeError('Yayın listesi çok büyük.')
-                text = content.decode('utf-8-sig')
+                try:
+                    content = r.read(3 * 1024 * 1024 + 1)
+                    if len(content) > 3 * 1024 * 1024: raise RuntimeError('Yayın listesi çok büyük.')
+                    content = _gunzip_limited(content, 3 * 1024 * 1024, r.headers.get('Content-Encoding', ''))
+                except (http.client.HTTPException, OSError, TimeoutError, zlib.error, EOFError):
+                    raise self.source_failure('IPTV yayın listesi okunamadı. Daha sonra yeniden deneyin.', 'upstream_unavailable', sid, source_token) from None
+                text = content.decode('utf-8-sig', errors='replace')
                 if not text.lstrip().startswith('#EXTM3U'): raise RuntimeError('Sunucu geçerli bir HLS yayını göndermedi.')
                 def rewrite(match): return 'URI="' + resource_for(sid, urllib.parse.urljoin(final_url, match[1])) + '"'
                 lines = []
@@ -1555,23 +1756,29 @@ class Handler(BaseHTTPRequestHandler):
                 return
             extra = {k: r.headers[k] for k in ('Content-Range', 'Accept-Ranges', 'ETag', 'Last-Modified') if r.headers.get(k)}
             length = r.headers.get('Content-Length')
-            first_block = r.read(1) if self.command != 'HEAD' else b''
+            try:
+                first_block = r.read(1) if self.command != 'HEAD' else b''
+            except (http.client.HTTPException, OSError, TimeoutError):
+                raise self.source_failure('IPTV video sunucusuna ulaşılamadı. Daha sonra yeniden deneyin.', 'upstream_unavailable', sid, source_token) from None
             if self.command != 'HEAD' and not first_block:
                 raise self.source_failure('IPTV sağlayıcısı bu içerik için video göndermiyor (boş yanıt). Daha sonra yeniden deneyin.', 'upstream_empty', sid, source_token)
             self.headers_out(r.status, typ, length, extra)
             if self.command == 'HEAD': return
-            self.wfile.write(first_block)
-            while True:
-                if sid:
-                    with resource_lock:
-                        session = media_sessions.get(sid)
-                        if not session: break
-                        session['touched'] = time.monotonic()
-                # Forward available bytes without waiting for a full 128 KiB
-                # block, especially on slower live feeds.
-                block = r.read1(64 * 1024) if hasattr(r, 'read1') else r.read(64 * 1024)
-                if not block: break
-                self.wfile.write(block)
+            try:
+                self.wfile.write(first_block)
+                while True:
+                    if sid:
+                        with resource_lock:
+                            session = media_sessions.get(sid)
+                            if not session: break
+                            session['touched'] = time.monotonic()
+                    # Forward available bytes without waiting for a full 128 KiB
+                    # block, especially on slower live feeds.
+                    block = r.read1(64 * 1024) if hasattr(r, 'read1') else r.read(64 * 1024)
+                    if not block: break
+                    self.wfile.write(block)
+            except (http.client.HTTPException, OSError, TimeoutError):
+                return
     def media(self, p):
         parts = p.strip('/').split('/')
         if len(parts) < 3: raise ValueError('Yayın adresi geçersiz.')
@@ -1704,7 +1911,7 @@ def run_server(
     server = ThreadingHTTPServer((host, int(port)), Handler)
     server.daemon_threads = True
     HTTP_PORT = int(server.server_address[1])
-    (DATA / 'server.pid').write_text(str(os.getpid()))
+    (DATA / 'server.pid').write_text(str(os.getpid()), encoding='utf-8')
     if stop_event is None:
         stop_event = threading.Event()
 
@@ -1751,7 +1958,7 @@ def run_server(
         playback.close()
         server.server_close()
         with contextlib.suppress(OSError):
-            if (DATA / 'server.pid').read_text().strip() == str(os.getpid()):
+            if (DATA / 'server.pid').read_text(encoding='utf-8', errors='replace').strip() == str(os.getpid()):
                 (DATA / 'server.pid').unlink()
 
 

@@ -73,7 +73,7 @@ public struct SearchView: View {
                                         onToggleFavorite: { store.toggleFavorite(item) }
                                     )
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(MavieInteractiveCardButtonStyle())
                             }
                         }
                         .padding(16)
@@ -81,7 +81,7 @@ public struct SearchView: View {
                 }
             }
             .padding(.top, 10)
-            .background(MavieTheme.bg.ignoresSafeArea())
+            .background(MavieTheme.cinemaBackdrop.ignoresSafeArea())
             .navigationTitle("Ara")
         }
     }
@@ -96,12 +96,9 @@ public struct SearchView: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 14)
                 .frame(minHeight: 44)
-                .background(
-                    Capsule()
-                        .fill(active ? AnyShapeStyle(MavieTheme.brandGradient) : AnyShapeStyle(MavieTheme.panel))
-                        .overlay(Capsule().strokeBorder(MavieTheme.border, lineWidth: 1))
-                )
+                .mavieGlassPill(selected: active)
         }
+        .buttonStyle(MavieInteractiveCardButtonStyle())
         .accessibilityLabel("\(title) türünü filtrele")
     }
 }

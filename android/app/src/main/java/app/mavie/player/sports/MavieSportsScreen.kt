@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
@@ -16,7 +17,6 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
@@ -24,16 +24,21 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import app.mavie.player.ui.MavieCoral
+import app.mavie.player.ui.MavieCyanDot
+import app.mavie.player.ui.MavieGradientButton
 import app.mavie.player.ui.MavieMuted
+import app.mavie.player.ui.MaviePurple
+import app.mavie.player.ui.MavieSpecularBorderBrush
 import app.mavie.player.ui.MavieTooltipIconButton
+import app.mavie.player.ui.MavieTurquoise
+import app.mavie.player.ui.mavieGlassSurface
 import kotlinx.coroutines.CancellationException
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-private val Card = RoundedCornerShape(6.dp)
+private val Card = RoundedCornerShape(18.dp)
 private val DateLabel = DateTimeFormatter.ofPattern("d MMM EEE", Locale.forLanguageTag("tr-TR"))
 private val Clock = DateTimeFormatter.ofPattern("HH:mm")
 
@@ -105,7 +110,7 @@ fun MavieSportsScreen(
     ) {
         item("intro") {
             Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 10.dp)) {
-                Text("MAVIE SPOR EKRANI", color = MavieCoral, fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 2.sp)
+                Text("MAVIE SPOR EKRANI", color = MavieTurquoise, fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 2.sp)
                 Text("Spor Ekranı", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold)
                 Text("Türkiye saatine göre günün maçları, yarışları ve canlı kanallar", color = MavieMuted, fontSize = 13.sp)
                 if (epgUrl.isNotBlank()) {
@@ -164,11 +169,15 @@ fun MavieSportsScreen(
             if (spotlight != null) item("spotlight") {
                 Column(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 9.dp)
-                        .background(Brush.horizontalGradient(listOf(Color(0xFF1A1436), Color(0xFF112A46))), Card)
-                        .border(1.dp, Color(0xFF4C3A8F), Card).padding(16.dp),
+                        .mavieGlassSurface(
+                            RoundedCornerShape(22.dp),
+                            topColor = Color(0xCC221B48),
+                            bottomColor = Color(0xB811253E),
+                        )
+                        .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
-                    Text("ÖNE ÇIKAN KARŞILAŞMA", color = MavieCoral, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                    Text("ÖNE ÇIKAN KARŞILAŞMA", color = MavieCyanDot, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                     Text(spotlight.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
                     Text("${spotlight.time} · ${spotlight.league.ifBlank { spotlight.sport }}", color = Color(0xFFDDDDDD), fontSize = 13.sp)
                     ChannelButtons(spotlight, channels, onWatch)
@@ -187,9 +196,15 @@ fun MavieSportsScreen(
                     if (events.isNotEmpty()) OutlinedTextField(
                         value = search, onValueChange = { search = it }, singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("Maç, takım veya kanal ara") },
-                        leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                        shape = Card,
+                        placeholder = { Text("Maç, takım veya kanal ara", color = MavieMuted) },
+                        leadingIcon = { Icon(Icons.Outlined.Search, null, tint = MavieMuted) },
+                        shape = RoundedCornerShape(16.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            unfocusedContainerColor = Color(0x99161D31),
+                            focusedContainerColor = Color(0xCC1B243D),
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.14f),
+                            focusedBorderColor = MavieTurquoise,
+                        ),
                     )
                 }
             }
@@ -242,8 +257,22 @@ fun MavieSportsScreen(
 @Composable
 private fun SportsChip(label: String, selected: Boolean, onClick: () -> Unit) {
     FilterChip(
-        selected, onClick, label = { Text(label, maxLines = 1) }, shape = RoundedCornerShape(32.dp),
-        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Color.White, selectedLabelColor = Color.Black),
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label, maxLines = 1) },
+        shape = CircleShape,
+        colors = FilterChipDefaults.filterChipColors(
+            containerColor = Color(0x88161E35),
+            labelColor = MavieMuted,
+            selectedContainerColor = MaviePurple.copy(alpha = 0.90f),
+            selectedLabelColor = Color.White,
+        ),
+        border = FilterChipDefaults.filterChipBorder(
+            enabled = true,
+            selected = selected,
+            borderColor = Color.White.copy(alpha = 0.14f),
+            selectedBorderColor = MavieCyanDot.copy(alpha = 0.7f),
+        ),
     )
 }
 
@@ -254,22 +283,23 @@ private fun ChannelButtons(event: SportBroadcast, matches: Map<String, String>?,
         event.channels.forEach { channel ->
             val match = matches?.get(channel)
             if (match != null) {
-                Button(
+                MavieGradientButton(
                     onClick = { onWatch(match) },
                     modifier = Modifier.defaultMinSize(minHeight = 48.dp)
                         .semantics { contentDescription = "${event.title} · $channel kanalını aç" },
-                    shape = Card, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF1F1F1), contentColor = Color.Black),
+                    shape = RoundedCornerShape(14.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                 ) {
-                    Icon(Icons.Filled.PlayArrow, null, Modifier.size(15.dp))
+                    Icon(Icons.Filled.PlayArrow, null, Modifier.size(15.dp), tint = Color.White)
                     Spacer(Modifier.width(5.dp))
-                    Text(channel, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text(channel, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
                 }
             } else {
                 Row(
                     Modifier.padding(vertical = 6.dp)
-                        .border(1.dp, Color(0xFF4B5163), Card)
-                        .padding(horizontal = 8.dp, vertical = 7.dp)
+                        .background(Color(0x66161D31), RoundedCornerShape(12.dp))
+                        .border(1.dp, MavieSpecularBorderBrush, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 9.dp, vertical = 7.dp)
                         .semantics(mergeDescendants = true) {
                             contentDescription = "$channel (IPTV listende bulunamadı)"
                         },

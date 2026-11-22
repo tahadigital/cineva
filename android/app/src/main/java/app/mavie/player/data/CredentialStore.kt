@@ -13,8 +13,14 @@ import javax.crypto.spec.GCMParameterSpec
 
 internal data class SavedAccount(val settings: ConnectionSettings, val info: AccountInfo)
 
+internal interface AccountStore {
+    fun load(): SavedAccount?
+    fun save(account: SavedAccount)
+    fun clear()
+}
+
 /** The encryption key cannot be exported from Android's app-specific Keystore. */
-internal class CredentialStore(context: Context) {
+internal class CredentialStore(context: Context) : AccountStore {
     private val preferences = context.getSharedPreferences("mavie_private_connection", Context.MODE_PRIVATE)
     private val alias = "mavie.connection.v1"
 
@@ -32,7 +38,7 @@ internal class CredentialStore(context: Context) {
         }.generateKey()
     }
 
-    fun save(account: SavedAccount) {
+    override fun save(account: SavedAccount) {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
         val plain = JSONObject()
             .put("host", account.settings.host)
@@ -56,7 +62,7 @@ internal class CredentialStore(context: Context) {
         if (!saved) throw IptvException("Bağlantı bu cihazda güvenli biçimde kaydedilemedi.")
     }
 
-    fun load(): SavedAccount? {
+    override fun load(): SavedAccount? {
         val iv = preferences.getString("iv", null) ?: return null
         val payload = preferences.getString("payload", null) ?: return null
         return try {
@@ -95,7 +101,7 @@ internal class CredentialStore(context: Context) {
         }
     }
 
-    fun clear() {
+    override fun clear() {
         preferences.edit().clear().commit()
     }
 }

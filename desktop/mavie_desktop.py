@@ -35,6 +35,7 @@ def configure_utf8_stdio() -> None:
 configure_utf8_stdio()
 
 ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parents[1]))
+_LOCAL_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 def show_error_dialog(title: str, message: str) -> None:
@@ -121,8 +122,9 @@ def wait_for_health(
         if startup_error or not server_thread.is_alive():
             return False
         try:
-            with urllib.request.urlopen(url + '/api/health', timeout=0.5) as r:
-                data = json.load(r)
+            with _LOCAL_OPENER.open(url + '/api/health', timeout=0.5) as r:
+                raw = r.read(65536).decode('utf-8', errors='replace')
+                data = json.loads(raw)
                 if data.get('app') == 'mavie' and data.get('ok') is True:
                     return True
         except Exception:

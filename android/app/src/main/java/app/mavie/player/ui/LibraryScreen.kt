@@ -3,9 +3,13 @@ package app.mavie.player.ui
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -74,25 +78,34 @@ fun MavieLibraryScreen(
     val navTabs = remember { listOf(LibraryTab.HOME, LibraryTab.SPORTS, LibraryTab.SEARCH, LibraryTab.FAVORITES) }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val isTablet = maxWidth >= 600.dp
+        val isCompactTopBar = maxWidth < 400.dp
         Scaffold(
             containerColor = MavieBackground,
             bottomBar = {
                 if (!isTablet) {
-                    NavigationBar(containerColor = Color(0xFF0C0E13), tonalElevation = 0.dp, modifier = Modifier.heightIn(max = 86.dp)) {
-                        navTabs.forEach { tab ->
-                            val selected = state.tab == tab ||
-                                tab == LibraryTab.FAVORITES && state.tab == LibraryTab.PLAYLISTS ||
-                                tab == LibraryTab.HOME && state.tab in listOf(LibraryTab.FILMS, LibraryTab.SERIES, LibraryTab.LIVE)
-                            NavigationBarItem(
-                                selected = selected, onClick = { onTab(tab) },
-                                icon = {
-                                    if (tab == LibraryTab.FAVORITES) ProfileAvatar(Modifier.size(24.dp))
-                                    else Icon(if (tab == LibraryTab.HOME && selected) Icons.Filled.Home else tabIcon(tab), null, Modifier.size(24.dp))
-                                },
-                                label = { Text(tab.title, fontSize = 10.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, maxLines = 1) },
-                                colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.White, selectedTextColor = Color.White,
-                                    indicatorColor = Color.Transparent, unselectedIconColor = MavieMuted, unselectedTextColor = MavieMuted),
-                            )
+                    Column(Modifier.fillMaxWidth().background(Color(0xD90E1324))) {
+                        HorizontalDivider(thickness = 1.dp, color = Color.White.copy(alpha = 0.12f))
+                        NavigationBar(containerColor = Color.Transparent, tonalElevation = 0.dp, modifier = Modifier.heightIn(max = 86.dp)) {
+                            navTabs.forEach { tab ->
+                                val selected = state.tab == tab ||
+                                    tab == LibraryTab.FAVORITES && state.tab == LibraryTab.PLAYLISTS ||
+                                    tab == LibraryTab.HOME && state.tab in listOf(LibraryTab.FILMS, LibraryTab.SERIES, LibraryTab.LIVE)
+                                NavigationBarItem(
+                                    selected = selected, onClick = { onTab(tab) },
+                                    icon = {
+                                        if (tab == LibraryTab.FAVORITES) ProfileAvatar(activeProfileColor, selected, Modifier.size(24.dp))
+                                        else Icon(if (tab == LibraryTab.HOME && selected) Icons.Filled.Home else tabIcon(tab), null, Modifier.size(24.dp))
+                                    },
+                                    label = { Text(tab.title, fontSize = 10.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, maxLines = 1) },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = Color.White,
+                                        selectedTextColor = Color.White,
+                                        indicatorColor = MaviePurple.copy(alpha = 0.24f),
+                                        unselectedIconColor = MavieMuted,
+                                        unselectedTextColor = MavieMuted,
+                                    ),
+                                )
+                            }
                         }
                     }
                 }
@@ -100,99 +113,144 @@ fun MavieLibraryScreen(
         ) { padding ->
             Row(Modifier.fillMaxSize().padding(padding)) {
                 if (isTablet) {
-                    NavigationRail(containerColor = Color(0xFF0C0E13), modifier = Modifier.fillMaxHeight().padding(top = 10.dp)) {
-                        navTabs.forEach { tab ->
-                            val selected = state.tab == tab ||
-                                tab == LibraryTab.FAVORITES && state.tab == LibraryTab.PLAYLISTS ||
-                                tab == LibraryTab.HOME && state.tab in listOf(LibraryTab.FILMS, LibraryTab.SERIES, LibraryTab.LIVE)
-                            NavigationRailItem(
-                                selected = selected, onClick = { onTab(tab) },
-                                icon = {
-                                    if (tab == LibraryTab.FAVORITES) ProfileAvatar(Modifier.size(24.dp))
-                                    else Icon(if (tab == LibraryTab.HOME && selected) Icons.Filled.Home else tabIcon(tab), null, Modifier.size(24.dp))
-                                },
-                                label = { Text(tab.title, fontSize = 10.sp, maxLines = 1) },
-                                colors = NavigationRailItemDefaults.colors(selectedIconColor = Color.White, selectedTextColor = Color.White,
-                                    indicatorColor = MavieCoral.copy(alpha = 0.16f), unselectedIconColor = MavieMuted, unselectedTextColor = MavieMuted),
-                            )
+                    Row(Modifier.fillMaxHeight().background(Color(0xD90E1324))) {
+                        NavigationRail(containerColor = Color.Transparent, modifier = Modifier.fillMaxHeight().padding(top = 10.dp)) {
+                            navTabs.forEach { tab ->
+                                val selected = state.tab == tab ||
+                                    tab == LibraryTab.FAVORITES && state.tab == LibraryTab.PLAYLISTS ||
+                                    tab == LibraryTab.HOME && state.tab in listOf(LibraryTab.FILMS, LibraryTab.SERIES, LibraryTab.LIVE)
+                                NavigationRailItem(
+                                    selected = selected, onClick = { onTab(tab) },
+                                    icon = {
+                                        if (tab == LibraryTab.FAVORITES) ProfileAvatar(activeProfileColor, selected, Modifier.size(24.dp))
+                                        else Icon(if (tab == LibraryTab.HOME && selected) Icons.Filled.Home else tabIcon(tab), null, Modifier.size(24.dp))
+                                    },
+                                    label = { Text(tab.title, fontSize = 10.sp, maxLines = 1) },
+                                    colors = NavigationRailItemDefaults.colors(
+                                        selectedIconColor = Color.White,
+                                        selectedTextColor = Color.White,
+                                        indicatorColor = MaviePurple.copy(alpha = 0.24f),
+                                        unselectedIconColor = MavieMuted,
+                                        unselectedTextColor = MavieMuted,
+                                    ),
+                                )
+                            }
                         }
+                        VerticalDivider(thickness = 1.dp, color = Color.White.copy(alpha = 0.12f))
                     }
                 }
                 Column(Modifier.weight(1f).fillMaxHeight()) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(start = 16.dp, end = 6.dp, top = 3.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        if (state.tab in listOf(LibraryTab.HOME, LibraryTab.FILMS, LibraryTab.SERIES, LibraryTab.LIVE)) {
-                            MavieWordmark(Modifier.weight(1f))
-                        } else {
-                            Text(
-                                if (state.tab == LibraryTab.PLAYLISTS) LibraryTab.FAVORITES.title else state.tab.title,
-                                Modifier.weight(1f), fontSize = 25.sp, fontWeight = FontWeight.ExtraBold, color = Color.White,
+                    Column(Modifier.fillMaxWidth().background(Color(0xBA0D1222))) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(
+                                start = if (isCompactTopBar) 12.dp else 16.dp,
+                                end = if (isCompactTopBar) 4.dp else 6.dp,
+                                top = if (isCompactTopBar) 4.dp else 3.dp,
+                                bottom = 4.dp,
+                            ),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            if (state.tab in listOf(LibraryTab.HOME, LibraryTab.FILMS, LibraryTab.SERIES, LibraryTab.LIVE)) {
+                                MavieWordmark(Modifier.weight(1f), compact = isCompactTopBar)
+                            } else {
+                                Text(
+                                    if (state.tab == LibraryTab.PLAYLISTS) LibraryTab.FAVORITES.title else state.tab.title,
+                                    Modifier.weight(1f),
+                                    fontSize = if (isCompactTopBar) 20.sp else 24.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            MavieTooltipIconButton(
+                                label = "Rastgele içerik seç",
+                                icon = Icons.Rounded.Shuffle,
+                                onClick = onSurprise,
+                            )
+                            MavieTooltipIconButton(
+                                label = "Cihazdan video aç",
+                                icon = Icons.Rounded.FolderOpen,
+                                onClick = onOpenLocalFile,
+                            )
+                            if (state.tab != LibraryTab.SEARCH) {
+                                MavieTooltipIconButton(
+                                    label = "Kütüphanede ara",
+                                    icon = Icons.Rounded.Search,
+                                    onClick = { onTab(LibraryTab.SEARCH) },
+                                )
+                            }
+                            val profileTint = runCatching { Color(android.graphics.Color.parseColor(activeProfileColor)) }.getOrDefault(MaviePurple)
+                            TooltipBox(
+                                positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                                tooltip = { PlainTooltip { Text("Profil değiştir: $activeProfileName") } },
+                                state = rememberTooltipState(),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .clip(CircleShape)
+                                        .clickable(role = Role.Button, onClickLabel = "Profil seç", onClick = onOpenProfiles)
+                                        .semantics(mergeDescendants = true) {
+                                            contentDescription = "Profil değiştir: $activeProfileName"
+                                        },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Box(
+                                        Modifier
+                                            .size(32.dp)
+                                            .clip(CircleShape)
+                                            .background(profileTint)
+                                            .border(1.5.dp, Color.White.copy(alpha = 0.45f), CircleShape),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(activeProfileName.take(1).uppercase(), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    }
+                                }
+                            }
+                            MavieTooltipIconButton(
+                                label = "Ayarlar",
+                                icon = Icons.Rounded.Settings,
+                                onClick = onSettings,
                             )
                         }
                         if (state.refreshing) {
-                            CircularProgressIndicator(Modifier.padding(12.dp).size(19.dp), color = MavieCoral, strokeWidth = 2.dp)
-                        }
-                        MavieTooltipIconButton(
-                            label = "Rastgele içerik seç",
-                            icon = Icons.Rounded.Shuffle,
-                            onClick = onSurprise,
-                        )
-                        MavieTooltipIconButton(
-                            label = "Cihazdan video aç",
-                            icon = Icons.Rounded.FolderOpen,
-                            onClick = onOpenLocalFile,
-                        )
-                        if (state.tab != LibraryTab.SEARCH) {
-                            MavieTooltipIconButton(
-                                label = "Kütüphanede ara",
-                                icon = Icons.Rounded.Search,
-                                onClick = { onTab(LibraryTab.SEARCH) },
+                            LinearProgressIndicator(
+                                modifier = Modifier.fillMaxWidth().height(2.dp),
+                                color = MavieTurquoise,
+                                trackColor = Color.Transparent,
                             )
+                        } else {
+                            HorizontalDivider(thickness = 1.dp, color = Color.White.copy(alpha = 0.08f))
                         }
-                        val profileTint = runCatching { Color(android.graphics.Color.parseColor(activeProfileColor)) }.getOrDefault(MavieCoral)
-                        TooltipBox(
-                            positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-                            tooltip = { PlainTooltip { Text("Profil değiştir: $activeProfileName") } },
-                            state = rememberTooltipState(),
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(CircleShape)
-                                    .clickable(role = Role.Button, onClickLabel = "Profil seç", onClick = onOpenProfiles)
-                                    .semantics(mergeDescendants = true) {
-                                        contentDescription = "Profil değiştir: $activeProfileName"
-                                    },
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Box(
-                                    Modifier
-                                        .size(32.dp)
-                                        .clip(CircleShape)
-                                        .background(profileTint)
-                                        .border(1.5.dp, Color.White.copy(alpha = 0.45f), CircleShape),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text(activeProfileName.take(1).uppercase(), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                }
-                            }
-                        }
-                        MavieTooltipIconButton(
-                            label = "Ayarlar",
-                            icon = Icons.Rounded.Settings,
-                            onClick = onSettings,
-                        )
                     }
+                    val glassChipColors = FilterChipDefaults.filterChipColors(
+                        containerColor = Color(0x80182038),
+                        labelColor = MavieMuted,
+                        selectedContainerColor = MaviePurple.copy(alpha = 0.88f),
+                        selectedLabelColor = Color.White,
+                    )
+                    val glassChipBorder = FilterChipDefaults.filterChipBorder(
+                        enabled = true,
+                        selected = false,
+                        borderColor = Color.White.copy(alpha = 0.14f),
+                        selectedBorderColor = MavieCyanDot.copy(alpha = 0.7f),
+                    )
                     if (state.tab in listOf(LibraryTab.HOME, LibraryTab.FILMS, LibraryTab.SERIES, LibraryTab.LIVE)) {
-                        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(listOf(LibraryTab.SERIES, LibraryTab.FILMS, LibraryTab.LIVE), key = { it.name }) { tab ->
                                 FilterChip(
                                     selected = state.tab == tab,
                                     onClick = { onTab(if (state.tab == tab) LibraryTab.HOME else tab) },
                                     label = { Text(tab.title, fontSize = 13.sp) },
                                     shape = CircleShape,
+                                    colors = glassChipColors,
+                                    border = FilterChipDefaults.filterChipBorder(
+                                        enabled = true,
+                                        selected = state.tab == tab,
+                                        borderColor = Color.White.copy(alpha = 0.14f),
+                                        selectedBorderColor = MavieCyanDot.copy(alpha = 0.7f),
+                                    ),
                                 )
                             }
                         }
@@ -200,8 +258,8 @@ fun MavieLibraryScreen(
                     if (state.tab == LibraryTab.SEARCH) {
                         OutlinedTextField(
                             value = state.query, onValueChange = onQuery,
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                            placeholder = { Text("Film, dizi veya kanal ara", fontSize = 14.sp) },
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                            placeholder = { Text("Film, dizi veya kanal ara", fontSize = 14.sp, color = MavieMuted) },
                             leadingIcon = { Icon(Icons.Outlined.Search, null, Modifier.size(22.dp), tint = MavieMuted) },
                             trailingIcon = if (state.query.isNotEmpty()) {
                                 {
@@ -210,29 +268,74 @@ fun MavieLibraryScreen(
                                     }
                                 }
                             } else null,
-                            singleLine = true, shape = RoundedCornerShape(6.dp),
+                            singleLine = true, shape = RoundedCornerShape(16.dp),
                             colors = OutlinedTextFieldDefaults.colors(
-                                unfocusedContainerColor = Color(0xFF2D2D2D),
-                                focusedContainerColor = Color(0xFF2D2D2D),
-                                unfocusedBorderColor = Color.Transparent,
-                                focusedBorderColor = Color.White.copy(alpha = .34f),
+                                unfocusedContainerColor = Color(0x99161D31),
+                                focusedContainerColor = Color(0xCC1B243D),
+                                unfocusedBorderColor = Color.White.copy(alpha = 0.14f),
+                                focusedBorderColor = MavieTurquoise,
                             ),
                         )
-                        Spacer(Modifier.height(9.dp))
+                        Spacer(Modifier.height(6.dp))
                     }
                     if (state.tab in listOf(LibraryTab.FAVORITES, LibraryTab.PLAYLISTS) && state.query.isBlank()) {
-                        Row(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FilterChip(selected = state.tab == LibraryTab.FAVORITES, onClick = { onTab(LibraryTab.FAVORITES) }, label = { Text("Favorilerim") })
-                            FilterChip(selected = state.tab == LibraryTab.PLAYLISTS, onClick = { onTab(LibraryTab.PLAYLISTS) }, label = { Text("Listelerim") })
+                        Row(Modifier.padding(horizontal = 20.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = state.tab == LibraryTab.FAVORITES,
+                                onClick = { onTab(LibraryTab.FAVORITES) },
+                                label = { Text("Favorilerim") },
+                                shape = CircleShape,
+                                colors = glassChipColors,
+                                border = FilterChipDefaults.filterChipBorder(
+                                    enabled = true,
+                                    selected = state.tab == LibraryTab.FAVORITES,
+                                    borderColor = Color.White.copy(alpha = 0.14f),
+                                    selectedBorderColor = MavieCyanDot.copy(alpha = 0.7f),
+                                ),
+                            )
+                            FilterChip(
+                                selected = state.tab == LibraryTab.PLAYLISTS,
+                                onClick = { onTab(LibraryTab.PLAYLISTS) },
+                                label = { Text("Listelerim") },
+                                shape = CircleShape,
+                                colors = glassChipColors,
+                                border = FilterChipDefaults.filterChipBorder(
+                                    enabled = true,
+                                    selected = state.tab == LibraryTab.PLAYLISTS,
+                                    borderColor = Color.White.copy(alpha = 0.14f),
+                                    selectedBorderColor = MavieCyanDot.copy(alpha = 0.7f),
+                                ),
+                            )
                         }
                     }
                     if (state.tab != LibraryTab.HOME && state.tab != LibraryTab.PLAYLISTS && state.categories.isNotEmpty()) {
-                        LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            item("all") { FilterChip(selected = state.selectedCategoryId.isBlank(), onClick = { onCategory("") }, label = { Text("Tümü") }) }
+                        LazyRow(contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            item("all") {
+                                FilterChip(
+                                    selected = state.selectedCategoryId.isBlank(),
+                                    onClick = { onCategory("") },
+                                    label = { Text("Tümü") },
+                                    shape = CircleShape,
+                                    colors = glassChipColors,
+                                    border = glassChipBorder,
+                                )
+                            }
                             items(state.categories, key = { it.id }) { category ->
-                                FilterChip(selected = category.id == state.selectedCategoryId, onClick = { onCategory(category.id) }, label = {
-                                    Text(category.title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 230.dp))
-                                })
+                                FilterChip(
+                                    selected = category.id == state.selectedCategoryId,
+                                    onClick = { onCategory(category.id) },
+                                    shape = CircleShape,
+                                    colors = glassChipColors,
+                                    border = FilterChipDefaults.filterChipBorder(
+                                        enabled = true,
+                                        selected = category.id == state.selectedCategoryId,
+                                        borderColor = Color.White.copy(alpha = 0.14f),
+                                        selectedBorderColor = MavieCyanDot.copy(alpha = 0.7f),
+                                    ),
+                                    label = {
+                                        Text(category.title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 230.dp))
+                                    },
+                                )
                             }
                         }
                     }
@@ -269,9 +372,20 @@ private fun tabIcon(tab: LibraryTab): ImageVector = when (tab) {
 }
 
 @Composable
-private fun ProfileAvatar(modifier: Modifier = Modifier) {
-    Box(modifier.clip(RoundedCornerShape(4.dp)).background(Color(0xFF177784)), contentAlignment = Alignment.Center) {
-        Icon(Icons.Outlined.Person, null, tint = Color.White, modifier = Modifier.fillMaxSize(.84f))
+private fun ProfileAvatar(profileColor: String, selected: Boolean, modifier: Modifier = Modifier) {
+    val parsedColor = runCatching { Color(android.graphics.Color.parseColor(profileColor)) }.getOrNull()
+    val shape = RoundedCornerShape(8.dp)
+    Box(
+        modifier
+            .clip(shape)
+            .let { mod ->
+                if (parsedColor != null) mod.background(parsedColor)
+                else mod.background(MavieBrandDiagonalGradient)
+            }
+            .border(1.dp, Color.White.copy(alpha = if (selected) 0.7f else 0.3f), shape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Icons.Outlined.Person, null, tint = Color.White, modifier = Modifier.fillMaxSize(.82f))
     }
 }
 
@@ -316,13 +430,12 @@ private fun HomeContent(
                                     .height(6.dp)
                                     .width(dotWidth)
                                     .clip(CircleShape)
-                                    .background(if (active) MavieCoral else Color.White.copy(alpha = 0.28f)),
+                                    .background(if (active) MavieCyanDot else Color.White.copy(alpha = 0.28f)),
                             )
                         }
                     }
-                    Surface(
-                        color = MaviePanel,
-                        shape = CircleShape,
+                    Box(
+                        Modifier.mavieGlassSurface(CircleShape, topColor = MavieGlassPillFill, bottomColor = MavieGlassFillBottom),
                     ) {
                         Text(
                             text = "${pager.currentPage + 1} / ${state.showcase.size}",
@@ -383,19 +496,32 @@ private fun HeroCard(media: UiMedia, onMedia: (UiMedia) -> Unit, onPlay: (UiMedi
     BoxWithConstraints(Modifier.padding(horizontal = 16.dp).fillMaxWidth()) {
         val wide = maxWidth > 580.dp
         val heroHeight = if (wide) 405.dp else (maxWidth * 1.23f).coerceIn(360.dp, 490.dp)
+        val coverInteraction = remember { MutableInteractionSource() }
+        val coverFocused by coverInteraction.collectIsFocusedAsState()
         Card(
-            shape = RoundedCornerShape(9.dp),
+            shape = RoundedCornerShape(24.dp),
             modifier = Modifier.fillMaxWidth().height(heroHeight),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = .16f)),
+            border = BorderStroke(
+                width = if (coverFocused) 2.dp else 1.dp,
+                brush = if (coverFocused) MavieBrandDiagonalGradient else MavieSpecularBorderBrush,
+            ),
             colors = CardDefaults.cardColors(containerColor = MaviePanel),
         ) {
             Box(Modifier.fillMaxSize()) {
-                PosterArt(media, Modifier.fillMaxSize().clickable(onClickLabel = "Ayrıntılar") { onMedia(media) }, backdrop = wide)
+                PosterArt(
+                    media,
+                    Modifier.fillMaxSize().clickable(
+                        interactionSource = coverInteraction,
+                        indication = LocalIndication.current,
+                        onClickLabel = "Ayrıntılar",
+                    ) { onMedia(media) },
+                    backdrop = wide,
+                )
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
                     0f to Color.Transparent, .42f to Color.Transparent,
-                    .75f to Color.Black.copy(alpha = .66f), 1f to Color.Black.copy(alpha = .96f))))
+                    .75f to MavieBackground.copy(alpha = .68f), 1f to MavieBackground.copy(alpha = .94f))))
                 Column(
-                    Modifier.align(Alignment.BottomCenter).widthIn(max = 500.dp).fillMaxWidth().padding(16.dp),
+                    Modifier.align(Alignment.BottomCenter).widthIn(max = 500.dp).fillMaxWidth().padding(18.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Text(
@@ -408,25 +534,24 @@ private fun HeroCard(media: UiMedia, onMedia: (UiMedia) -> Unit, onPlay: (UiMedi
                         Modifier.padding(top = 8.dp), color = Color(0xFFDADADA), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
                     Spacer(Modifier.height(12.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        MavieGradientButton(
                             onClick = { if (media.kind == "series") onMedia(media) else onPlay(media) },
                             modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                            shape = RoundedCornerShape(4.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
+                            shape = RoundedCornerShape(16.dp),
                             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 11.dp),
                         ) {
-                            Icon(Icons.Filled.PlayArrow, null, Modifier.size(23.dp)); Spacer(Modifier.width(5.dp))
-                            Text(if (media.canResume) "Devam Et" else "Oynat", fontSize = 14.sp, maxLines = 1)
+                            Icon(Icons.Filled.PlayArrow, null, Modifier.size(23.dp), tint = Color.White); Spacer(Modifier.width(5.dp))
+                            Text(if (media.canResume) "Devam Et" else "Oynat", fontSize = 14.sp, maxLines = 1, color = Color.White)
                         }
-                        Button(
+                        MavieGlassPillButton(
                             onClick = { onAddToCollection(media) },
                             modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                            shape = RoundedCornerShape(4.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xE6353535), contentColor = Color.White),
+                            shape = RoundedCornerShape(16.dp),
                             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 11.dp),
                         ) {
-                            Icon(Icons.Outlined.Add, null, Modifier.size(22.dp)); Spacer(Modifier.width(5.dp)); Text("Listeme Ekle", fontSize = 13.sp, maxLines = 1)
+                            Icon(Icons.Outlined.Add, null, Modifier.size(22.dp), tint = Color.White); Spacer(Modifier.width(5.dp))
+                            Text("Listeme Ekle", fontSize = 13.sp, maxLines = 1, color = Color.White)
                         }
                     }
                 }
@@ -455,19 +580,24 @@ private fun MediaRow(
 @Composable
 private fun SearchLanding(state: LibraryUiState, onMedia: (UiMedia) -> Unit) {
     val suggestions = (listOfNotNull(state.featured) + state.continueWatching + state.seriesItems).distinctBy { it.id }.take(12)
-    LazyColumn(contentPadding = PaddingValues(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    LazyColumn(contentPadding = PaddingValues(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (suggestions.isEmpty()) item("prompt") {
             Text("İzlemek istediğin içeriğin adını yaz.", Modifier.padding(16.dp), color = MavieMuted)
         }
         else item("heading") { SectionTitle("Göz at") }
         items(suggestions, key = { it.id }) { media ->
+            val interactionSource = remember { MutableInteractionSource() }
+            val focused by interactionSource.collectIsFocusedAsState()
             Row(
-                Modifier.fillMaxWidth().background(MaviePanel).clickable { onMedia(media) }.padding(end = 14.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                    .mavieGlassSurface(RoundedCornerShape(16.dp), focused = focused)
+                    .clickable(interactionSource = interactionSource, indication = LocalIndication.current) { onMedia(media) }
+                    .padding(end = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                PosterArt(media, Modifier.size(width = 128.dp, height = 72.dp), backdrop = true)
+                PosterArt(media, Modifier.size(width = 128.dp, height = 72.dp).clip(RoundedCornerShape(16.dp)), backdrop = true)
                 Text(media.title, Modifier.weight(1f).padding(horizontal = 12.dp), fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Icon(Icons.Outlined.PlayCircleOutline, "Ayrıntılar", tint = Color.White)
+                Icon(Icons.Outlined.PlayCircleOutline, "Ayrıntılar", tint = MavieCyanDot)
             }
         }
     }
@@ -574,13 +704,17 @@ private fun CollectionContent(
             MessagePanel("Bir listeyle başla", "Hafta sonuna sakladıklarını veya bir bölüm daha dediklerini aynı yerde topla.", action = "İlk listemi oluştur", onAction = onCreate)
         }
         items(state.collections, key = { it.id }) { collection ->
+            val interactionSource = remember { MutableInteractionSource() }
+            val focused by interactionSource.collectIsFocusedAsState()
             Card(
                 onClick = { onCollection(collection) },
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaviePanel),
+                interactionSource = interactionSource,
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(if (focused) 2.dp else 1.dp, if (focused) MavieBrandDiagonalGradient else MavieSpecularBorderBrush),
+                colors = CardDefaults.cardColors(containerColor = Color(0xB8141B2E)),
             ) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Outlined.Folder, null, tint = MavieCoral, modifier = Modifier.size(30.dp))
+                    Icon(Icons.Outlined.Folder, null, tint = MavieTurquoise, modifier = Modifier.size(30.dp))
                     Column(Modifier.weight(1f).padding(start = 16.dp)) {
                         Text(collection.title, fontWeight = FontWeight.SemiBold)
                         Text("${collection.count} içerik", fontSize = 12.sp, color = MavieMuted, modifier = Modifier.padding(top = 4.dp))

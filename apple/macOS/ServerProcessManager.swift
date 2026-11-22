@@ -173,8 +173,9 @@ public final class ServerProcessManager: ObservableObject {
             if case .ready = status {
                 do {
                     var req = URLRequest(url: baseURL)
+                    req.cachePolicy = .reloadIgnoringLocalCacheData
                     req.timeoutInterval = 3
-                    let (_, resp) = try await URLSession.shared.data(for: req)
+                    let (_, resp) = try await MavieHTTPClient.loopbackSession.data(for: req)
                     let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
                     stop()
                     if code == 200 {
@@ -241,9 +242,10 @@ public final class ServerProcessManager: ObservableObject {
 
     private static func probeHealth(url: URL) async -> Bool {
         var req = URLRequest(url: url)
+        req.cachePolicy = .reloadIgnoringLocalCacheData
         req.timeoutInterval = 1.2
         do {
-            let (data, resp) = try await URLSession.shared.data(for: req)
+            let (data, resp) = try await MavieHTTPClient.loopbackSession.data(for: req)
             guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else { return false }
             guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
             let app = obj["app"] as? String

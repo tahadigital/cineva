@@ -44,8 +44,8 @@ public struct DetailView: View {
                                 .font(.caption.weight(.bold))
                                 .foregroundStyle(MavieTheme.amber)
                                 .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
-                                .background(MavieTheme.panelElevated, in: Capsule())
+                                .padding(.vertical, 5)
+                                .mavieGlassPill()
                         }
                         if activeItem.durationSeconds > 0 {
                             badge("\(Int(activeItem.durationSeconds / 60)) dk")
@@ -85,7 +85,7 @@ public struct DetailView: View {
                 .padding(.bottom, 24)
             }
         }
-        .background(MavieTheme.bg.ignoresSafeArea())
+        .background(MavieTheme.cinemaBackdrop.ignoresSafeArea())
         .navigationTitle(activeItem.kind.displayTitle)
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -117,7 +117,7 @@ public struct DetailView: View {
                 MavieTheme.panelElevated
             }
             LinearGradient(
-                colors: [.clear, MavieTheme.bg],
+                colors: [.clear, MavieTheme.bgDeep],
                 startPoint: .center,
                 endPoint: .bottom
             )
@@ -198,10 +198,9 @@ public struct DetailView: View {
                                     .foregroundStyle(.white)
                                     .padding(.horizontal, 14)
                                     .frame(minHeight: 44)
-                                    .background(
-                                        Capsule().fill(selectedSeasonNumber == season.number ? AnyShapeStyle(MavieTheme.brandGradient) : AnyShapeStyle(MavieTheme.panel))
-                                    )
+                                    .mavieGlassPill(selected: selectedSeasonNumber == season.number)
                             }
+                            .buttonStyle(MavieInteractiveCardButtonStyle())
                             .accessibilityLabel(season.name)
                         }
                     }
@@ -231,7 +230,7 @@ public struct DetailView: View {
                             .frame(minHeight: 54)
                             .mavieCard(cornerRadius: 12)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(MavieInteractiveCardButtonStyle())
                         .accessibilityLabel("Bölüm \(ep.episode) \(ep.name) oynat")
                     }
                 }
@@ -280,6 +279,8 @@ public struct DetailView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(MavieTheme.cinemaBackdrop.ignoresSafeArea())
             .navigationTitle("Listeye Ekle")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -295,8 +296,8 @@ public struct DetailView: View {
             .font(.caption.weight(.semibold))
             .foregroundStyle(.white)
             .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(MavieTheme.panelElevated, in: Capsule())
+            .padding(.vertical, 5)
+            .mavieGlassPill()
     }
 
     private func metadataRow(label: String, value: String) -> some View {

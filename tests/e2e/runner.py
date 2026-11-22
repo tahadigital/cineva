@@ -3,6 +3,7 @@
 Usage:
     python3 -m unittest discover -s tests/e2e -v
     python3 -m tests.e2e.runner --tier all -v
+    python3 -m tests.e2e.runner --tier all --baseline-only -v
     python3 -m tests.e2e.runner --tier 1 -v
 """
 
@@ -20,7 +21,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, TypeVar
 import unittest
 import urllib.error
 import urllib.request
@@ -39,6 +40,22 @@ TIER_MODULES = {
     "3": "tests.e2e.test_tier3_combinations",
     "4": "tests.e2e.test_tier4_scenarios",
 }
+
+_F = TypeVar("_F", bound=Callable[..., Any])
+
+
+def requires_target(milestone: str) -> Callable[[_F], _F]:
+    """Tag a test method or class as requiring an unmerged target milestone (e.g. 'M1', 'M2', 'M3').
+
+    By default (`--tier all`), tagged tests execute normally.
+    When `--baseline-only` is passed, tagged tests are skipped cleanly.
+    """
+
+    def _decorator(obj: _F) -> _F:
+        setattr(obj, "_e2e_requires_target", milestone)
+        return obj
+
+    return _decorator
 
 
 def find_free_port() -> int:
@@ -161,15 +178,19 @@ class HttpClient:
 
 
 class LocalMediaServerProcess:
-    """Managed subprocess for server.py with isolated temp data dir."""
+    """Managed subprocess for server.py (or _mock_server_main) with isolated temp data dir."""
 
     def __init__(
         self,
         extra_env: Optional[Dict[str, str]] = None,
         override_env: Optional[Dict[str, str]] = None,
+        allow_mock_port: Optional[int] = None,
+        mock_base_url: Optional[str] = None,
     ) -> None:
         self.extra_env = extra_env or {}
         self.override_env = override_env
+        self.allow_mock_port = allow_mock_port
+        self.mock_base_url = mock_base_url
         self._tmp: Optional[tempfile.TemporaryDirectory] = None
         self.data_dir: Optional[Path] = None
         self.port: int = 0
@@ -188,6 +209,8 @@ class LocalMediaServerProcess:
         else:
             env = dict(os.environ)
             env.setdefault("PYTHONIOENCODING", "utf-8")
+            env.setdefault("NO_PROXY", "127.0.0.1,localhost")
+            env.setdefault("no_proxy", "127.0.0.1,localhost")
 
         env.update(
             {
@@ -196,17 +219,21 @@ class LocalMediaServerProcess:
                 "CINEVA_DATA_DIR": str(self.data_dir),
             }
         )
+        if self.allow_mock_port is not None:
+            env["MAVIE_E2E_MOCK_PORT"] = str(self.allow_mock_port)
+        if self.mock_base_url:
+            env["MAVIE_E2E_MOCK_BASE"] = self.mock_base_url
         env.update(self.extra_env)
 
+        use_mock_entry = self.allow_mock_port is not None or bool(self.mock_base_url)
+        cmd = (
+            [sys.executable, "-m", "tests.e2e._mock_server_main", "--host", "127.0.0.1", "--port", str(self.port)]
+            if use_mock_entry
+            else [sys.executable, "server.py", "--host", "127.0.0.1", "--port", str(self.port)]
+        )
+
         self.proc = subprocess.Popen(
-            [
-                sys.executable,
-                "server.py",
-                "--host",
-                "127.0.0.1",
-                "--port",
-                str(self.port),
-            ],
+            cmd,
             cwd=str(REPO_ROOT),
             env=env,
             stdout=subprocess.PIPE,
@@ -266,7 +293,22 @@ class LocalMediaServerProcess:
         return c
 
 
-def build_suite(tier: str = "all") -> unittest.TestSuite:
+def _apply_baseline_filter(suite: unittest.TestSuite) -> None:
+    for item in suite:
+        if isinstance(item, unittest.TestSuite):
+            _apply_baseline_filter(item)
+            continue
+        if isinstance(item, unittest.TestCase):
+            method = getattr(item, item._testMethodName, None)
+            target = getattr(method, "_e2e_requires_target", None) or getattr(
+                item.__class__, "_e2e_requires_target", None
+            )
+            if target and method is not None:
+                skipped = unittest.skip(f"Requires target {target} (--baseline-only)")(method)
+                setattr(item, item._testMethodName, skipped)
+
+
+def build_suite(tier: str = "all", baseline_only: bool = False) -> unittest.TestSuite:
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
     if tier == "all":
@@ -276,6 +318,8 @@ def build_suite(tier: str = "all") -> unittest.TestSuite:
         suite.addTests(loader.loadTestsFromName(TIER_MODULES[tier]))
     else:
         raise ValueError(f"Unknown tier: {tier!r}. Expected 1, 2, 3, 4, or all.")
+    if baseline_only or os.environ.get("MAVIE_E2E_BASELINE_ONLY") == "1":
+        _apply_baseline_filter(suite)
     return suite
 
 
@@ -288,9 +332,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Run a specific tier (1..4) or all tiers",
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose test output")
+    parser.add_argument(
+        "--baseline-only",
+        action="store_true",
+        help="Skip tests tagged @requires_target(...) for pre-merge baseline verification",
+    )
     args = parser.parse_args(argv)
 
-    suite = build_suite(args.tier)
+    suite = build_suite(args.tier, baseline_only=args.baseline_only)
     verbosity = 2 if args.verbose else 1
     result = unittest.TextTestRunner(verbosity=verbosity).run(suite)
     return 0 if result.wasSuccessful() else 1

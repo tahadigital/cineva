@@ -35,15 +35,26 @@ public struct LibraryView: View {
     }
 
     private var relevantCategories: [MediaCategory] {
-        let base: [MediaCategory]
         switch section {
-        case .all: base = store.categories
-        case .live: base = store.categories.filter { $0.kind == .live }
-        case .vod: base = store.categories.filter { $0.kind == .vod }
-        case .series: base = store.categories.filter { $0.kind == .series }
-        case .playlists: base = []
+        case .all:
+            var seenNames = Set<String>()
+            var deduped: [MediaCategory] = []
+            for cat in store.categories {
+                let key = cat.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                if seenNames.insert(key).inserted {
+                    deduped.append(cat)
+                }
+            }
+            return deduped
+        case .live:
+            return store.categories.filter { $0.kind == .live }
+        case .vod:
+            return store.categories.filter { $0.kind == .vod }
+        case .series:
+            return store.categories.filter { $0.kind == .series }
+        case .playlists:
+            return []
         }
-        return base
     }
 
     private var filteredItems: [MediaItem] {
@@ -57,7 +68,15 @@ public struct LibraryView: View {
             }
         }
         if selectedCategoryId != "all" {
-            list = list.filter { $0.categoryId == selectedCategoryId }
+            if section == .all,
+               let selectedName = relevantCategories.first(where: { $0.id == selectedCategoryId })?.name {
+                list = list.filter {
+                    $0.categoryId == selectedCategoryId
+                        || $0.categoryName.localizedCaseInsensitiveCompare(selectedName) == .orderedSame
+                }
+            } else {
+                list = list.filter { $0.categoryId == selectedCategoryId }
+            }
         }
         switch sortOrder {
         case .defaultOrder:
@@ -95,7 +114,7 @@ public struct LibraryView: View {
                 }
             }
             .padding(.top, 8)
-            .background(MavieTheme.bg.ignoresSafeArea())
+            .background(MavieTheme.cinemaBackdrop.ignoresSafeArea())
             .navigationTitle("Kütüphane")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -143,7 +162,7 @@ public struct LibraryView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 categoryChip(id: "all", name: "Tümü")
-                ForEach(relevantCategories) { cat in
+                ForEach(relevantCategories, id: \.self) { cat in
                     categoryChip(id: cat.id, name: cat.name)
                 }
             }
@@ -161,12 +180,9 @@ public struct LibraryView: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 14)
                 .frame(minHeight: 44)
-                .background(
-                    Capsule()
-                        .fill(selected ? AnyShapeStyle(MavieTheme.brandGradient) : AnyShapeStyle(MavieTheme.panel))
-                        .overlay(Capsule().strokeBorder(MavieTheme.border, lineWidth: 1))
-                )
+                .mavieGlassPill(selected: selected)
         }
+        .buttonStyle(MavieInteractiveCardButtonStyle())
         .accessibilityLabel("\(name) kategorisini filtrele")
     }
 
@@ -195,7 +211,7 @@ public struct LibraryView: View {
                                 onToggleFavorite: { store.toggleFavorite(item) }
                             )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(MavieInteractiveCardButtonStyle())
                     }
                 }
                 .padding(16)

@@ -162,8 +162,8 @@ public struct HomeView: View {
                     Text(item.categoryName.isEmpty ? item.kind.displayTitle : item.categoryName)
                         .font(.caption.weight(.bold))
                         .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(MavieTheme.coral.opacity(0.85), in: Capsule())
+                        .padding(.vertical, 5)
+                        .mavieGlassPill(selected: true)
                         .foregroundStyle(.white)
                     if !item.year.isEmpty {
                         Text(item.year)
@@ -222,8 +222,9 @@ public struct HomeView: View {
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(MavieTheme.border, lineWidth: 1)
+                .strokeBorder(MavieTheme.specularBorder, lineWidth: 1)
         )
+        .shadow(color: Color.black.opacity(0.32), radius: 18, y: 10)
     }
 
     private func carouselSection(title: String, subtitle: String = "", items: [MediaItem]) -> some View {
@@ -253,7 +254,7 @@ public struct HomeView: View {
                             )
                             .frame(width: 162)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(MavieInteractiveCardButtonStyle())
                     }
                 }
             }

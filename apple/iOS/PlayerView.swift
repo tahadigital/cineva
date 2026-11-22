@@ -33,7 +33,19 @@ private final class PlayerController: ObservableObject {
         currentTime = max(0, resumeAt)
         duration = 0
 
-        let asset = AVURLAsset(url: url)
+        let asset: AVURLAsset
+        if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+            asset = AVURLAsset(
+                url: url,
+                options: [
+                    "AVURLAssetHTTPHeaderFieldsKey": [
+                        "User-Agent": MavieHTTPClient.primaryUserAgent
+                    ]
+                ]
+            )
+        } else {
+            asset = AVURLAsset(url: url)
+        }
         let item = AVPlayerItem(asset: asset)
 
         statusObservation = item.observe(\.status, options: [.new, .initial]) { [weak self] observedItem, _ in
@@ -295,7 +307,7 @@ public struct PlayerView: View {
                     if reduceMotion {
                         showControls.toggle()
                     } else {
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                             showControls.toggle()
                         }
                     }
@@ -311,7 +323,7 @@ public struct PlayerView: View {
                         .foregroundStyle(.white)
                 }
                 .padding(20)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                .mavieCard(cornerRadius: 16)
             }
 
             if let errorMessage = controller.errorMessage {
@@ -390,8 +402,9 @@ public struct PlayerView: View {
                         .foregroundStyle(.white)
                         .padding(.horizontal, 12)
                         .frame(minWidth: 44, minHeight: 44)
-                        .background(.black.opacity(0.65), in: Capsule())
+                        .mavieGlassPill()
                 }
+                .buttonStyle(MavieInteractiveCardButtonStyle())
                 .accessibilityLabel("Oynatıcıyı Kapat")
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -417,14 +430,20 @@ public struct PlayerView: View {
                             .foregroundStyle(.white)
                             .padding(.horizontal, 10)
                             .frame(minWidth: 44, minHeight: 44)
-                            .background(.black.opacity(0.65), in: Capsule())
+                            .mavieGlassPill()
                     }
+                    .buttonStyle(MavieInteractiveCardButtonStyle())
                     .accessibilityLabel("Resim İçinde Resim Modunu Aç veya Kapat")
                 }
 
                 MavieAirPlayRoutePicker()
                     .frame(width: 44, height: 44)
-                    .background(.black.opacity(0.65), in: Circle())
+                    .background(
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .overlay(Circle().fill(MavieTheme.glassTint))
+                            .overlay(Circle().strokeBorder(MavieTheme.specularBorder, lineWidth: 1))
+                    )
                     .accessibilityLabel("AirPlay Cihazı Seç")
 
                 Button {
@@ -435,8 +454,9 @@ public struct PlayerView: View {
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10)
                         .frame(minWidth: 44, minHeight: 44)
-                        .background(.black.opacity(0.65), in: Capsule())
+                        .mavieGlassPill()
                 }
+                .buttonStyle(MavieInteractiveCardButtonStyle())
                 .accessibilityLabel("Ses ve Altyazı İzlerini Seç")
             }
             .padding(.horizontal, 16)
@@ -457,8 +477,14 @@ public struct PlayerView: View {
                     }
                     .foregroundStyle(.white)
                     .frame(minWidth: 56, minHeight: 56)
-                    .background(.black.opacity(0.55), in: Circle())
+                    .background(
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .overlay(Circle().fill(MavieTheme.glassTint))
+                            .overlay(Circle().strokeBorder(MavieTheme.specularBorder, lineWidth: 1))
+                    )
                 }
+                .buttonStyle(MavieInteractiveCardButtonStyle())
                 .accessibilityLabel("10 Saniye Geri Sar")
 
                 Button {
@@ -472,8 +498,14 @@ public struct PlayerView: View {
                     }
                     .foregroundStyle(.white)
                     .frame(width: 76, height: 76)
-                    .background(MavieTheme.brandGradient, in: Circle())
+                    .background(
+                        Circle()
+                            .fill(MavieTheme.brandGradient)
+                            .overlay(Circle().strokeBorder(MavieTheme.specularAccentBorder, lineWidth: 1.2))
+                    )
+                    .shadow(color: MavieTheme.purple.opacity(0.42), radius: 16, y: 6)
                 }
+                .buttonStyle(MavieInteractiveCardButtonStyle())
                 .accessibilityLabel(controller.isPlaying ? "Oynatmayı Duraklat" : "Oynat")
 
                 Button {
@@ -487,8 +519,14 @@ public struct PlayerView: View {
                     }
                     .foregroundStyle(.white)
                     .frame(minWidth: 56, minHeight: 56)
-                    .background(.black.opacity(0.55), in: Circle())
+                    .background(
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .overlay(Circle().fill(MavieTheme.glassTint))
+                            .overlay(Circle().strokeBorder(MavieTheme.specularBorder, lineWidth: 1))
+                    )
                 }
+                .buttonStyle(MavieInteractiveCardButtonStyle())
                 .accessibilityLabel("10 Saniye İleri Sar")
             }
 
@@ -531,7 +569,7 @@ public struct PlayerView: View {
                             .foregroundStyle(.white)
                             .padding(.horizontal, 12)
                             .frame(minHeight: 44)
-                            .background(.black.opacity(0.65), in: Capsule())
+                            .mavieGlassPill()
                     }
                     .accessibilityLabel("Oynatma Hızını Değiştir")
 
@@ -546,7 +584,7 @@ public struct PlayerView: View {
                             .foregroundStyle(.white)
                             .padding(.horizontal, 12)
                             .frame(minHeight: 44)
-                            .background(.black.opacity(0.65), in: Capsule())
+                            .mavieGlassPill()
                     }
                     .accessibilityLabel("Uyku Zamanlayıcısı")
 
