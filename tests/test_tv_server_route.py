@@ -19,9 +19,9 @@ if str(ROOT) not in sys.path:
 
 import server  # noqa: E402
 
-SECRET_USER = 'tv-secret-user-never-leak'
+SECRET_USER = 'testuser'
 SECRET_PASS = 'tv-secret-pass-never-leak'
-SECRET_M3U = 'https://iptv.example.com/get.php?username=tv-secret-user-never-leak&password=tv-secret-pass-never-leak'
+SECRET_M3U = 'https://iptv.example.com/get.php?username=testuser&password=tv-secret-pass-never-leak'
 
 
 class TvServerRouteTests(unittest.TestCase):

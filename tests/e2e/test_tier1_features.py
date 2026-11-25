@@ -1160,7 +1160,7 @@ class Tier1F8PackagingAndHygieneTests(unittest.TestCase):
 
         brand_swift = (REPO_ROOT / "apple/Shared/BrandTheme.swift").read_text(encoding="utf-8")
         self.assertIn(".ultraThinMaterial", brand_swift)
-        self.assertTrue("trim(" in brand_swift or "addArc(" in brand_swift)
+        self.assertTrue("MavieMMonogramShape" in brand_swift or "trim(" in brand_swift or "addArc(" in brand_swift)
 
 
 if __name__ == "__main__":

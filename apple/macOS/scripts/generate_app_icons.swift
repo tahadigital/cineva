@@ -4,7 +4,7 @@ import CoreText
 import Foundation
 
 // Mavie Flagship Brand Emblem (M + concentric bottom-left 'o' lens ring)
-// Palette: Obsidian Glass (#12172C -> #0B0E1A -> #05070E) + Luminous Prism (#7C3AED -> #3B82F6 -> #06B6D4)
+// Palette: Obsidian Glass (#12172C -> #0B0E1A -> #05070E) + Luminous Prism (#7C3AED -> #3B82F6 -> #06B6D4 / #22D3EE)
 
 private enum IconStyle {
     case macOSGrid     // Apple macOS HIG 824/1024 squircle + subtle ambient drop shadow
