@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import secrets
 import shutil
+import signal
 import socket
 import struct
 import subprocess
@@ -181,7 +182,7 @@ class ChromeCdpSession:
 
     def start(self) -> "ChromeCdpSession":
         chrome_bin = find_chrome_binary()
-        self._tmp = tempfile.TemporaryDirectory(prefix="mavie_chrome_")
+        self._tmp = tempfile.TemporaryDirectory(prefix="mavie_chrome_", ignore_cleanup_errors=True)
         profile_dir = Path(self._tmp.name)
 
         cmd = [
@@ -203,6 +204,7 @@ class ChromeCdpSession:
             cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            start_new_session=(os.name == "posix"),
         )
 
         port_file = profile_dir / "DevToolsActivePort"
@@ -250,15 +252,40 @@ class ChromeCdpSession:
             self._ws.close()
             self._ws = None
         if self._proc is not None:
+            pid = self._proc.pid
             if self._proc.poll() is None:
-                self._proc.terminate()
+                if os.name == "posix":
+                    try:
+                        os.killpg(pid, signal.SIGTERM)
+                    except ProcessLookupError:
+                        pass
+                else:
+                    self._proc.terminate()
                 try:
                     self._proc.wait(timeout=4)
                 except subprocess.TimeoutExpired:
-                    self._proc.kill()
+                    if os.name == "posix":
+                        try:
+                            os.killpg(pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                    else:
+                        self._proc.kill()
                     self._proc.wait(timeout=2)
+            elif os.name == "posix":
+                # Clean up any lingering renderer/GPU helper in the Chrome process group.
+                try:
+                    os.killpg(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
             self._proc = None
         if self._tmp is not None:
+            tmp_dir = self._tmp.name
+            for _ in range(5):
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+                if not os.path.exists(tmp_dir):
+                    break
+                time.sleep(0.05)
             self._tmp.cleanup()
             self._tmp = None
 

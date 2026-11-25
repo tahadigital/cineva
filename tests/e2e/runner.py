@@ -202,7 +202,7 @@ class LocalMediaServerProcess:
         self.startup_output: str = ""
 
     def start(self, wait_seconds: float = 8.0) -> "LocalMediaServerProcess":
-        self._tmp = tempfile.TemporaryDirectory(prefix="mavie_e2e_local_")
+        self._tmp = tempfile.TemporaryDirectory(prefix="mavie_e2e_local_", ignore_cleanup_errors=True)
         self.data_dir = Path(self._tmp.name)
         self.port = find_free_port()
         self.base_url = f"http://127.0.0.1:{self.port}"
