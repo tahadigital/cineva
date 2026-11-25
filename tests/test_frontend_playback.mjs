@@ -158,10 +158,13 @@ test('M5: epgTime handles numeric and string epochs, api() handles timeout & err
   // api() error_code fallback
   await assert.rejects(() => h.api('/api/errcode'), (err) => err.status === 410 && err.code === 'session_expired');
 
-  // api() AbortController timeout
-  const pending = h.api('/api/slow', { timeoutMs: 5000 });
+  // api() AbortController timeout (attach rejection handler before firing timers for Node 22)
+  const pending = assert.rejects(
+    () => h.api('/api/slow', { timeoutMs: 5000 }),
+    (err) => err.name === 'TimeoutError' && err.code === 'timeout',
+  );
   await h.runTimers(5000);
-  await assert.rejects(() => pending, (err) => err.name === 'TimeoutError' && err.code === 'timeout');
+  await pending;
 
   // pingPlayback 410 calls interruptPlayback -> clears sessionId, sets ready=false, shows error overlay
   await h.playItem('episode:test');

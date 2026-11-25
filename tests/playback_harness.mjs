@@ -48,9 +48,10 @@ export function harness({hls = true, responses = [], ffmpeg = true, tracks = fal
   }
   let sequence = 0, now = Date.now();
   class FakeDate extends Date { static now() { return now; } }
+  class HarnessURL extends URL {}
   const context = vm.createContext({
     URLSearchParams, Intl, Date: FakeDate, Math, Map, Number, String, Array, Object,
-    AbortController, URL,
+    AbortController, URL: HarnessURL,
     Hls: FakeHls, HTMLImageElement: class {},
     window: {Hls: FakeHls, addEventListener() {}},
     document: {

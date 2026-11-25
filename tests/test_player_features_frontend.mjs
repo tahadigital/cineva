@@ -156,6 +156,7 @@ test('M6: #playerVolume drops deprecated orient attribute, dialogs restore focus
   });
   const freshRes = await responded;
   assert.equal(freshRes.body, 'fresh-http://127.0.0.1:8844/app.js');
+  await new Promise((r) => setImmediate(r));
 
   networkOnline = false;
   fetchFn({
