@@ -10,6 +10,7 @@ public struct LanExportPayload: Codable, Sendable {
     public var playlists: [Playlist]?
     public var playlistItems: [SyncPlaylistItemRecord]?
     public var trackPreferences: [SyncTrackPreferenceRecord]?
+    public var appleTrackPreferences: [SyncTrackPreferenceRecord]?
 }
 
 public enum LanSyncClient {
@@ -54,17 +55,83 @@ public enum LanSyncClient {
         return url
     }
 
-    public static func resolveAndValidateLanAddress(_ raw: String) async throws -> URL {
+    private final class DNSResolutionLatch: @unchecked Sendable {
+        private let lock = NSLock()
+        private var continuation: CheckedContinuation<Bool, Error>?
+        private var finished = false
+
+        init(continuation: CheckedContinuation<Bool, Error>) {
+            self.continuation = continuation
+        }
+
+        func resume(returning value: Bool) {
+            let cont = takeContinuation()
+            cont?.resume(returning: value)
+        }
+
+        func resume(throwing error: Error) {
+            let cont = takeContinuation()
+            cont?.resume(throwing: error)
+        }
+
+        private func takeContinuation() -> CheckedContinuation<Bool, Error>? {
+            lock.lock()
+            defer { lock.unlock() }
+            guard !finished else { return nil }
+            finished = true
+            let cont = continuation
+            continuation = nil
+            return cont
+        }
+    }
+
+    private final class LatchBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var latch: DNSResolutionLatch?
+        private var cancelled = false
+
+        func set(_ latch: DNSResolutionLatch) {
+            lock.lock()
+            self.latch = latch
+            let shouldCancel = cancelled
+            lock.unlock()
+            if shouldCancel {
+                latch.resume(throwing: CancellationError())
+            }
+        }
+
+        func cancel() {
+            lock.lock()
+            cancelled = true
+            let l = latch
+            lock.unlock()
+            l?.resume(throwing: CancellationError())
+        }
+    }
+
+    public static func resolveAndValidateLanAddress(_ raw: String, dnsTimeout: TimeInterval = 3.0) async throws -> URL {
+        try Task.checkCancellation()
         let (components, host) = try parseLanComponents(raw)
         let lower = host.lowercased()
         let allowed: Bool
         if lower == "localhost" || lower == "::1" || lower.hasSuffix(".local") || isNumericIPLiteral(lower) {
             allowed = isAllowedLanHost(host)
         } else {
-            allowed = await withCheckedContinuation { continuation in
-                DispatchQueue.global(qos: .userInitiated).async {
-                    continuation.resume(returning: isAllowedLanHost(host))
+            let box = LatchBox()
+            let boundedTimeout = max(0.01, dnsTimeout)
+            allowed = try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { continuation in
+                    let latch = DNSResolutionLatch(continuation: continuation)
+                    box.set(latch)
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        latch.resume(returning: isAllowedLanHost(host))
+                    }
+                    DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + boundedTimeout) {
+                        latch.resume(throwing: MavieError.network("Yerel ağ sunucusu adresi zamanında çözümlenemedi."))
+                    }
                 }
+            } onCancel: {
+                box.cancel()
             }
         }
         guard allowed else {
@@ -230,7 +297,8 @@ public enum LanSyncClient {
             fallbackUserAgent: nil,
             retryDelays: [0.3, 0.8],
             retryOnTransportFailure: true,
-            throwOnHTTPError: false
+            throwOnHTTPError: false,
+            maxBytes: maxBackupBytes
         )
         guard (200...299).contains(exportHttp.statusCode) else {
             throw MavieError.network("Masaüstü kütüphanesi okunamadı (HTTP \(exportHttp.statusCode)).")

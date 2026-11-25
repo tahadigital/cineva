@@ -6,7 +6,6 @@ Recommendations never manufacture playable IDs: every item comes from the local 
 """
 from __future__ import annotations
 
-import concurrent.futures
 import datetime as dt
 import functools
 import gzip
@@ -14,8 +13,10 @@ import http.client
 import json
 import math
 import os
+import queue
 import re
 import ssl
+import tempfile
 import threading
 import time
 import unicodedata
@@ -73,11 +74,35 @@ _EXTRA_GENRE_ALIASES = {
     'gizemli': 'Mystery',
 }
 _lock = threading.Lock()
+_write_lock = threading.Lock()
 _running = False
 _attempt = 0
 _consecutive_failures = 0
 _next_retry_at = 0.0
-_memory = None
+_memory = {}
+_running_dirs = set()
+_dir_states = {}
+
+
+def _dir_key(directory):
+    return Path(directory).resolve()
+
+
+def _read_mem(dir_key):
+    if isinstance(_memory, dict):
+        return _memory.get(dir_key)
+    return None
+
+
+def _write_mem(dir_key, value):
+    global _memory
+    if not isinstance(_memory, dict):
+        _memory = {}
+    _memory[dir_key] = value
+
+
+def _get_dir_state(dir_key):
+    return _dir_states.setdefault(dir_key, {'consecutive_failures': 0, 'next_retry_at': 0.0, 'attempt': 0.0})
 TLS = ssl.create_default_context(cafile='/etc/ssl/cert.pem' if Path('/etc/ssl/cert.pem').exists() else None)
 _PREFIX_RE = re.compile(r'^\s*(?:tr|en|us|uk|de|fr|es|vip)\s*[:|]\s*')
 _TECH_RE = re.compile(r'\b(?:19|20)\d{2}\b|\b(?:tr|en|trsub|eng|turkce|altyazili|dublaj|uhd|fhd|hd|4k|1080p|720p)\b')
@@ -94,8 +119,19 @@ def key(text):
     return _NONALNUM_RE.sub('', text)
 
 
+def _num(value, default=0.0):
+    if isinstance(value, bool) or value is None:
+        return default
+    try:
+        n = float(value)
+        return n if math.isfinite(n) else default
+    except (ValueError, TypeError, OverflowError):
+        return default
+
+
 def titles(name):
-    return {k for s in [name, *_SPLIT_RE.split(name)] if len(k := key(s)) >= 2}
+    text = str(name or '')
+    return {k for s in [text, *_SPLIT_RE.split(text)] if len(k := key(s)) >= 2}
 
 
 def _tmdb_key(explicit=None):
@@ -168,7 +204,7 @@ def netflix_entries(page):
             continue
         info, chart = value['top10Video'], value['top10']
         parent = info.get('parentShow') or {}
-        title = parent.get('title') or info.get('title', '')
+        title = parent.get('title') or info.get('title') or ''
         kind = 'series' if chart['category'] != 'MOVIES' else 'vod'
         entry = {
             'name': title,
@@ -209,7 +245,7 @@ def parse_tmdb_results(rows, media_type, page_offset=0):
         if not title and not original:
             continue
         released = row.get('release_date') or row.get('first_air_date') or ''
-        genre_names = [TMDB_GENRES[g] for g in row.get('genre_ids', []) if g in TMDB_GENRES]
+        genre_names = [TMDB_GENRES[g] for g in (row.get('genre_ids') or []) if g in TMDB_GENRES]
         entry = {
             'id': f'tmdb:{kind}:{row["id"]}',
             'moviedb_id': str(row['id']),
@@ -230,9 +266,44 @@ def parse_tmdb_results(rows, media_type, page_offset=0):
     return entries
 
 
+def _daemon_map(fn, items, max_workers=4):
+    """Run fn(item) across bounded daemon threads so interpreter exit never hangs."""
+    seq = list(items)
+    if not seq:
+        return []
+    work = queue.Queue()
+    for idx, item in enumerate(seq):
+        work.put((idx, item))
+    results = [(False, None)] * len(seq)
+
+    def worker():
+        while True:
+            try:
+                idx, item = work.get_nowait()
+            except queue.Empty:
+                return
+            try:
+                results[idx] = (True, fn(item))
+            except Exception as exc:
+                results[idx] = (False, exc)
+            finally:
+                work.task_done()
+
+    threads = [
+        threading.Thread(target=worker, daemon=True, name=f'discovery-worker-{i}')
+        for i in range(min(max_workers, len(seq)))
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    return results
+
+
 def refresh(directory, api_key=None, language='tr-TR'):
     global _running, _memory, _consecutive_failures, _next_retry_at
-    path = Path(directory) / 'discovery-public.json'
+    dir_key = _dir_key(directory)
+    path = dir_key / 'discovery-public.json'
     key_value = _tmdb_key(api_key)
     succeeded = False
     try:
@@ -251,33 +322,32 @@ def refresh(directory, api_key=None, language='tr-TR'):
         def fetch_cinemeta(spec):
             kind, catalog, extra = spec
             data = json.loads(get(f'{CINEMETA}/catalog/{kind}/{catalog}{extra}.json'))
-            return kind, catalog, extra, data.get('metas', [])
+            return kind, catalog, extra, data.get('metas') or []
 
         with _lock:
-            old = dict(_memory) if _memory else {}
-        metas = {m['id']: m for m in old.get('metas', []) if isinstance(m, dict) and m.get('id')}
+            existing = _read_mem(dir_key)
+            old = dict(existing) if isinstance(existing, dict) else {}
+        metas = {m['id']: m for m in (old.get('metas') or []) if isinstance(m, dict) and m.get('id')}
         successes = 0
         has_cinemeta = False
         has_tmdb = False
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-            for future in [pool.submit(fetch_cinemeta, spec) for spec in requests]:
-                try:
-                    kind, catalog, extra, rows = future.result()
-                    for index, m in enumerate(rows):
-                        if not isinstance(m, dict) or not m.get('id') or not m.get('name'):
-                            continue
-                        item = dict(m)
-                        item['kind'] = 'vod' if kind == 'movie' else 'series'
-                        item['globalRank'] = (
-                            index + 1 if catalog == 'top' and not extra
-                            else metas.get(item['id'], {}).get('globalRank', 999)
-                        )
-                        metas[item['id']] = item
-                    successes += 1
-                    has_cinemeta = True
-                except Exception:
-                    pass
+        for ok, outcome in _daemon_map(fetch_cinemeta, requests, max_workers=4):
+            if not ok:
+                continue
+            kind, catalog, extra, rows = outcome
+            for index, m in enumerate(rows or []):
+                if not isinstance(m, dict) or not m.get('id') or not m.get('name'):
+                    continue
+                item = dict(m)
+                item['kind'] = 'vod' if kind == 'movie' else 'series'
+                item['globalRank'] = (
+                    index + 1 if catalog == 'top' and not extra
+                    else (metas.get(item['id']) or {}).get('globalRank') or 999
+                )
+                metas[item['id']] = item
+            successes += 1
+            has_cinemeta = True
 
         charts = []
         for url in (NETFLIX, NETFLIX + '/tv'):
@@ -286,8 +356,10 @@ def refresh(directory, api_key=None, language='tr-TR'):
             except Exception:
                 pass
         if charts:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-                charts = list(pool.map(localize_chart, charts))
+            charts = [
+                outcome if ok else orig
+                for orig, (ok, outcome) in zip(charts, _daemon_map(localize_chart, charts, max_workers=4))
+            ]
 
         if key_value:
             week_date = now.isoformat()
@@ -302,22 +374,20 @@ def refresh(directory, api_key=None, language='tr-TR'):
                 mtype, endpoint = spec
                 qs = urllib.parse.urlencode({'api_key': key_value, 'language': language})
                 data = get_json(f'{TMDB_API}/{endpoint}?{qs}')
-                return mtype, endpoint, data.get('results', [])
+                return mtype, endpoint, data.get('results') or []
 
             tmdb_charts = []
-            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-                for future in [pool.submit(fetch_tmdb, spec) for spec in specs]:
-                    try:
-                        mtype, endpoint, rows = future.result()
-                        parsed = parse_tmdb_results(rows, mtype)
-                        for item in parsed:
-                            metas[item['id']] = item
-                            if endpoint.startswith('trending/'):
-                                tmdb_charts.append({**item, 'rank': item['globalRank'], 'week': week_date, 'source': 'tmdb'})
-                        successes += 1
-                        has_tmdb = True
-                    except Exception:
-                        pass
+            for ok, outcome in _daemon_map(fetch_tmdb, specs, max_workers=4):
+                if not ok:
+                    continue
+                mtype, endpoint, rows = outcome
+                parsed = parse_tmdb_results(rows, mtype)
+                for item in parsed:
+                    metas[item['id']] = item
+                    if endpoint.startswith('trending/'):
+                        tmdb_charts.append({**item, 'rank': item['globalRank'], 'week': week_date, 'source': 'tmdb'})
+                successes += 1
+                has_tmdb = True
             if not charts and tmdb_charts:
                 charts = tmdb_charts
 
@@ -331,47 +401,85 @@ def refresh(directory, api_key=None, language='tr-TR'):
             'version': 3,
             'updatedAt': time.time(),
             'metas': list(metas.values()),
-            'charts': charts or old.get('charts', []),
+            'charts': charts or (old.get('charts') or []),
             'chartSource': chart_source,
             'hasCinemeta': has_cinemeta or bool(old.get('hasCinemeta')),
             'hasTmdb': has_tmdb or bool(old.get('hasTmdb')),
         }
-        temp = path.with_suffix('.tmp')
-        temp.write_text(json.dumps(result, ensure_ascii=False), encoding='utf-8')
-        temp.replace(path)
+        with _write_lock:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_path = None
+            try:
+                with tempfile.NamedTemporaryFile(
+                    mode='w',
+                    encoding='utf-8',
+                    dir=path.parent,
+                    prefix='discovery-public.',
+                    suffix='.tmp',
+                    delete=False,
+                ) as tf:
+                    tmp_path = Path(tf.name)
+                    tf.write(json.dumps(result, ensure_ascii=False))
+                    tf.flush()
+                os.replace(tmp_path, path)
+                tmp_path = None
+            finally:
+                if tmp_path is not None and tmp_path.exists():
+                    try:
+                        tmp_path.unlink()
+                    except OSError:
+                        pass
         with _lock:
-            _memory = result
+            _write_mem(dir_key, result)
+            state = _get_dir_state(dir_key)
+            state['consecutive_failures'] = 0
+            state['next_retry_at'] = 0.0
             _consecutive_failures = 0
             _next_retry_at = 0.0
             succeeded = True
     finally:
         with _lock:
+            state = _get_dir_state(dir_key)
             if not succeeded:
-                _consecutive_failures += 1
-                backoff = min(900.0, 15.0 * (2 ** (_consecutive_failures - 1)))
-                _next_retry_at = time.time() + backoff
-            _running = False
+                state['consecutive_failures'] += 1
+                backoff = min(900.0, 15.0 * (2 ** (state['consecutive_failures'] - 1)))
+                state['next_retry_at'] = time.time() + backoff
+                _consecutive_failures = state['consecutive_failures']
+                _next_retry_at = state['next_retry_at']
+            _running_dirs.discard(dir_key)
+            _running = bool(_running_dirs)
 
 
 def snapshot(directory, enabled=True):
     global _memory, _running, _attempt
+    dir_key = _dir_key(directory)
     with _lock:
-        if _memory is None:
+        mem = _read_mem(dir_key)
+        if mem is None:
             try:
-                _memory = json.loads((Path(directory) / 'discovery-public.json').read_text(encoding='utf-8', errors='replace'))
+                mem = json.loads((dir_key / 'discovery-public.json').read_text(encoding='utf-8', errors='replace'))
             except (OSError, ValueError):
-                _memory = {}
+                mem = {}
+            _write_mem(dir_key, mem)
+        state = _get_dir_state(dir_key)
         now = time.time()
         if (
             enabled
-            and now - _memory.get('updatedAt', 0) > 21600
-            and not _running
-            and now >= _next_retry_at
+            and now - _num(mem.get('updatedAt'), 0.0) > 21600
+            and dir_key not in _running_dirs
+            and now >= state['next_retry_at']
         ):
+            _running_dirs.add(dir_key)
             _running = True
+            state['attempt'] = now
             _attempt = now
-            threading.Thread(target=refresh, args=(directory,), daemon=True).start()
-        return dict(_memory)
+            try:
+                threading.Thread(target=refresh, args=(directory,), daemon=True, name='discovery-refresh').start()
+            except BaseException:
+                _running_dirs.discard(dir_key)
+                _running = bool(_running_dirs)
+                raise
+        return dict(mem)
 
 
 _genre_names = (
@@ -398,15 +506,22 @@ def _genre_set(raw):
 
 def genres(item):
     raw = item.get('genres') or item.get('genre') or ''
-    return _genre_set(raw if isinstance(raw, str) else ','.join(raw))
+    if isinstance(raw, str):
+        return _genre_set(raw)
+    if isinstance(raw, (list, tuple, set)):
+        return _genre_set(','.join(str(g) for g in raw if g is not None))
+    return ()
 
 
 def build(catalog, history, feed, today=None):
     today = today or dt.datetime.now(ZONE).date()
-    candidates = [dict(i) for i in catalog if i['kind'] in ('vod', 'series')]
+    catalog = catalog or []
+    history = history or []
+    feed = feed if isinstance(feed, dict) else {}
+    candidates = [dict(i) for i in catalog if isinstance(i, dict) and i.get('kind') in ('vod', 'series')]
     index = {}
     for item in candidates:
-        for title in titles(item['name']):
+        for title in titles(item.get('name')):
             index.setdefault((item['kind'], title), []).append(item)
     identities = {}
     for item in candidates:
@@ -415,62 +530,77 @@ def build(catalog, history, feed, today=None):
                 identities[(item['kind'], str(item[field]))] = item
 
     def match(meta):
+        if not isinstance(meta, dict) or not meta.get('kind'):
+            return None
+        aliases = meta.get('aliases')
+        alias_list = aliases if isinstance(aliases, (list, tuple)) else ()
         options = {
             i['id']: i
-            for title in set().union(*(titles(n) for n in [meta.get('name', ''), *meta.get('aliases', [])]))
+            for title in set().union(*(titles(n) for n in [meta.get('name') or '', *alias_list]))
             for i in index.get((meta['kind'], title), [])
         }
         for field in ('imdb_id', 'moviedb_id'):
-            item = identities.get((meta['kind'], str(meta.get(field, ''))))
+            val = meta.get(field)
+            if not val:
+                continue
+            item = identities.get((meta['kind'], str(val)))
             if item:
                 options[item['id']] = item
         year = str(meta.get('year') or meta.get('releaseInfo') or '')[:4]
         valid = [
             i for i in options.values()
-            if not year.isdigit() or not str(i.get('year', '')).isdigit() or i['year'] == year or meta['kind'] == 'series'
+            if not year.isdigit() or not str(i.get('year') or '').isdigit() or i['year'] == year or meta['kind'] == 'series'
         ]
-        return max(valid, key=lambda i: (bool(i.get('poster')), i.get('rating', 0)), default=None)
+        return max(valid, key=lambda i: (bool(i.get('poster')), _num(i.get('rating'), 0.0)), default=None)
 
-    for meta in [*feed.get('metas', []), *feed.get('charts', [])]:
+    feed_metas = feed.get('metas') if isinstance(feed.get('metas'), list) else ()
+    feed_charts = feed.get('charts') if isinstance(feed.get('charts'), list) else ()
+    for meta in [*feed_metas, *feed_charts]:
         item = match(meta)
         if item is None:
             continue
         if genres(meta):
             item['genres'] = sorted(genres(meta))
-        if meta.get('released'):
-            item['releaseDate'] = meta['released'][:10]
+        released = meta.get('released')
+        if isinstance(released, str) and released:
+            item['releaseDate'] = released[:10]
         if meta.get('globalRank'):
             item['globalRank'] = meta['globalRank']
         if not item.get('backdrop'):
-            item['backdrop'] = meta.get('background', '')
+            item['backdrop'] = meta.get('background') or ''
         if not item.get('poster'):
-            item['poster'] = meta.get('poster', '')
+            item['poster'] = meta.get('poster') or ''
         if not item.get('year'):
             item['year'] = str(meta.get('year') or meta.get('releaseInfo') or '')[:4]
 
     unique = {}
     for item in candidates:
-        token = (item['kind'], key(item['name']), item.get('year', ''))
+        token = (item['kind'], key(item.get('name')), item.get('year') or '')
         if token not in unique or len(genres(item)) > len(genres(unique[token])):
             unique[token] = item
     candidates = list(unique.values())
-    by_id = {i['id']: i for i in catalog}
+    by_id = {i['id']: i for i in catalog if isinstance(i, dict) and i.get('id')}
     by_id.update({i['id']: i for i in candidates})
 
     watched, weights, seeds = set(), {}, []
     for h in history:
-        p = h.get('progress') or {}
-        target = h.get('parentId') or h['id']
+        if not isinstance(h, dict):
+            continue
+        p = h.get('progress')
+        p = p if isinstance(p, dict) else {}
+        target = h.get('parentId') or h.get('id')
         item = by_id.get(target)
         if not item:
             continue
-        if p.get('position', 0) > 0 or p.get('completed'):
+        pos = _num(p.get('position'), 0.0)
+        dur = _num(p.get('duration'), 0.0)
+        if pos > 0 or p.get('completed'):
             watched.add(target)
-        if p.get('position', 0) < 60 and not p.get('completed') and not h.get('favorite'):
+        if pos < 60 and not p.get('completed') and not h.get('favorite'):
             continue
-        affinity = 1 + min(1, p.get('position', 0) / max(1, p.get('duration', 0))) + 2 * bool(h.get('favorite'))
+        affinity = 1 + min(1, pos / max(1, dur)) + 2 * bool(h.get('favorite'))
         try:
-            days = max(0, (today - dt.date.fromisoformat(p.get('updatedAt', '')[:10])).days)
+            days = max(0, (today - dt.date.fromisoformat(str(p.get('updatedAt') or '')[:10])).days)
         except ValueError:
             days = 30
         affinity *= math.pow(.5, days / 90)
@@ -482,8 +612,8 @@ def build(catalog, history, feed, today=None):
     def score(i):
         return (
             sum(weights.get(g, 0) for g in genres(i))
-            + min(10, float(i.get('rating') or 0)) * .08
-            + 1 / (1 + float(i.get('globalRank', 999)))
+            + min(10, _num(i.get('rating'), 0.0)) * .08
+            + 1 / (1 + _num(i.get('globalRank'), 999.0))
         )
 
     shelves = []
@@ -495,14 +625,21 @@ def build(catalog, history, feed, today=None):
 
     fresh = [
         i for i in candidates
-        if str(i.get('year', '')).isdigit() and today.year - 1 <= int(i['year']) <= today.year
+        if str(i.get('year') or '').isdigit() and today.year - 1 <= int(i['year']) <= today.year
         and ((today - dt.timedelta(days=365)).isoformat() <= i['releaseDate'] <= today.isoformat() if i.get('releaseDate') else int(i['year']) == today.year)
     ]
-    fresh.sort(key=lambda i: (i.get('releaseDate') or i.get('year', ''), -i.get('globalRank', 999)), reverse=True)
+    fresh.sort(key=lambda i: (str(i.get('releaseDate') or i.get('year') or ''), -_num(i.get('globalRank'), 999.0)), reverse=True)
 
-    charts = feed.get('charts', [])
-    week = max((e.get('week', '') for e in charts), default='')
-    chart_fresh = bool(week and 0 <= (today - dt.date.fromisoformat(week)).days <= 21)
+    charts = [e for e in (feed.get('charts') or []) if isinstance(e, dict)]
+    parsed_weeks = []
+    for entry in charts:
+        raw_week = str(entry.get('week') or '').strip()[:10]
+        try:
+            parsed_weeks.append((dt.date.fromisoformat(raw_week), raw_week))
+        except ValueError:
+            continue
+    week_date, week = max(parsed_weeks, default=(None, ''))
+    chart_fresh = bool(week_date is not None and 0 <= (today - week_date).days <= 21)
     is_tmdb_chart = feed.get('chartSource') == 'tmdb' or (
         bool(charts) and all(c.get('source') == 'tmdb' for c in charts)
     )
@@ -528,8 +665,8 @@ def build(catalog, history, feed, today=None):
     for kind, label in [('vod', 'Filmler'), ('series', 'Diziler')]:
         if chart_fresh:
             rows, used = [], set()
-            for meta in sorted(charts, key=lambda m: m.get('rank', 99)):
-                if meta['kind'] != kind or meta.get('week') != week:
+            for meta in sorted(charts, key=lambda m: _num(m.get('rank'), 99)):
+                if meta.get('kind') != kind or str(meta.get('week') or '').strip()[:10] != week:
                     continue
                 item = match(meta)
                 if item and item['id'] not in used:

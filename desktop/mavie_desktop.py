@@ -255,6 +255,75 @@ def show_fallback_window(base_url: str, stop_event: threading.Event) -> None:
         stop_event.set()
 
 
+def parse_preferred_port(raw: str | None = None) -> int:
+    value = raw if raw is not None else (os.environ.get('MAVIE_PORT') or os.environ.get('CINEVA_PORT') or '8844')
+    text = str(value).strip()
+    if not text:
+        return 8844
+    try:
+        port = int(text)
+    except ValueError:
+        raise ValueError(f'Geçersiz port numarası: {text!r}. 1 ile 65535 arasında bir tam sayı girin.') from None
+    if not 1 <= port <= 65535:
+        raise ValueError(f'Port numarası aralık dışında: {port}. 1 ile 65535 arasında olmalıdır.')
+    return port
+
+
+def _acquire_windows_mutex():
+    if not sys.platform.startswith('win') or os.environ.get('MAVIE_HEADLESS_SMOKE') == '1':
+        return None
+    with contextlib.suppress(Exception):
+        import ctypes
+        return ctypes.windll.kernel32.CreateMutexW(None, False, 'MavieDesktopMutex')
+    return None
+
+
+def _release_windows_mutex(handle) -> None:
+    if handle:
+        with contextlib.suppress(Exception):
+            import ctypes
+            ctypes.windll.kernel32.CloseHandle(handle)
+
+
+def launch_browser_or_fallback(
+    base_url: str,
+    stop_event: threading.Event,
+    log_fn=None,
+    browser_cmd: list[str] | None = None,
+) -> int:
+    cmd = find_app_browser() if browser_cmd is None else browser_cmd
+    if cmd:
+        profile_dir = tempfile.mkdtemp(prefix='mavie-app-')
+        try:
+            started_at = time.monotonic()
+            app_proc = subprocess.Popen([
+                *cmd,
+                f'--app={base_url}/',
+                f'--user-data-dir={profile_dir}',
+                '--no-first-run',
+                '--no-default-browser-check',
+            ])
+            rc = app_proc.wait()
+            elapsed = time.monotonic() - started_at
+            if elapsed < 2.0:
+                if rc != 0:
+                    if log_fn:
+                        log_fn(f'Browser app exited quickly with code {rc}; falling back to default browser')
+                    with contextlib.suppress(Exception):
+                        webbrowser.open(base_url + '/')
+                elif log_fn:
+                    log_fn('Browser handed off to existing session; keeping server alive with fallback window')
+                show_fallback_window(base_url, stop_event)
+                return 0
+            return rc
+        finally:
+            shutil.rmtree(profile_dir, ignore_errors=True)
+    with contextlib.suppress(Exception):
+        webbrowser.open(base_url + '/')
+    show_fallback_window(base_url, stop_event)
+    return 0
+
+
 def main() -> int:
     configure_utf8_stdio()
     if '--serve' in sys.argv:
@@ -265,8 +334,6 @@ def main() -> int:
         server.main()
         return 0
 
-    preferred_port = int(os.environ.get('MAVIE_PORT') or os.environ.get('CINEVA_PORT') or '8844')
-    port = find_free_port(preferred_port)
     data_dir = Path(
         os.environ.get('MAVIE_DATA_DIR')
         or os.environ.get('CINEVA_DATA_DIR')
@@ -277,24 +344,34 @@ def main() -> int:
     os.environ['MAVIE_DATA_DIR'] = str(data_dir)
     os.environ['CINEVA_DATA_DIR'] = str(data_dir)
 
-    if str(ROOT) not in sys.path:
-        sys.path.insert(0, str(ROOT))
-
-    stop_event = threading.Event()
-    ready_event = threading.Event()
-    startup_error: list[BaseException] = []
-
     def _log(msg: str) -> None:
         with contextlib.suppress(OSError):
             with log_path.open('a', encoding='utf-8', errors='replace') as fh:
                 fh.write(msg.rstrip() + '\n')
 
-    def _run_srv() -> None:
+    try:
+        preferred_port = parse_preferred_port()
+    except ValueError as exc:
+        msg = f'{exc}\nLog: {log_path}'
+        _log(msg)
+        show_error_dialog('Mavie Yapılandırma Hatası', msg)
+        return 1
+
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+
+    mutex_handle = _acquire_windows_mutex()
+    stop_event = threading.Event()
+    ready_event = threading.Event()
+    startup_error: list[BaseException] = []
+    server_thread: threading.Thread | None = None
+
+    def _run_srv(bind_port: int) -> None:
         try:
             import server
             server.run_server(
                 host='0.0.0.0',
-                port=port,
+                port=bind_port,
                 install_signals=False,
                 stop_event=stop_event,
                 ready_event=ready_event,
@@ -303,13 +380,31 @@ def main() -> int:
             startup_error.append(exc)
             _log('Server error:\n' + traceback.format_exc())
 
-    server_thread = threading.Thread(target=_run_srv, daemon=True, name='mavie-server')
-    server_thread.start()
-
     try:
-        base_url = f'http://127.0.0.1:{port}'
-        if not wait_for_health(base_url, server_thread, startup_error):
-            detail = f'\n\nDetay: {startup_error[0]}' if startup_error else ''
+        candidate_start = preferred_port
+        port = preferred_port
+        started_ok = False
+        for attempt in range(5):
+            port = find_free_port(candidate_start)
+            startup_error.clear()
+            ready_event.clear()
+            stop_event.clear()
+            server_thread = threading.Thread(target=_run_srv, args=(port,), daemon=True, name='mavie-server')
+            server_thread.start()
+            base_url = f'http://127.0.0.1:{port}'
+            if wait_for_health(base_url, server_thread, startup_error):
+                started_ok = True
+                break
+            if startup_error and isinstance(startup_error[-1], OSError) and attempt < 4:
+                _log(f'Port {port} bind race ({startup_error[-1]}); retrying another port')
+                stop_event.set()
+                server_thread.join(timeout=2)
+                candidate_start = port + 1 if port < 65535 else 8844
+                continue
+            break
+
+        if not started_ok:
+            detail = f'\n\nDetay: {startup_error[-1]}' if startup_error else ''
             msg = f'Mavie yerel servisi başlatılamadı.{detail}\nLog: {log_path}'
             _log(msg)
             show_error_dialog('Mavie Başlatma Hatası', msg)
@@ -320,30 +415,14 @@ def main() -> int:
         if os.environ.get('MAVIE_HEADLESS_SMOKE') == '1':
             return 0
 
-        browser_cmd = find_app_browser()
-        if browser_cmd:
-            profile_dir = tempfile.mkdtemp(prefix='mavie-app-')
-            app_proc = subprocess.Popen([
-                *browser_cmd,
-                f'--app={base_url}/',
-                f'--user-data-dir={profile_dir}',
-                '--no-first-run',
-                '--no-default-browser-check',
-            ])
-            try:
-                return app_proc.wait()
-            finally:
-                shutil.rmtree(profile_dir, ignore_errors=True)
-        else:
-            with contextlib.suppress(Exception):
-                webbrowser.open(base_url + '/')
-            show_fallback_window(base_url, stop_event)
-            return 0
+        return launch_browser_or_fallback(base_url, stop_event, log_fn=_log)
     except KeyboardInterrupt:
         return 0
     finally:
         stop_event.set()
-        server_thread.join(timeout=5)
+        if server_thread is not None:
+            server_thread.join(timeout=5)
+        _release_windows_mutex(mutex_handle)
 
 
 if __name__ == '__main__':

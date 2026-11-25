@@ -250,8 +250,8 @@ public actor SportsGuideService {
     public static func parseXMLTV(data rawData: Data, dayIso: String, timeZone: TimeZone = DiscoveryEngine.istanbulTimeZone) throws -> [SportBroadcastEvent] {
         let payload = try decompressGzipIfNeeded(rawData)
         let text = MavieHTTPClient.decodeText(payload)
-        let upperPrefix = text.prefix(4096).uppercased()
-        if upperPrefix.contains("<!ENTITY") || upperPrefix.contains("<!DOCTYPE") {
+        if text.range(of: "<!DOCTYPE", options: .caseInsensitive) != nil
+            || text.range(of: "<!ENTITY", options: .caseInsensitive) != nil {
             throw NSError(
                 domain: "MavieSports",
                 code: 13,
@@ -603,7 +603,8 @@ public actor SportsGuideService {
                 session: session,
                 context: useXmltv ? "XMLTV yayın rehberi" : "Spor yayın rehberi",
                 fallbackUserAgent: MavieHTTPClient.browserUserAgent,
-                retryDelays: [0.3, 0.9]
+                retryDelays: [0.3, 0.9],
+                maxBytes: Self.maxXmltvDecompressedBytes
             )
             let events: [SportBroadcastEvent]
             if useXmltv {
@@ -616,17 +617,28 @@ public actor SportsGuideService {
             return SportsGuideResponse(date: dayIso, events: events, stale: false, sourceType: sourceType, configured: true)
         } catch is CancellationError {
             throw CancellationError()
+        } catch let urlErr as URLError where urlErr.code == .cancelled {
+            throw CancellationError()
         } catch {
-            if let cached, now - cached.fetchedAt <= 12 * 3600 {
+            let nsErr = error as NSError
+            let isSecurityOrSizeError = nsErr.domain == "MavieSports" && (nsErr.code == 11 || nsErr.code == 13)
+            if !isSecurityOrSizeError, let cached, now - cached.fetchedAt <= 12 * 3600 {
                 return SportsGuideResponse(date: dayIso, events: cached.events, stale: true, sourceType: sourceType, configured: true)
             }
-            let fallbackMsg = useXmltv
-                ? "XMLTV yayın rehberine ulaşılamadı. Bağlantıyı kontrol edin."
-                : "Spor yayın rehberine ulaşılamadı. Biraz sonra tekrar dene."
+            if nsErr.domain == "MavieSports" {
+                throw error
+            }
+            if error is MavieError {
+                throw error
+            }
+            let message = MavieHTTPClient.classifyURLError(
+                error,
+                context: useXmltv ? "XMLTV yayın rehberi" : "Spor yayın rehberi"
+            )
             throw NSError(
                 domain: "MavieSports",
                 code: 7,
-                userInfo: [NSLocalizedDescriptionKey: fallbackMsg]
+                userInfo: [NSLocalizedDescriptionKey: message]
             )
         }
     }

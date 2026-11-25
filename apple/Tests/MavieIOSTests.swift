@@ -1,3 +1,6 @@
+import CryptoKit
+import Darwin
+import Foundation
 import XCTest
 @testable import MavieIOS
 
@@ -568,6 +571,532 @@ final class MavieIOSTests: XCTestCase {
         XCTAssertEqual(store.sourceMode, .m3u)
         XCTAssertEqual(store.items.count, 1)
         XCTAssertEqual(store.items.first?.name, "Fallback Kanal")
+    }
+
+    @MainActor
+    func testLibraryStoreSplitsProgressFromCatalogAndPreservesOver4000Items() throws {
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("mavie_scale_test_\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        var lines = ["#EXTM3U"]
+        for i in 1...4505 {
+            lines.append("#EXTINF:-1 group-title=\"Sinema\" type=\"movie\",Film \(i)")
+            lines.append("https://cdn.example.test/movies/\(i).mp4")
+        }
+        let playlist = lines.joined(separator: "\n")
+
+        let store = LibraryStore(storageDirectory: tmpDir)
+        store.importM3uText(playlist)
+        XCTAssertEqual(store.items.count, 4505)
+
+        let libURL = tmpDir.appendingPathComponent("library_state.json")
+        let progURL = tmpDir.appendingPathComponent("progress_state.json")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: libURL.path))
+        let libBefore = try Data(contentsOf: libURL)
+        let libText = String(decoding: libBefore, as: UTF8.self)
+        XCTAssertFalse(libText.contains("\"progress\":{\"vod:"))
+
+        let attrsBefore = try FileManager.default.attributesOfItem(atPath: libURL.path)
+        let mtimeBefore = attrsBefore[.modificationDate] as? Date
+
+        let targetId = try XCTUnwrap(store.items.last?.id)
+        store.saveProgress(itemId: targetId, positionSeconds: 125, durationSeconds: 600, flush: true)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: progURL.path))
+        let attrsAfter = try FileManager.default.attributesOfItem(atPath: libURL.path)
+        let mtimeAfter = attrsAfter[.modificationDate] as? Date
+        XCTAssertEqual(mtimeBefore, mtimeAfter)
+        let libAfter = try Data(contentsOf: libURL)
+        XCTAssertEqual(libBefore, libAfter)
+
+        let reloaded = LibraryStore(storageDirectory: tmpDir)
+        XCTAssertEqual(reloaded.items.count, 4505)
+        XCTAssertEqual(reloaded.progressByItem[targetId]?.positionSeconds, 125)
+    }
+
+    @MainActor
+    func testLibraryStoreMigratesLegacyProgressAndQuarantinesCorruptFiles() throws {
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("mavie_corrupt_test_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        let libURL = tmpDir.appendingPathComponent("library_state.json")
+        let progURL = tmpDir.appendingPathComponent("progress_state.json")
+        let legacyJSON = """
+        {
+          "sourceMode": "demo",
+          "items": [],
+          "categories": [],
+          "favoriteIds": ["vod:demo_bbb"],
+          "favoriteCreatedAt": {},
+          "progress": {
+            "vod:demo_bbb": {
+              "item_id": "vod:demo_bbb",
+              "position": 180.0,
+              "duration": 596.0,
+              "completed": 0,
+              "updated_at": "2026-11-20T10:00:00Z"
+            }
+          },
+          "playlists": [],
+          "trackPreferences": [],
+          "profiles": [],
+          "connection": {"sourceType":"demo","host":"","username":"","password":"","m3uUrl":"","epgUrl":"","lanAddress":""},
+          "account": {"id":"demo","username":"AcikSinema","host":"demo.mavie.app","name":"Demo","status":"Active","expiresAt":"","maxConnections":1,"sourceType":"demo","epgUrl":""}
+        }
+        """
+        try Data(legacyJSON.utf8).write(to: libURL)
+
+        let migrated = LibraryStore(storageDirectory: tmpDir)
+        XCTAssertNil(migrated.lastError)
+        XCTAssertEqual(migrated.progressByItem["vod:demo_bbb"]?.positionSeconds, 180.0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: progURL.path))
+
+        let scrubbedLib = String(decoding: try Data(contentsOf: libURL), as: UTF8.self)
+        XCTAssertFalse(scrubbedLib.contains("\"position\":180"))
+
+        try Data("{corrupt-library".utf8).write(to: libURL)
+        try Data("{corrupt-progress".utf8).write(to: progURL)
+
+        let recovered = LibraryStore(storageDirectory: tmpDir)
+        XCTAssertNotNil(recovered.lastError)
+        let files = try FileManager.default.contentsOfDirectory(atPath: tmpDir.path)
+        XCTAssertTrue(files.contains { $0.hasPrefix("library_state.corrupt.") && $0.hasSuffix(".json") })
+        XCTAssertTrue(files.contains { $0.hasPrefix("progress_state.corrupt.") && $0.hasSuffix(".json") })
+    }
+
+    @MainActor
+    func testLibraryStoreSurfacesSaveWriteErrors() throws {
+        guard geteuid() != 0 else { return }
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("mavie_ro_test_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tmpDir.path)
+            try? FileManager.default.removeItem(at: tmpDir)
+        }
+
+        let store = LibraryStore(storageDirectory: tmpDir)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: tmpDir.path)
+
+        store.toggleFavorite(DemoCatalog.items[0])
+        XCTAssertNotNil(store.lastError)
+    }
+
+    func testHTTPClientRedactsCredentialsAndEnforcesMaxBytes() async throws {
+        let raw = "Failed connecting to https://ali:superSecret99@panel.example.test:8080/live/ali/superSecret99/42.m3u8?token=tokABC"
+        let redacted = MavieHTTPClient.redactSensitiveURLs(in: raw)
+        XCTAssertFalse(redacted.contains("superSecret99"))
+        XCTAssertFalse(redacted.contains("tokABC"))
+        XCTAssertTrue(redacted.contains("***"))
+
+        let urlErr = URLError(
+            .unknown,
+            userInfo: [NSURLErrorFailingURLStringErrorKey: "https://panel.example.test/player_api.php?username=demo_user&password=hiddenPassword42"]
+        )
+        let classified = MavieHTTPClient.classifyURLError(urlErr, context: "Xtream sunucusu")
+        XCTAssertFalse(classified.contains("hiddenPassword42"))
+
+        let session = MavieHTTPClient.makeSession(
+            bypassProxy: true,
+            requestTimeout: 5,
+            resourceTimeout: 10,
+            protocolClasses: [MavieTestURLProtocol.self]
+        )
+        defer { MavieTestURLProtocol.handler = nil }
+
+        // 1. Content-Length exceeds maxBytes
+        MavieTestURLProtocol.handler = { req in
+            let resp = HTTPURLResponse(
+                url: req.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Length": "1024"]
+            )!
+            return (resp, Data(repeating: 0x41, count: 16))
+        }
+        do {
+            _ = try await MavieHTTPClient.fetchData(
+                for: URLRequest(url: URL(string: "http://mock.local/large-header")!),
+                session: session,
+                retryDelays: [],
+                retryOnTransportFailure: false,
+                maxBytes: 64
+            )
+            XCTFail("Expected size error for Content-Length")
+        } catch let err as MavieError {
+            if case .validation = err { } else { XCTFail("Unexpected MavieError: \(err)") }
+        }
+
+        // 2. Chunked / unknown Content-Length exceeds maxBytes
+        MavieTestURLProtocol.handler = { req in
+            let resp = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (resp, Data(repeating: 0x42, count: 128))
+        }
+        do {
+            _ = try await MavieHTTPClient.fetchData(
+                for: URLRequest(url: URL(string: "http://mock.local/large-body")!),
+                session: session,
+                retryDelays: [],
+                retryOnTransportFailure: false,
+                maxBytes: 64
+            )
+            XCTFail("Expected size error for body")
+        } catch let err as MavieError {
+            if case .validation = err { } else { XCTFail("Unexpected MavieError: \(err)") }
+        }
+
+        // 3. Within maxBytes succeeds
+        MavieTestURLProtocol.handler = { req in
+            let resp = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (resp, Data("small-ok".utf8))
+        }
+        let (okData, _) = try await MavieHTTPClient.fetchData(
+            for: URLRequest(url: URL(string: "http://mock.local/small")!),
+            session: session,
+            retryDelays: [],
+            retryOnTransportFailure: false,
+            maxBytes: 64
+        )
+        XCTAssertEqual(String(data: okData, encoding: .utf8), "small-ok")
+    }
+
+    func testLanSyncDnsTimeoutAndCancellation() async throws {
+        let cancelTask = Task {
+            try await Task.sleep(nanoseconds: 50_000_000)
+            return try await LanSyncClient.resolveAndValidateLanAddress("slow.example.invalid:8844", dnsTimeout: 1.0)
+        }
+        cancelTask.cancel()
+        do {
+            _ = try await cancelTask.value
+            XCTFail("Expected CancellationError")
+        } catch is CancellationError {
+            // Expected
+        }
+
+        do {
+            _ = try await LanSyncClient.resolveAndValidateLanAddress("192.0.2.1:8844", dnsTimeout: 0.2)
+            XCTFail("Expected public IP rejection")
+        } catch let err as MavieError {
+            if case .validation = err { } else { XCTFail("Expected validation error, got \(err)") }
+        }
+
+        let start = Date()
+        do {
+            _ = try await LanSyncClient.resolveAndValidateLanAddress("nonexistent.invalid:8844", dnsTimeout: 0.05)
+            XCTFail("Expected DNS failure or timeout")
+        } catch {
+            XCTAssertLessThan(Date().timeIntervalSince(start), 2.0)
+        }
+    }
+
+    @MainActor
+    func testCredentialVaultAndSaltedPBKDF2PinsAndLockout() async throws {
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("mavie_vault_test_\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        let store = LibraryStore(storageDirectory: tmpDir)
+        let m3uSecretUrl = "https://panel.example.test/get.php?username=demo_user&password=secretM3uPass99"
+        store.importM3uText("#EXTM3U\n#EXTINF:-1,Kanal\nhttps://cdn.example.test/live/1.m3u8", m3uUrl: m3uSecretUrl)
+
+        let session = MavieHTTPClient.makeSession(
+            bypassProxy: true,
+            requestTimeout: 5,
+            resourceTimeout: 10,
+            protocolClasses: [MavieTestURLProtocol.self]
+        )
+        MavieTestURLProtocol.handler = { req in
+            let q = req.url?.query ?? ""
+            if !q.contains("action=") {
+                return (HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data(#"{"user_info":{"auth":1,"status":"Active","max_connections":"1"}}"#.utf8))
+            }
+            if q.contains("categories") {
+                return (HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data("[]".utf8))
+            }
+            if q.contains("get_live_streams") {
+                return (HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data(#"[{"stream_id":10,"name":"Haber 1","category_id":"1"}]"#.utf8))
+            }
+            return (HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data("[]".utf8))
+        }
+        defer { MavieTestURLProtocol.handler = nil }
+
+        await store.connectXtream(host: "http://panel.example.test", username: "ali", password: "secretXtreamPass88", session: session)
+        XCTAssertNil(store.lastError)
+        XCTAssertTrue(store.hasSavedXtreamPassword)
+
+        let libJSON = String(decoding: try Data(contentsOf: tmpDir.appendingPathComponent("library_state.json")), as: UTF8.self)
+        XCTAssertFalse(libJSON.contains("secretM3uPass99"))
+        XCTAssertFalse(libJSON.contains("secretXtreamPass88"))
+
+        let vaultURL = tmpDir.appendingPathComponent(".credentials_vault.json")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: vaultURL.path))
+        let vaultAttrs = try FileManager.default.attributesOfItem(atPath: vaultURL.path)
+        XCTAssertEqual((vaultAttrs[.posixPermissions] as? NSNumber)?.intValue, 0o600)
+
+        let reloaded = LibraryStore(storageDirectory: tmpDir)
+        XCTAssertEqual(reloaded.connection.password, "secretXtreamPass88")
+        XCTAssertEqual(reloaded.connection.m3uUrl, m3uSecretUrl)
+        XCTAssertTrue(reloaded.hasSavedXtreamPassword)
+
+        // Salted PBKDF2 PINs + lockout
+        let p1 = try reloaded.addProfile(name: "Profil A", pin: "4321")
+        let p2 = try reloaded.addProfile(name: "Profil B", pin: "4321")
+        XCTAssertTrue(p1.pinHash.hasPrefix("pbkdf2_sha256$10000$"))
+        XCTAssertNotEqual(p1.pinHash, p2.pinHash)
+
+        for _ in 1...5 {
+            XCTAssertThrowsError(try reloaded.switchProfile(id: p1.id, pinAttempt: "0000"))
+        }
+        // Even correct PIN must be locked out immediately after 5 failures
+        XCTAssertThrowsError(try reloaded.switchProfile(id: p1.id, pinAttempt: "4321"))
+
+        // Correct PIN works on non-locked profile
+        try reloaded.switchProfile(id: p2.id, pinAttempt: "4321")
+        XCTAssertTrue(reloaded.profiles.first(where: { $0.id == p2.id })?.active ?? false)
+
+        reloaded.clearSavedCredentials()
+        XCTAssertFalse(reloaded.hasSavedXtreamPassword)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: vaultURL.path))
+    }
+
+    @MainActor
+    func testLegacySha256PinUpgradesToPBKDF2OnLogin() throws {
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("mavie_pin_upgrade_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        let legacyHash = SHA256.hash(data: Data("1357".utf8)).map { String(format: "%02x", $0) }.joined()
+        let stateJSON = """
+        {
+          "sourceMode": "demo",
+          "items": [],
+          "categories": [],
+          "favoriteIds": [],
+          "favoriteCreatedAt": {},
+          "progress": {},
+          "playlists": [],
+          "trackPreferences": [],
+          "profiles": [
+            {"id":"default","name":"Ana Profil","avatarColor":"#7C3AED","isKids":false,"hasPin":false,"pinHash":"","active":true},
+            {"id":"prof_legacy","name":"Eski","avatarColor":"#3B82F6","isKids":false,"hasPin":true,"pinHash":"\(legacyHash)","active":false}
+          ],
+          "connection": {"sourceType":"demo","host":"","username":"","password":"legacyPlaintextPass","m3uUrl":"","epgUrl":"","lanAddress":""},
+          "account": {"id":"demo","username":"AcikSinema","host":"https://user:pass@legacy.test/list?password=abc","name":"Demo","status":"Active","expiresAt":"","maxConnections":1,"sourceType":"demo","epgUrl":""}
+        }
+        """
+        let libURL = tmpDir.appendingPathComponent("library_state.json")
+        try Data(stateJSON.utf8).write(to: libURL)
+
+        let store = LibraryStore(storageDirectory: tmpDir)
+        XCTAssertEqual(store.connection.password, "legacyPlaintextPass")
+        let scrubbedLib = String(decoding: try Data(contentsOf: libURL), as: UTF8.self)
+        XCTAssertFalse(scrubbedLib.contains("legacyPlaintextPass"))
+        XCTAssertFalse(scrubbedLib.contains("password=abc"))
+
+        try store.switchProfile(id: "prof_legacy", pinAttempt: "1357")
+        let upgraded = try XCTUnwrap(store.profiles.first(where: { $0.id == "prof_legacy" }))
+        XCTAssertTrue(upgraded.pinHash.hasPrefix("pbkdf2_sha256$10000$"))
+    }
+
+    @MainActor
+    func testURLSchemeValidationXtreamCancellationAndSportsErrorPreservation() async throws {
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("mavie_sec_test_\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+        let store = LibraryStore(storageDirectory: tmpDir)
+
+        for bad in ["file:///etc/passwd", "javascript:alert(1)", "ftp://example.com/v.mp4"] {
+            let item = MediaItem(id: "vod:bad", providerId: "bad", name: "Bad", kind: .vod, sourceUrl: bad)
+            XCTAssertThrowsError(try store.resolvePlayableURL(for: item))
+        }
+
+        let decodedUnsafeJSON = #"{"id":"vod:x","providerId":"x","name":"X","kind":"vod","poster":"javascript:alert(1)","backdrop":"ftp://a/b.png","sourceUrl":"javascript:alert(2)"}"#.data(using: .utf8)!
+        let decodedItem = try JSONDecoder().decode(MediaItem.self, from: decodedUnsafeJSON)
+        XCTAssertEqual(decodedItem.poster, "")
+        XCTAssertEqual(decodedItem.backdrop, "")
+        XCTAssertEqual(decodedItem.sourceUrl, "")
+
+        let srcFile = tmpDir.appendingPathComponent("clip.mp4")
+        try Data("video".utf8).write(to: srcFile)
+        try await store.importLocalMediaFileAsync(from: srcFile)
+        let localItem = try XCTUnwrap(store.items.first { $0.name == "clip" })
+        let localPlayURL = try store.resolvePlayableURL(for: localItem)
+        XCTAssertEqual(localPlayURL.scheme, "file")
+
+        // Xtream cancellation propagation
+        let session = MavieHTTPClient.makeSession(
+            bypassProxy: true,
+            requestTimeout: 5,
+            resourceTimeout: 10,
+            protocolClasses: [MavieTestURLProtocol.self]
+        )
+        MavieTestURLProtocol.handler = { _ in
+            throw URLError(.cancelled)
+        }
+        defer { MavieTestURLProtocol.handler = nil }
+
+        await store.connectXtream(host: "http://panel.example.test", username: "ali", password: "123", session: session)
+        XCTAssertNil(store.lastError)
+
+        // SportsGuideService error code preservation (DTD code 13 & HTTP 429)
+        let sports = SportsGuideService()
+        MavieTestURLProtocol.handler = { req in
+            let dtd = "<!DOCTYPE tv [<!ENTITY xxe \"bad\">]><tv></tv>"
+            return (HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data(dtd.utf8))
+        }
+        do {
+            _ = try await sports.load(dayIso: "2026-11-21", epgUrl: "https://epg.example.test/bad.xml", sourceMode: "xmltv", force: true, session: session)
+            XCTFail("Expected DTD error")
+        } catch {
+            let nsErr = error as NSError
+            XCTAssertEqual(nsErr.domain, "MavieSports")
+            XCTAssertEqual(nsErr.code, 13)
+        }
+
+        MavieTestURLProtocol.handler = { req in
+            return (HTTPURLResponse(url: req.url!, statusCode: 429, httpVersion: nil, headerFields: nil)!, Data())
+        }
+        do {
+            _ = try await sports.load(dayIso: "2026-11-21", epgUrl: "https://epg.example.test/rate.xml", sourceMode: "xmltv", force: true, session: session)
+            XCTFail("Expected HTTP 429 MavieError")
+        } catch let mavieErr as MavieError {
+            XCTAssertTrue(mavieErr.localizedDescription.contains("429"))
+        }
+    }
+
+    @MainActor
+    func testPlaybackRecoveryStateMachineAndTrackPreferences() throws {
+        let hlsURL = URL(string: "https://panel.example.test/live/ali/secretPass99/42.m3u8")!
+        let tsURL = URL(string: "https://panel.example.test/live/ali/secretPass99/42.ts")!
+        var state = PlaybackRecoveryState(
+            isLive: true,
+            currentURL: hlsURL,
+            liveTSFallbackURL: tsURL,
+            pendingResumeSeconds: 120
+        )
+
+        XCTAssertFalse(PlaybackRecoveryState.shouldPersistProgress(duration: 600, isLive: false, hasCompletedInitialSeek: state.hasCompletedInitialSeek, isScrubbing: false))
+        XCTAssertEqual(state.markReadyToPlay(), 120)
+        XCTAssertNil(state.markReadyToPlay())
+        XCTAssertTrue(PlaybackRecoveryState.shouldPersistProgress(duration: 600, isLive: false, hasCompletedInitialSeek: state.hasCompletedInitialSeek, isScrubbing: false))
+        XCTAssertFalse(PlaybackRecoveryState.shouldPersistProgress(duration: 600, isLive: false, hasCompletedInitialSeek: state.hasCompletedInitialSeek, isScrubbing: true))
+        XCTAssertFalse(PlaybackRecoveryState.shouldPersistProgress(duration: 600, isLive: true, hasCompletedInitialSeek: state.hasCompletedInitialSeek, isScrubbing: false))
+
+        let step1 = state.nextAction(for: PlaybackFailureSignal(httpStatusCode: 403))
+        XCTAssertEqual(step1, .retry(url: hlsURL, userAgent: MavieHTTPClient.browserUserAgent, delaySeconds: 0.1, reason: .userAgentFallback))
+
+        let step2 = state.nextAction(for: PlaybackFailureSignal(errorDomain: "AVFoundationErrorDomain", errorCode: -11828))
+        XCTAssertEqual(step2, .retry(url: tsURL, userAgent: MavieHTTPClient.browserUserAgent, delaySeconds: 0.1, reason: .liveFormatFallback))
+
+        let step3 = state.nextAction(for: PlaybackFailureSignal(isStallTimeout: true))
+        XCTAssertEqual(step3, .retry(url: tsURL, userAgent: MavieHTTPClient.browserUserAgent, delaySeconds: 1.5, reason: .transientReconnect(attempt: 1)))
+
+        let step4 = state.nextAction(for: PlaybackFailureSignal(isStallTimeout: true))
+        XCTAssertEqual(step4, .retry(url: tsURL, userAgent: MavieHTTPClient.browserUserAgent, delaySeconds: 3.0, reason: .transientReconnect(attempt: 2)))
+
+        let step5 = state.nextAction(for: PlaybackFailureSignal(rawMessage: "Error opening \(tsURL.absoluteString)"))
+        if case .fail(let message) = step5 {
+            XCTAssertFalse(message.contains("secretPass99"))
+        } else {
+            XCTFail("Expected terminal .fail action")
+        }
+
+        let queryAlt = PlaybackRecoveryState.alternateLiveTSURL(for: URL(string: "https://p.test/get.php?output=hls")!)
+        XCTAssertTrue(queryAlt?.absoluteString.contains("output=mpegts") ?? false)
+
+        let audioTracks = [
+            PlaybackTrackCandidate(id: "0", displayName: "English (AAC)", languageTag: "en-US"),
+            PlaybackTrackCandidate(id: "1", displayName: "Türkçe", languageTag: "tr-TR"),
+        ]
+        XCTAssertEqual(
+            PlaybackRecoveryState.matchAudioOption(preferred: SyncTrackPreferenceData(audio: "tr", subtitle: "off"), options: audioTracks),
+            1
+        )
+        XCTAssertEqual(
+            PlaybackRecoveryState.matchSubtitleOption(preferred: SyncTrackPreferenceData(audio: "tr", subtitle: "off"), options: audioTracks),
+            .off
+        )
+        XCTAssertEqual(
+            PlaybackRecoveryState.matchSubtitleOption(preferred: SyncTrackPreferenceData(audio: "auto", subtitle: "en", clientSubtitle: "English (AAC)"), options: audioTracks),
+            .select(index: 0)
+        )
+
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("mavie_track_pref_\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+        let store = LibraryStore(storageDirectory: tmpDir)
+        store.saveTrackPreference(itemId: "vod:demo_bbb", audio: "tr", subtitle: "en", clientAudio: "Türkçe", clientSubtitle: "English")
+        let reloaded = LibraryStore(storageDirectory: tmpDir)
+        XCTAssertEqual(reloaded.trackPreference(for: "vod:demo_bbb")?.clientAudio, "Türkçe")
+
+        let oversized = Data(repeating: 0x20, count: LanSyncClient.maxBackupBytes + 1)
+        XCTAssertThrowsError(try reloaded.importBackupJSON(oversized))
+    }
+
+    @MainActor
+    func testBackupImportPersistsProgressAcrossReloadAndLegacyMerge() throws {
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("mavie_backup_prog_\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        let backupJSON = """
+        {
+          "version": 1,
+          "exportedAt": "2026-11-25T10:00:00Z",
+          "favorites": [],
+          "progress": [
+            {"item_id": "vod:demo_bbb", "position": 245.0, "duration": 596.0, "completed": 0, "updated_at": "2026-11-25T10:00:00Z"}
+          ],
+          "playlists": [],
+          "playlistItems": [],
+          "trackPreferences": [],
+          "appleTrackPreferences": [
+            {"item_id": "vod:demo_sintel", "data": "{\\"audio\\": \\"en\\", \\"subtitle\\": \\"tr\\", \\"clientAudio\\": \\"English\\", \\"clientSubtitle\\": \\"Türkçe\\"}", "updated_at": "2026-11-25T10:00:00Z"}
+          ],
+          "items": []
+        }
+        """.data(using: .utf8)!
+
+        let store = LibraryStore(storageDirectory: tmpDir)
+        try store.importBackupJSON(backupJSON)
+        XCTAssertEqual(store.progressByItem["vod:demo_bbb"]?.positionSeconds, 245.0)
+        XCTAssertEqual(store.trackPreference(for: "vod:demo_sintel")?.clientSubtitle, "Türkçe")
+
+        // Verify imported progress survived reload via progress_state.json
+        let reloaded = LibraryStore(storageDirectory: tmpDir)
+        XCTAssertEqual(reloaded.progressByItem["vod:demo_bbb"]?.positionSeconds, 245.0)
+        XCTAssertEqual(reloaded.trackPreference(for: "vod:demo_sintel")?.clientSubtitle, "Türkçe")
+
+        // Verify legacy progress embedded in library_state.json merges into existing progress_state.json
+        let libURL = tmpDir.appendingPathComponent("library_state.json")
+        let legacyMergeJSON = """
+        {
+          "sourceMode": "demo",
+          "items": [],
+          "categories": [],
+          "favoriteIds": [],
+          "favoriteCreatedAt": {},
+          "progress": {
+            "vod:demo_tears": {
+              "item_id": "vod:demo_tears",
+              "position": 310.0,
+              "duration": 734.0,
+              "completed": 0,
+              "updated_at": "2026-11-25T11:00:00Z"
+            }
+          },
+          "playlists": [],
+          "trackPreferences": [],
+          "profiles": [],
+          "connection": {"sourceType":"demo","host":"","username":"","password":"","m3uUrl":"","epgUrl":"","lanAddress":""},
+          "account": {"id":"demo","username":"AcikSinema","host":"demo.mavie.app","name":"Demo","status":"Active","expiresAt":"","maxConnections":1,"sourceType":"demo","epgUrl":""}
+        }
+        """
+        try Data(legacyMergeJSON.utf8).write(to: libURL)
+
+        let merged = LibraryStore(storageDirectory: tmpDir)
+        XCTAssertEqual(merged.progressByItem["vod:demo_bbb"]?.positionSeconds, 245.0)
+        XCTAssertEqual(merged.progressByItem["vod:demo_tears"]?.positionSeconds, 310.0)
+
+        let reloadedAfterMerge = LibraryStore(storageDirectory: tmpDir)
+        XCTAssertEqual(reloadedAfterMerge.progressByItem["vod:demo_bbb"]?.positionSeconds, 245.0)
+        XCTAssertEqual(reloadedAfterMerge.progressByItem["vod:demo_tears"]?.positionSeconds, 310.0)
     }
 }
 

@@ -78,6 +78,24 @@ button:focus-visible {
   border: 0;
 }
 
+.skip-link {
+  position: fixed;
+  top: -100px;
+  left: 16px;
+  z-index: 100;
+  padding: 10px 16px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(135deg, var(--purple), var(--blue) 55%, var(--cyan));
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  transition: top 160ms ease;
+}
+
+.skip-link:focus {
+  top: 12px;
+}
+
 /* Subtle single atmospheric aurora behind hero — Apple Pro keynote style */
 .ambient-bg {
   position: fixed;

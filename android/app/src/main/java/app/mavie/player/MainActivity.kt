@@ -12,6 +12,7 @@ import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.Crossfade
@@ -47,7 +48,8 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
         )
         if (Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
-        setContent { MavieTheme { MavieApplication(model) } }
+        val restoredInstanceState = savedInstanceState != null
+        setContent { MavieTheme { MavieApplication(model, restoredInstanceState) } }
     }
 
     override fun onUserLeaveHint() {
@@ -63,17 +65,28 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MavieApplication(model: MainViewModel) {
+fun MavieApplication(model: MainViewModel, restoredInstanceState: Boolean = false) {
     val account by model.account.collectAsStateWithLifecycle()
     val reducedMotion = rememberReducedMotion()
     val sportsState = rememberSaveableStateHolder()
-    var launch by rememberSaveable { mutableStateOf(true) }
+    var launch by rememberSaveable { mutableStateOf(!restoredInstanceState && !model.splashCompleted) }
     var syncDialog by rememberSaveable { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val exportFile = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri -> uri?.let(model::exportTo) }
     val importFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(model::importFrom) }
     val localVideoFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(model::playLocalUri) }
+    fun <I> launchSaf(launcher: ActivityResultLauncher<I>, input: I) {
+        runCatching { launcher.launch(input) }.onFailure {
+            model.notice = "Bu cihazda dosya seçici bulunamadı."
+        }
+    }
     LaunchedEffect(model.notice) { model.notice?.let { message -> snackbar.showSnackbar(message); if (model.notice == message) model.notice = null } }
+    LaunchedEffect(model.syncSuccess) {
+        if (model.syncSuccess) {
+            syncDialog = false
+            model.syncSuccess = false
+        }
+    }
     val playing = model.player
     if (launch) {
         val window = LocalActivity.current?.window
@@ -83,7 +96,10 @@ fun MavieApplication(model: MainViewModel) {
             insets?.hide(WindowInsetsCompat.Type.systemBars())
             onDispose { insets?.show(WindowInsetsCompat.Type.systemBars()) }
         }
-        MavieLaunchScreen(onFinished = { launch = false })
+        MavieLaunchScreen(onFinished = {
+            model.splashCompleted = true
+            launch = false
+        })
     } else if (playing != null) {
         PlayerScreen(
             title = playing.item.name, sourceUrl = playing.url, startPositionMs = playing.positionMs,
@@ -93,8 +109,8 @@ fun MavieApplication(model: MainViewModel) {
             initialSubtitleTrack = if (playing.preference.subtitleOff) -1 else playing.preference.subtitleId,
             nextEpisode = playing.nextEpisode?.let { UpNextEpisode(it.name, it.season, it.episode, it.backdrop.ifBlank { it.poster }) },
             onNextEpisode = { model.playNext(playing.generation) },
-            onProgress = { position, duration -> model.saveProgress(playing.accountId, playing.item, position, duration) },
-            onTrackSelection = { audio, subtitle -> model.saveTracks(playing.accountId, playing.item.id, audio, subtitle) },
+            onProgress = { position, duration -> model.saveProgress(playing.accountId, playing.item, position, duration, playing.profileId) },
+            onTrackSelection = { audio, subtitle -> model.saveTracks(playing.accountId, playing.item.id, audio, subtitle, playing.profileId) },
             episodes = playing.episodes,
             currentEpisodeId = playing.item.id,
             onSelectEpisode = model::playEpisodeById,
@@ -117,8 +133,14 @@ fun MavieApplication(model: MainViewModel) {
             ) { screen ->
                 when (screen) {
                     "setup" -> MavieSetupScreen(
-                        model.setupLoading, model.setupError, model::login, model::loginM3u, model::loginDemo,
-                    ) { localVideoFile.launch(arrayOf("video/*")) }
+                        loading = model.setupLoading,
+                        error = model.setupError,
+                        onSubmit = model::login,
+                        onM3uSubmit = model::loginM3u,
+                        onDemo = model::loginDemo,
+                        onOpenLocalFile = { launchSaf(localVideoFile, arrayOf("video/*")) },
+                        errorCode = model.setupErrorCode,
+                    )
                     "settings" -> MavieSettingsScreen(
                         accountName = account?.let { "${it.name} · ${it.username}" }.orEmpty(),
                         catalogSummary = "Doğrudan cihaz içi oynatma · Hesap ve masaüstü gerektirmez",
@@ -126,11 +148,18 @@ fun MavieApplication(model: MainViewModel) {
                         error = model.library.error,
                         onBack = { model.settings = false },
                         onRefresh = model::refresh,
-                        onExport = { exportFile.launch("Mavie-Yedek-${LocalDate.now()}.json") },
-                        onImport = { importFile.launch(arrayOf("application/json", "text/plain")) },
-                        onSync = { syncDialog = true },
+                        onExport = { launchSaf(exportFile, "Mavie-Yedek-${LocalDate.now()}.json") },
+                        onImport = { launchSaf(importFile, arrayOf("application/json", "text/plain")) },
+                        onSync = {
+                            model.syncError = null
+                            model.syncSuccess = false
+                            syncDialog = true
+                        },
                         onLogout = model::logout,
                         versionName = BuildConfig.VERSION_NAME,
+                        errorCode = model.library.errorCode,
+                        epgUrl = account?.epgUrl.orEmpty(),
+                        onSaveEpgUrl = model::updateEpgUrl,
                     )
                     "detail" -> model.detail?.let { state ->
                         MavieDetailScreen(
@@ -144,7 +173,7 @@ fun MavieApplication(model: MainViewModel) {
                         { model.addToCollection(null) }, model::loadMore, model::addToCollection, model::deleteCollection,
                         model::closeCollection, model.activeProfile.name, model.activeProfile.avatarColor,
                         { model.profileError = null; model.showProfilePicker = true }, model::surpriseMe,
-                        { localVideoFile.launch(arrayOf("video/*")) },
+                        { launchSaf(localVideoFile, arrayOf("video/*")) },
                     ) {
                         sportsState.SaveableStateProvider("sports") {
                             MavieSportsScreen(findChannels = model::findSportsChannels, onWatch = model::watchSportsChannel, epgUrl = account?.epgUrl.orEmpty())
@@ -157,26 +186,76 @@ fun MavieApplication(model: MainViewModel) {
     }
     if (model.showCollectionPicker) MavieCollectionPicker(model.collections, model::chooseCollection, model::createCollection) { model.showCollectionPicker = false }
     if (model.showProfilePicker) ProfilePickerDialog(model.profiles, model.profileError, model::switchProfile, model::createProfile, model::deleteProfile) { model.showProfilePicker = false }
-    if (syncDialog) DesktopSyncDialog(onDismiss = { syncDialog = false }, onSync = { address, code -> syncDialog = false; model.syncMac(address, code) })
+    if (syncDialog) {
+        DesktopSyncDialog(
+            loading = model.syncLoading,
+            error = model.syncError,
+            onDismiss = { if (!model.syncLoading) syncDialog = false },
+            onSync = model::syncMac,
+        )
+    }
 }
 
 @Composable
-private fun DesktopSyncDialog(onDismiss: () -> Unit, onSync: (String, String) -> Unit) {
+private fun DesktopSyncDialog(
+    loading: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onSync: (String, String) -> Unit,
+) {
     var address by rememberSaveable { mutableStateOf("") }
-    var code by rememberSaveable { mutableStateOf("") }
+    // Ephemeral 6-digit pairing code stays out of Android's saved instance state.
+    var code by remember { mutableStateOf("") }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!loading) onDismiss() },
         containerColor = MavieGlassDialogFill,
         shape = RoundedCornerShape(24.dp),
         title = { Text("Masaüstü ile kayıtları birleştir") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("İsteğe bağlıdır. Aynı Wi-Fi ağında masaüstü Mavie uygulaması açıkken favoriler, listeler ve en yeni izleme konumları birleştirilir.")
-                OutlinedTextField(value = address, onValueChange = { address = it }, label = { Text("Masaüstü yerel ağ adresi") }, placeholder = { Text("http://192.168.1.10:8844") }, singleLine = true, shape = RoundedCornerShape(14.dp))
-                OutlinedTextField(value = code, onValueChange = { code = it.filter(Char::isDigit).take(6) }, label = { Text("Altı haneli eşleştirme kodu") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, shape = RoundedCornerShape(14.dp))
+                OutlinedTextField(
+                    value = address,
+                    onValueChange = { address = it },
+                    label = { Text("Masaüstü yerel ağ adresi") },
+                    placeholder = { Text("http://192.168.1.10:8844") },
+                    enabled = !loading,
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                )
+                OutlinedTextField(
+                    value = code,
+                    onValueChange = { code = it.filter(Char::isDigit).take(6) },
+                    label = { Text("Altı haneli eşleştirme kodu") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    enabled = !loading,
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                )
+                if (loading) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MavieTurquoise)
+                        Text("Masaüstü ile eşleştiriliyor…", color = MavieMuted, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                if (!error.isNullOrBlank()) {
+                    Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
             }
         },
-        confirmButton = { TextButton(onClick = { onSync(address, code) }, enabled = address.isNotBlank() && code.length == 6, modifier = Modifier.heightIn(min = 48.dp)) { Text("Birleştir") } },
-        dismissButton = { TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) { Text("Vazgeç") } },
+        confirmButton = {
+            TextButton(
+                onClick = { onSync(address, code) },
+                enabled = !loading && address.isNotBlank() && code.length == 6,
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) { Text(if (loading) "Eşitleniyor…" else "Birleştir") }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !loading,
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) { Text("Vazgeç") }
+        },
     )
 }

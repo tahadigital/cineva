@@ -70,7 +70,14 @@ public enum XtreamClient {
         item: MediaItem,
         preferHLSForLive: Bool = true
     ) throws -> URL {
-        if !item.sourceUrl.isEmpty, let direct = URL(string: item.sourceUrl) {
+        if !item.sourceUrl.isEmpty {
+            guard let direct = URL(string: item.sourceUrl),
+                  let scheme = direct.scheme?.lowercased(),
+                  scheme == "http" || scheme == "https",
+                  let directHost = direct.host,
+                  !directHost.isEmpty else {
+                throw MavieError.invalidURL("Güvenli olmayan veya geçersiz yayın adresi.")
+            }
             return direct
         }
         let base = try validateBaseURL(host)

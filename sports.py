@@ -32,11 +32,17 @@ SPOREKRANI_FRESH = 5 * 60
 FRESH = 15 * 60
 MAX_STALE = 12 * 60 * 60
 _cache = {}
+_inflight = {}
 _lock = threading.Lock()
+
+
+class _SportsNetworkError(RuntimeError):
+    """Transient network/HTTP transport failure fetching sports guide."""
 _REGION_RE = re.compile(r'^\s*(?:(?:vip\s+)?(?:tr|en|us|uk|de|fr|es)|turkey|intl)\s*[:|➤\-]\s*')
 _QUALITY_RE = re.compile(r'(?:[\s|\[\]()\-]+(?:fhd|hd|uhd|sd|raw|hevc|h265|4k|1080p|720p)\b[\s|\[\]()\-]*)+$')
 _NONALNUM_RE = re.compile(r'[^a-z0-9+]')
 _XMLTV_TS_RE = re.compile(r'^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(?:\s*([+-]\d{4}))?')
+_XMLTV_DTD_RE = re.compile(r'<!(?:ENTITY|DOCTYPE)\b', re.I)
 _SPORT_CATEGORY_RE = re.compile(r'\b(sport|sports|spor|futbol|football|soccer|basketbol|basketball|tennis|tenis|motorsport|formula|racing|boxing|ufc|golf)\b', re.I)
 _COMMENTARY_NOISE_RE = re.compile(r'basin toplantisi|spor bulteni|mac (?:onu|sonu|ozel)|tekrar')
 _ALIASES = {
@@ -221,8 +227,7 @@ def parse_xmltv(raw_payload, day, tz=ZONE):
         text = raw_payload.decode('utf-8', errors='replace')
     else:
         text = str(raw_payload)
-    upper = text[:4096].upper()
-    if '<!ENTITY' in upper or '<!DOCTYPE' in upper:
+    if _XMLTV_DTD_RE.search(text):
         raise RuntimeError('Güvenlik nedeniyle XMLTV DTD bildirimlerine izin verilmiyor.')
     try:
         root = ET.fromstring(text)
@@ -296,77 +301,117 @@ def get_listings(day, fetch, epg_url='', refresh=False, tz=ZONE, source_mode='au
         source_type = 'sporekrani'
         fresh_ttl = SPOREKRANI_FRESH
 
-    cache_key = (source, day)
-    with _lock:
-        now = time.time()
-        cached = _cache.get(cache_key)
-        if not cached or now - cached[0] >= (15 if refresh else fresh_ttl):
-            try:
-                req_headers = (
-                    {'User-Agent': 'Mavie/2.2 (XMLTV EPG)', 'Accept-Encoding': 'gzip'}
-                    if use_xmltv
-                    else {'User-Agent': 'Mavie/2.2 (sports schedule)', 'Accept-Encoding': 'gzip'}
-                )
-                req_timeout = 15 if use_xmltv else 9
-                max_bytes = MAX_PAGE if use_xmltv else MAX_SPOREKRANI_PAGE
-                retryable_codes = (408, 429, 500, 502, 503, 504)
-                payload = b''
-                enc = ''
-                for attempt in range(3):
-                    try:
-                        with fetch(source, timeout=req_timeout, headers=req_headers) as response:
-                            payload = response.read(max_bytes + 1)
-                            headers = getattr(response, 'headers', None)
-                            enc = (headers.get('Content-Encoding', '') if headers else '').lower()
-                        break
-                    except urllib.error.HTTPError as err:
-                        code = err.code
-                        err.close()
-                        if code not in retryable_codes or attempt >= 2:
-                            raise RuntimeError(f'HTTP {code}') from None
-                    except (http.client.HTTPException, urllib.error.URLError, TimeoutError, OSError):
-                        if attempt >= 2:
-                            raise
-                    time.sleep(0.15 * (2 ** attempt))
+    def _build_guide(events, stale):
+        return {
+            'date': day.isoformat(),
+            'timezone': str(tz),
+            'source': source,
+            'sourceType': source_type,
+            'stale': stale,
+            'events': events,
+            'configured': True,
+        }
 
-                if len(payload) > max_bytes:
-                    raise RuntimeError('XMLTV rehberi çok büyük.' if use_xmltv else 'Spor yayın rehberi çok büyük.')
-                if use_xmltv:
-                    if 'gzip' in enc and payload[:2] != b'\x1f\x8b':
-                        try:
-                            payload = _gunzip_limited(payload, MAX_PAGE * 2)
-                        except (zlib.error, EOFError, OSError):
-                            raise RuntimeError('XMLTV yayın rehberi açılamadı.') from None
-                    events = parse_xmltv(payload, day, tz)
-                else:
-                    if 'gzip' in enc or payload[:2] == b'\x1f\x8b':
-                        try:
-                            payload = _gunzip_limited(payload, MAX_SPOREKRANI_PAGE * 2)
-                        except (zlib.error, EOFError, OSError):
-                            raise RuntimeError('Spor yayın rehberi açılamadı.') from None
-                    events = parse_sporekrani(payload.decode('utf-8', errors='replace'), day)
-                cached = _cache[cache_key] = (time.time(), events)
-                for old in list(_cache):
-                    if now - _cache[old][0] > MAX_STALE:
-                        _cache.pop(old, None)
-                stale = False
-            except (OSError, RuntimeError, UnicodeError, ValueError, http.client.HTTPException):
-                if not cached or now - cached[0] > MAX_STALE:
-                    msg = (
-                        'XMLTV yayın rehberine ulaşılamadı. Bağlantıyı kontrol edin.'
-                        if use_xmltv
-                        else 'Spor yayın rehberine ulaşılamadı. Biraz sonra tekrar dene.'
-                    )
-                    raise RuntimeError(msg) from None
-                stale = True
+    cache_key = (source, day)
+    ttl = 15 if refresh else fresh_ttl
+    while True:
+        with _lock:
+            now = time.time()
+            cached = _cache.get(cache_key)
+            if cached and now - cached[0] < ttl:
+                return _build_guide(cached[1], False)
+            flight = _inflight.get(cache_key)
+            if flight is None:
+                flight = {'event': threading.Event(), 'events': None, 'stale': False, 'error': None}
+                _inflight[cache_key] = flight
+                break
+        flight['event'].wait()
+        if flight['error'] is not None:
+            raise flight['error']
+        if flight['events'] is not None:
+            return _build_guide(flight['events'], flight['stale'])
+
+    try:
+        req_headers = (
+            {'User-Agent': 'Mavie/2.2 (XMLTV EPG)', 'Accept-Encoding': 'gzip'}
+            if use_xmltv
+            else {'User-Agent': 'Mavie/2.2 (sports schedule)', 'Accept-Encoding': 'gzip'}
+        )
+        req_timeout = 15 if use_xmltv else 9
+        max_bytes = MAX_PAGE if use_xmltv else MAX_SPOREKRANI_PAGE
+        retryable_codes = (408, 429, 500, 502, 503, 504)
+        payload = b''
+        enc = ''
+        try:
+            for attempt in range(3):
+                try:
+                    with fetch(source, timeout=req_timeout, headers=req_headers) as response:
+                        payload = response.read(max_bytes + 1)
+                        headers = getattr(response, 'headers', None)
+                        enc = (headers.get('Content-Encoding', '') if headers else '').lower()
+                    break
+                except urllib.error.HTTPError as err:
+                    code = err.code
+                    err.close()
+                    if code not in retryable_codes or attempt >= 2:
+                        raise _SportsNetworkError(f'HTTP {code}') from None
+                except (http.client.HTTPException, urllib.error.URLError, TimeoutError, OSError) as err:
+                    if attempt >= 2:
+                        raise _SportsNetworkError(str(err)) from None
+                time.sleep(0.15 * (2 ** attempt))
+        except _SportsNetworkError:
+            raise
+        except (http.client.HTTPException, urllib.error.URLError, TimeoutError, OSError) as err:
+            raise _SportsNetworkError(str(err)) from None
+
+        if len(payload) > max_bytes:
+            raise RuntimeError('XMLTV rehberi çok büyük.' if use_xmltv else 'Spor yayın rehberi çok büyük.')
+        if use_xmltv:
+            if 'gzip' in enc and payload[:2] != b'\x1f\x8b':
+                try:
+                    payload = _gunzip_limited(payload, MAX_PAGE * 2)
+                except (zlib.error, EOFError, OSError):
+                    raise RuntimeError('XMLTV yayın rehberi açılamadı.') from None
+            events = parse_xmltv(payload, day, tz)
         else:
-            stale = False
-    return {
-        'date': day.isoformat(),
-        'timezone': str(tz),
-        'source': source,
-        'sourceType': source_type,
-        'stale': stale,
-        'events': cached[1],
-        'configured': True,
-    }
+            if 'gzip' in enc or payload[:2] == b'\x1f\x8b':
+                try:
+                    payload = _gunzip_limited(payload, MAX_SPOREKRANI_PAGE * 2)
+                except (zlib.error, EOFError, OSError):
+                    raise RuntimeError('Spor yayın rehberi açılamadı.') from None
+            events = parse_sporekrani(payload.decode('utf-8', errors='replace'), day)
+
+        with _lock:
+            written_at = time.time()
+            _cache[cache_key] = (written_at, events)
+            for old in list(_cache):
+                if written_at - _cache[old][0] > MAX_STALE:
+                    _cache.pop(old, None)
+        flight['events'] = events
+        flight['stale'] = False
+        return _build_guide(events, False)
+    except (_SportsNetworkError, UnicodeError, ValueError, RuntimeError) as err:
+        with _lock:
+            stale_entry = _cache.get(cache_key)
+            now_err = time.time()
+        if stale_entry and now_err - stale_entry[0] <= MAX_STALE:
+            flight['events'] = stale_entry[1]
+            flight['stale'] = True
+            return _build_guide(stale_entry[1], True)
+        if isinstance(err, _SportsNetworkError):
+            msg = (
+                'XMLTV yayın rehberine ulaşılamadı. Bağlantıyı kontrol edin.'
+                if use_xmltv
+                else 'Spor yayın rehberine ulaşılamadı. Biraz sonra tekrar dene.'
+            )
+            out_err = RuntimeError(msg)
+        elif isinstance(err, RuntimeError):
+            out_err = err
+        else:
+            out_err = RuntimeError('XMLTV yayın rehberi okunamadı.' if use_xmltv else 'Spor yayın rehberi şu anda okunamadı.')
+        flight['error'] = out_err
+        raise out_err from None
+    finally:
+        with _lock:
+            _inflight.pop(cache_key, None)
+        flight['event'].set()

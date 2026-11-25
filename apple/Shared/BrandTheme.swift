@@ -95,6 +95,10 @@ public struct MavieLogoMark: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pulseActive = false
 
+    private var shouldPulse: Bool {
+        animateSweep && !reduceMotion
+    }
+
     public init(size: CGFloat = 44, animateSweep: Bool = false) {
         self.size = size
         self.animateSweep = animateSweep
@@ -106,6 +110,7 @@ public struct MavieLogoMark: View {
         let arcRadius = 38.42 * markScale
         let arcStroke = max(2.0, 16.0 * markScale)
         let dotDiameter = max(2.5, 10.4 * markScale)
+        let isAnimatingNow = shouldPulse && pulseActive
 
         ZStack {
             RoundedRectangle(cornerRadius: corner, style: .continuous)
@@ -129,7 +134,7 @@ public struct MavieLogoMark: View {
                     MavieTheme.brandGradient,
                     style: StrokeStyle(lineWidth: arcStroke, lineCap: .round, lineJoin: .round)
                 )
-                .opacity(animateSweep && !reduceMotion && pulseActive ? 0.92 : 1.0)
+                .opacity(isAnimatingNow ? 0.92 : 1.0)
 
             MaviePlayTriangleShape(scale: markScale)
                 .fill(Color.white)
@@ -141,22 +146,31 @@ public struct MavieLogoMark: View {
             Circle()
                 .fill(MavieTheme.cyanDot)
                 .frame(width: dotDiameter, height: dotDiameter)
-                .scaleEffect(animateSweep && !reduceMotion && pulseActive ? 1.24 : 1.0)
+                .scaleEffect(isAnimatingNow ? 1.24 : 1.0)
                 .shadow(color: MavieTheme.cyanDot.opacity(0.65), radius: max(2.0, 4.0 * markScale))
                 .offset(x: 32.0 * markScale)
         }
         .frame(width: size, height: size)
         .shadow(
-            color: MavieTheme.purple.opacity(animateSweep && !reduceMotion && pulseActive ? 0.44 : 0.28),
+            color: MavieTheme.purple.opacity(isAnimatingNow ? 0.44 : 0.28),
             radius: size * 0.22,
             y: size * 0.08
         )
         .accessibilityHidden(true)
+        .animation(
+            shouldPulse
+                ? .easeInOut(duration: 1.5).repeatForever(autoreverses: true)
+                : .linear(duration: 0.1),
+            value: pulseActive
+        )
         .onAppear {
-            guard animateSweep && !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
-                pulseActive = true
-            }
+            pulseActive = shouldPulse
+        }
+        .onDisappear {
+            pulseActive = false
+        }
+        .onChange(of: shouldPulse) { newValue in
+            pulseActive = newValue
         }
     }
 }

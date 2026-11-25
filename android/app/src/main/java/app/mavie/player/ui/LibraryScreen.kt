@@ -47,6 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.mavie.player.data.MavieErrorCode
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -348,10 +349,10 @@ fun MavieLibraryScreen(
                         label = "library-tab",
                     ) { (tab, searching) ->
                         when {
-                            tab == LibraryTab.HOME && !searching -> HomeContent(state, onTab, onMedia, onPlay, onFavorite, onRefresh, onAddToCollection)
+                            tab == LibraryTab.HOME && !searching -> HomeContent(state, onTab, onMedia, onPlay, onFavorite, onRefresh, onAddToCollection, onSettings)
                             tab == LibraryTab.SEARCH && !searching -> SearchLanding(state, onMedia)
                             tab == LibraryTab.PLAYLISTS && !searching && state.title.isBlank() -> CollectionContent(state, onCollection, onCreateCollection, onDeleteCollection)
-                            else -> CatalogContent(state, onMedia, onFavorite, onRefresh, onLoadMore, onCloseCollection)
+                            else -> CatalogContent(state, onMedia, onFavorite, onRefresh, onLoadMore, onCloseCollection, onSettings)
                         }
                     }
                 }
@@ -398,6 +399,7 @@ private fun HomeContent(
     onFavorite: (UiMedia) -> Unit,
     onRefresh: () -> Unit,
     onAddToCollection: (UiMedia) -> Unit,
+    onSettings: () -> Unit,
 ) {
     val reducedMotion = rememberReducedMotion()
     LazyColumn(contentPadding = PaddingValues(top = 5.dp, bottom = 30.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
@@ -455,7 +457,15 @@ private fun HomeContent(
             }
         }
         if (state.error != null) item("error") {
-            MessagePanel("Kütüphane şu an yenilenemedi", state.error, action = "Yeniden dene", onAction = onRefresh)
+            MessagePanel(
+                "Kütüphane şu an yenilenemedi",
+                state.error,
+                action = "Yeniden dene",
+                onAction = onRefresh,
+                hint = errorHintFor(state.errorCode),
+                secondaryAction = if (state.errorCode == MavieErrorCode.AUTH_REJECTED) "Ayarlar" else null,
+                onSecondaryAction = if (state.errorCode == MavieErrorCode.AUTH_REJECTED) onSettings else null,
+            )
         }
         if (state.loading && state.items.isEmpty()) item("loading") {
             Column(verticalArrangement = Arrangement.spacedBy(15.dp)) {
@@ -611,13 +621,17 @@ private fun CatalogContent(
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
     onCloseCollection: () -> Unit = {},
+    onSettings: () -> Unit = {},
 ) {
     val gridState = rememberLazyGridState()
     val isTablet = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 600
     val latestLoadMore by rememberUpdatedState(onLoadMore)
     var requestedMore by remember(state.items.size, state.query, state.selectedCategoryId, state.tab) { mutableStateOf(false) }
-    LaunchedEffect(state.items.size, state.loading, state.hasMore, state.query, state.selectedCategoryId) {
-        if (state.hasMore && !state.loading && state.items.isNotEmpty()) {
+    LaunchedEffect(state.loading, state.error) {
+        if (!state.loading) requestedMore = false
+    }
+    LaunchedEffect(state.tab, state.items.size, state.loading, state.hasMore, state.error, state.query, state.selectedCategoryId) {
+        if (state.hasMore && !state.loading && state.error == null && state.items.isNotEmpty()) {
             snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
                 .distinctUntilChanged().collect { visibleEnd ->
                     if (!requestedMore && visibleEnd >= state.items.size - 5) {
@@ -653,7 +667,15 @@ private fun CatalogContent(
             }
         }
         if (state.error != null) item("error", span = { GridItemSpan(maxLineSpan) }) {
-            MessagePanel("İçerikler yüklenemedi", state.error, action = "Yeniden dene", onAction = onRefresh)
+            MessagePanel(
+                "İçerikler yüklenemedi",
+                state.error,
+                action = "Yeniden dene",
+                onAction = onRefresh,
+                hint = errorHintFor(state.errorCode),
+                secondaryAction = if (state.errorCode == MavieErrorCode.AUTH_REJECTED) "Ayarlar" else null,
+                onSecondaryAction = if (state.errorCode == MavieErrorCode.AUTH_REJECTED) onSettings else null,
+            )
         }
         if (state.loading && state.items.isEmpty()) {
             item("loading-banner", span = { GridItemSpan(maxLineSpan) }) {

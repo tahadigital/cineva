@@ -12,6 +12,7 @@ import java.io.InterruptedIOException
 import java.net.ConnectException
 import java.net.Inet4Address
 import java.net.InetAddress
+import java.net.NoRouteToHostException
 import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -56,15 +57,26 @@ internal class HttpStatusException(val code: Int) : IOException("HTTP $code")
 
 internal fun classifyHttpError(code: Int, isM3u: Boolean): IptvException = when (code) {
     401, 403 -> IptvException(
-        "${if (isM3u) "M3U adresine" else "IPTV hesabına"} erişim reddedildi (HTTP $code). Kullanıcı adı, parola veya erişim iznini kontrol et."
+        "${if (isM3u) "M3U adresine" else "IPTV hesabına"} erişim reddedildi (HTTP $code). Kullanıcı adı, parola veya erişim iznini kontrol et.",
+        MavieErrorCode.AUTH_REJECTED,
     )
     404 -> IptvException(
-        "${if (isM3u) "M3U listesi" else "Sunucu adresi"} bulunamadı (HTTP 404). Adresi kontrol et."
+        "${if (isM3u) "M3U listesi" else "Sunucu adresi"} bulunamadı (HTTP 404). Adresi kontrol et.",
+        MavieErrorCode.NOT_FOUND,
     )
-    408, 504 -> IptvException("Sunucu yanıt vermekte gecikti (HTTP $code). Biraz sonra yeniden dene.")
-    429 -> IptvException("Çok fazla istek gönderildi (HTTP 429). Biraz bekleyip yeniden dene.")
-    in 500..599 -> IptvException("IPTV sağlayıcısı geçici sunucu hatası döndürdü (HTTP $code). Daha sonra yeniden dene.")
-    else -> IptvException("İstek başarısız oldu (HTTP $code).")
+    408, 504 -> IptvException(
+        "Sunucu yanıt vermekte gecikti (HTTP $code). Biraz sonra yeniden dene.",
+        MavieErrorCode.TIMEOUT,
+    )
+    429 -> IptvException(
+        "Çok fazla istek gönderildi (HTTP 429). Biraz bekleyip yeniden dene.",
+        MavieErrorCode.RATE_LIMITED,
+    )
+    in 500..599 -> IptvException(
+        "IPTV sağlayıcısı geçici sunucu hatası döndürdü (HTTP $code). Daha sonra yeniden dene.",
+        MavieErrorCode.SERVER_ERROR,
+    )
+    else -> IptvException("İstek başarısız oldu (HTTP $code).", MavieErrorCode.HTTP_ERROR)
 }
 
 private fun allThrowableNodes(error: Throwable): List<Throwable> {
@@ -85,19 +97,51 @@ internal fun classifyIoException(error: Throwable): IptvException {
     val chain = allThrowableNodes(error)
     return when {
         chain.any { it is UnknownHostException } ->
-            IptvException("Sunucu adı çözümlenemedi (DNS hatası). İnternet bağlantını ve sunucu adresini kontrol et.")
+            IptvException(
+                "Sunucu adı çözümlenemedi (DNS hatası). İnternet bağlantını ve sunucu adresini kontrol et.",
+                MavieErrorCode.DNS_FAILED,
+                error,
+            )
         chain.any { it is SocketTimeoutException || it is InterruptedIOException } ->
-            IptvException("Sunucu bağlantısı zaman aşımına uğradı. İnternet bağlantını kontrol edip yeniden dene.")
-        chain.any { it is SSLException || it is CertPathValidatorException } ->
-            IptvException("Güvenli HTTPS (TLS/SSL) bağlantısı kurulamadı. Sunucu http:// kullanıyor olabilir; adresi kontrol et.")
+            IptvException(
+                "Sunucu bağlantısı zaman aşımına uğradı. İnternet bağlantını kontrol edip yeniden dene.",
+                MavieErrorCode.TIMEOUT,
+                error,
+            )
+        chain.any { it is SSLException || it is CertPathValidatorException || it is UnknownServiceException } ->
+            IptvException(
+                if (chain.any { it is UnknownServiceException }) {
+                    "Bu adres için güvenli HTTPS bağlantısı gerekli."
+                } else {
+                    "Güvenli HTTPS (TLS/SSL) bağlantısı kurulamadı. Sunucu http:// kullanıyor olabilir; adresi kontrol et."
+                },
+                MavieErrorCode.TLS_FAILED,
+                error,
+            )
+        chain.any { it is NoRouteToHostException } ->
+            IptvException(
+                "IPTV sunucusuna ulaşılamadı. İnternet bağlantını ve sunucu adresini kontrol et.",
+                MavieErrorCode.OFFLINE,
+                error,
+            )
         chain.any { (it is SocketException && it !is ConnectException) || it is EOFException } ->
-            IptvException("Sunucu bağlantıyı beklenmedik şekilde kesti. İnternet bağlantını kontrol edip yeniden dene.")
+            IptvException(
+                "Sunucu bağlantıyı beklenmedik şekilde kesti. İnternet bağlantını kontrol edip yeniden dene.",
+                MavieErrorCode.CONNECTION_RESET,
+                error,
+            )
         chain.any { it is ConnectException } ->
-            IptvException("Sunucuya bağlanılamadı (bağlantı reddedildi). Sunucu adresini ve port numarasını kontrol et.")
-        chain.any { it is UnknownServiceException } ->
-            IptvException("Bu adres için güvenli HTTPS bağlantısı gerekli.")
+            IptvException(
+                "Sunucuya bağlanılamadı (bağlantı reddedildi). Sunucu adresini ve port numarasını kontrol et.",
+                MavieErrorCode.CONNECTION_REFUSED,
+                error,
+            )
         else ->
-            IptvException("IPTV sunucusuna ulaşılamadı. İnternet bağlantını ve sunucu adresini kontrol et.")
+            IptvException(
+                "IPTV sunucusuna ulaşılamadı. İnternet bağlantını ve sunucu adresini kontrol et.",
+                MavieErrorCode.OFFLINE,
+                error,
+            )
     }
 }
 

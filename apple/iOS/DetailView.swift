@@ -88,9 +88,11 @@ public struct DetailView: View {
         .background(MavieTheme.cinemaBackdrop.ignoresSafeArea())
         .navigationTitle(activeItem.kind.displayTitle)
         .navigationBarTitleDisplayMode(.inline)
-        .task {
+        .task(id: item.id) {
+            detail = nil
             isLoadingDetail = true
             let loaded = await store.loadDetail(for: item)
+            guard !Task.isCancelled else { return }
             detail = loaded
             if let firstSeason = loaded.seasons.first?.number {
                 selectedSeasonNumber = firstSeason

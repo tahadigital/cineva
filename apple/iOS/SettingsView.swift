@@ -18,6 +18,14 @@ private struct MavieBackupDocument: FileDocument {
     }
 }
 
+private enum SettingsBusyAction: Equatable {
+    case m3u
+    case xtream
+    case lanSync
+    case videoImport
+    case backupImport
+}
+
 public struct SettingsView: View {
     @ObservedObject public var store: LibraryStore
 
@@ -45,6 +53,12 @@ public struct SettingsView: View {
 
     @State private var feedbackMessage: String?
     @State private var errorMessage: String?
+    @State private var busyAction: SettingsBusyAction?
+    @State private var showClearCredentialsAlert = false
+
+    private var isActionBusy: Bool {
+        store.isBusy || busyAction != nil
+    }
 
     public init(store: LibraryStore) {
         self.store = store
@@ -54,10 +68,15 @@ public struct SettingsView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    if let errorMessage = errorMessage ?? store.lastError {
-                        statusCard(errorMessage, isError: true)
+                    if let activeError = errorMessage ?? store.lastError {
+                        statusCard(activeError, isError: true) {
+                            errorMessage = nil
+                            store.lastError = nil
+                        }
                     } else if let feedbackMessage {
-                        statusCard(feedbackMessage, isError: false)
+                        statusCard(feedbackMessage, isError: false) {
+                            self.feedbackMessage = nil
+                        }
                     }
 
                     sourcesSection
@@ -77,21 +96,42 @@ public struct SettingsView: View {
                 if xtreamUser.isEmpty { xtreamUser = store.connection.username }
                 if lanAddress.isEmpty { lanAddress = store.connection.lanAddress }
             }
+            .onChange(of: store.lastError) { newVal in
+                if let newVal {
+                    errorMessage = newVal
+                    feedbackMessage = nil
+                }
+            }
             .fileImporter(
                 isPresented: $showVideoImporter,
                 allowedContentTypes: [.movie, .mpeg4Movie, .audiovisualContent],
                 allowsMultipleSelection: false
             ) { result in
-                if case .success(let urls) = result, let url = urls.first {
-                    let accessed = url.startAccessingSecurityScopedResource()
-                    defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-                    do {
-                        try store.importLocalMediaFile(from: url)
-                        feedbackMessage = "Yerel video kütüphaneye kopyalandı."
-                        errorMessage = nil
-                    } catch {
-                        errorMessage = error.localizedDescription
+                switch result {
+                case .success(let urls):
+                    guard let url = urls.first else { return }
+                    errorMessage = nil
+                    store.lastError = nil
+                    feedbackMessage = nil
+                    busyAction = .videoImport
+                    Task {
+                        let accessed = url.startAccessingSecurityScopedResource()
+                        defer {
+                            if accessed { url.stopAccessingSecurityScopedResource() }
+                            busyAction = nil
+                        }
+                        do {
+                            try await store.importLocalMediaFileAsync(from: url)
+                            feedbackMessage = "Yerel video kütüphaneye kopyalandı."
+                            errorMessage = nil
+                        } catch {
+                            feedbackMessage = nil
+                            errorMessage = error.localizedDescription
+                        }
                     }
+                case .failure(let error):
+                    feedbackMessage = nil
+                    errorMessage = "Video dosyası seçilemedi: \(error.localizedDescription)"
                 }
             }
             .fileImporter(
@@ -99,16 +139,41 @@ public struct SettingsView: View {
                 allowedContentTypes: [.json],
                 allowsMultipleSelection: false
             ) { result in
-                if case .success(let urls) = result, let url = urls.first {
-                    let accessed = url.startAccessingSecurityScopedResource()
-                    defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-                    do {
-                        let data = try Data(contentsOf: url)
-                        try store.importBackupJSON(data)
-                        feedbackMessage = "Yedek dosyası içe aktarıldı."
-                    } catch {
-                        errorMessage = error.localizedDescription
+                switch result {
+                case .success(let urls):
+                    guard let url = urls.first else { return }
+                    errorMessage = nil
+                    store.lastError = nil
+                    feedbackMessage = nil
+                    busyAction = .backupImport
+                    Task {
+                        let accessed = url.startAccessingSecurityScopedResource()
+                        defer {
+                            if accessed { url.stopAccessingSecurityScopedResource() }
+                            busyAction = nil
+                        }
+                        do {
+                            let data = try await Task.detached(priority: .userInitiated) {
+                                let values = try url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+                                if values.isRegularFile == false {
+                                    throw MavieError.validation("Seçilen yedek geçerli bir dosya değil.")
+                                }
+                                if let size = values.fileSize, size > LanSyncClient.maxBackupBytes {
+                                    throw MavieError.validation("Yedek dosyası çok büyük (en fazla 25 MB).")
+                                }
+                                return try Data(contentsOf: url)
+                            }.value
+                            try store.importBackupJSON(data)
+                            feedbackMessage = "Yedek dosyası içe aktarıldı."
+                            errorMessage = nil
+                        } catch {
+                            feedbackMessage = nil
+                            errorMessage = error.localizedDescription
+                        }
                     }
+                case .failure(let error):
+                    feedbackMessage = nil
+                    errorMessage = "Yedek dosyası seçilemedi: \(error.localizedDescription)"
                 }
             }
             .fileExporter(
@@ -117,9 +182,35 @@ public struct SettingsView: View {
                 contentType: .json,
                 defaultFilename: "mavie-yedek"
             ) { result in
-                if case .success = result {
+                switch result {
+                case .success:
+                    errorMessage = nil
                     feedbackMessage = "JSON yedek kaydedildi."
+                case .failure(let error):
+                    feedbackMessage = nil
+                    errorMessage = "JSON yedek kaydedilemedi: \(error.localizedDescription)"
                 }
+            }
+            .alert("Kayıtlı Kaynak Bilgilerini Temizle", isPresented: $showClearCredentialsAlert) {
+                Button("Temizle", role: .destructive) {
+                    errorMessage = nil
+                    store.lastError = nil
+                    feedbackMessage = nil
+                    store.clearSavedCredentials()
+                    if store.lastError == nil {
+                        m3uURL = ""
+                        epgURL = ""
+                        xtreamHost = ""
+                        xtreamUser = ""
+                        xtreamPass = ""
+                        feedbackMessage = store.statusBanner
+                    } else {
+                        errorMessage = store.lastError
+                    }
+                }
+                Button("İptal", role: .cancel) {}
+            } message: {
+                Text("Kayıtlı Xtream parolası, M3U ve EPG adresleri cihaz kasasından kaldırılsın mı?")
             }
             .sheet(isPresented: $showAddProfile) {
                 addProfileSheet
@@ -189,14 +280,17 @@ public struct SettingsView: View {
                 .foregroundStyle(.white)
 
             Button {
+                errorMessage = nil
+                store.lastError = nil
+                feedbackMessage = nil
                 store.loadDemoCatalog()
                 feedbackMessage = "Açık Sinema demo filmleri yüklendi."
-                errorMessage = nil
             } label: {
                 Label("Açık Sinema ile Hemen Dene (Demo)", systemImage: "sparkles.tv.fill")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(MaviePrimaryButtonStyle(compact: true))
+            .disabled(isActionBusy)
             .accessibilityLabel("Açık Sinema Demo Kataloğunu Yükle")
 
             Divider().overlay(MavieTheme.border)
@@ -212,10 +306,13 @@ public struct SettingsView: View {
                     .padding(10)
                     .mavieGlassPill(selected: false, cornerRadius: 10)
                     .foregroundStyle(.white)
-                Button("Yükle") {
+                Button {
+                    errorMessage = nil
+                    store.lastError = nil
+                    feedbackMessage = nil
+                    busyAction = .m3u
                     Task {
-                        feedbackMessage = nil
-                        errorMessage = nil
+                        defer { busyAction = nil }
                         await store.importM3uFromURL(m3uURL)
                         if store.lastError == nil {
                             feedbackMessage = store.statusBanner
@@ -224,10 +321,20 @@ public struct SettingsView: View {
                             }
                         } else {
                             feedbackMessage = nil
+                            errorMessage = store.lastError
                         }
+                    }
+                } label: {
+                    if busyAction == .m3u {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(.white)
+                    } else {
+                        Text("Yükle")
                     }
                 }
                 .buttonStyle(MavieGhostButtonStyle(compact: true))
+                .disabled(isActionBusy)
                 .accessibilityLabel("M3U Adresini Yükle")
             }
 
@@ -243,16 +350,19 @@ public struct SettingsView: View {
                     .mavieGlassPill(selected: false, cornerRadius: 10)
                     .foregroundStyle(.white)
                 Button("Kaydet") {
+                    errorMessage = nil
+                    store.lastError = nil
+                    feedbackMessage = nil
                     do {
                         try store.updateEpgUrl(epgURL)
                         feedbackMessage = store.statusBanner
-                        errorMessage = nil
                     } catch {
                         feedbackMessage = nil
                         errorMessage = error.localizedDescription
                     }
                 }
                 .buttonStyle(MavieGhostButtonStyle(compact: true))
+                .disabled(isActionBusy)
                 .accessibilityLabel("XMLTV EPG Adresini Kaydet")
             }
 
@@ -273,36 +383,92 @@ public struct SettingsView: View {
                 .padding(10)
                 .mavieGlassPill(selected: false, cornerRadius: 10)
                 .foregroundStyle(.white)
-            SecureField("Parola", text: $xtreamPass)
+            SecureField(
+                store.hasSavedXtreamPassword ? "Parola (kayıtlı parola mevcut)" : "Parola",
+                text: $xtreamPass
+            )
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .padding(10)
                 .mavieGlassPill(selected: false, cornerRadius: 10)
                 .foregroundStyle(.white)
 
+            if store.hasSavedXtreamPassword {
+                Text("Kayıtlı parola mevcut — değiştirmek için yenisini girin")
+                    .font(.caption2)
+                    .foregroundStyle(MavieTheme.muted)
+            }
+
             Button {
+                errorMessage = nil
+                store.lastError = nil
+                feedbackMessage = nil
+                busyAction = .xtream
+                let trimmedHost = xtreamHost.trimmingCharacters(in: .whitespacesAndNewlines)
+                let trimmedUser = xtreamUser.trimmingCharacters(in: .whitespacesAndNewlines)
+                let effectivePassword: String
+                if xtreamPass.isEmpty,
+                   store.hasSavedXtreamPassword,
+                   trimmedHost == store.connection.host,
+                   trimmedUser == store.connection.username {
+                    effectivePassword = store.connection.password
+                } else {
+                    effectivePassword = xtreamPass
+                }
                 Task {
-                    feedbackMessage = nil
-                    errorMessage = nil
-                    await store.connectXtream(host: xtreamHost, username: xtreamUser, password: xtreamPass)
-                    feedbackMessage = store.lastError == nil ? store.statusBanner : nil
+                    defer { busyAction = nil }
+                    await store.connectXtream(host: xtreamHost, username: xtreamUser, password: effectivePassword)
+                    if store.lastError == nil {
+                        feedbackMessage = store.statusBanner
+                    } else {
+                        feedbackMessage = nil
+                        errorMessage = store.lastError
+                    }
                 }
             } label: {
-                Label("Xtream’e Bağlan", systemImage: "antenna.radiowaves.left.and.right")
-                    .frame(maxWidth: .infinity)
+                HStack(spacing: 8) {
+                    if busyAction == .xtream {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(.white)
+                    }
+                    Label("Xtream’e Bağlan", systemImage: "antenna.radiowaves.left.and.right")
+                }
+                .frame(maxWidth: .infinity)
             }
             .buttonStyle(MavieGhostButtonStyle(compact: true))
+            .disabled(isActionBusy)
             .accessibilityLabel("Xtream Sunucusuna Bağlan")
+
+            if store.hasSavedXtreamPassword || !store.connection.m3uUrl.isEmpty || !store.connection.epgUrl.isEmpty {
+                Button(role: .destructive) {
+                    showClearCredentialsAlert = true
+                } label: {
+                    Label("Kayıtlı Kaynak Bilgilerini Temizle", systemImage: "key.slash")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(MavieGhostButtonStyle(compact: true))
+                .disabled(isActionBusy)
+                .accessibilityLabel("Kayıtlı Kaynak Bilgilerini Temizle")
+            }
 
             Divider().overlay(MavieTheme.border)
 
             Button {
                 showVideoImporter = true
             } label: {
-                Label("Cihazdan Video Dosyası Ekle (.mp4/.mov/.m3u8)", systemImage: "folder.badge.plus")
-                    .frame(maxWidth: .infinity)
+                HStack(spacing: 8) {
+                    if busyAction == .videoImport {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(.white)
+                    }
+                    Label("Cihazdan Video Dosyası Ekle (.mp4/.mov/.m3u8)", systemImage: "folder.badge.plus")
+                }
+                .frame(maxWidth: .infinity)
             }
             .buttonStyle(MavieGhostButtonStyle(compact: true))
+            .disabled(isActionBusy)
             .accessibilityLabel("Cihazdan Yerel Video Dosyası Seç")
         }
         .padding(16)
@@ -332,20 +498,34 @@ public struct SettingsView: View {
                 .foregroundStyle(.white)
 
             Button {
+                errorMessage = nil
+                store.lastError = nil
+                feedbackMessage = nil
+                busyAction = .lanSync
                 Task {
+                    defer { busyAction = nil }
                     do {
                         try await store.syncWithLanServer(address: lanAddress, pairingCode: lanPairingCode)
                         feedbackMessage = "Yerel sunucu ile eşitleme tamamlandı."
                         errorMessage = nil
                     } catch {
+                        feedbackMessage = nil
                         errorMessage = error.localizedDescription
                     }
                 }
             } label: {
-                Label("Yerel Sunucuyla Eşitle", systemImage: "wifi")
-                    .frame(maxWidth: .infinity)
+                HStack(spacing: 8) {
+                    if busyAction == .lanSync {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(.white)
+                    }
+                    Label("Yerel Sunucuyla Eşitle", systemImage: "wifi")
+                }
+                .frame(maxWidth: .infinity)
             }
             .buttonStyle(MavieGhostButtonStyle(compact: true))
+            .disabled(isActionBusy)
             .accessibilityLabel("Yerel Mavie Sunucusuyla Eşitle")
         }
         .padding(16)
@@ -434,24 +614,40 @@ public struct SettingsView: View {
                 .foregroundStyle(.white)
             HStack(spacing: 10) {
                 Button {
-                    if let data = try? store.exportBackupJSON() {
+                    errorMessage = nil
+                    store.lastError = nil
+                    feedbackMessage = nil
+                    do {
+                        let data = try store.exportBackupJSON()
                         exportDocument = MavieBackupDocument(data: data)
                         showBackupExporter = true
+                    } catch {
+                        feedbackMessage = nil
+                        errorMessage = "JSON yedek hazırlanamadı: \(error.localizedDescription)"
                     }
                 } label: {
                     Label("Yedeği Dışa Aktar", systemImage: "square.and.arrow.up")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(MavieGhostButtonStyle(compact: true))
+                .disabled(isActionBusy)
                 .accessibilityLabel("JSON Yedeğini Dışa Aktar")
 
                 Button {
                     showBackupImporter = true
                 } label: {
-                    Label("Yedeği İçe Aktar", systemImage: "square.and.arrow.down")
-                        .frame(maxWidth: .infinity)
+                    HStack(spacing: 8) {
+                        if busyAction == .backupImport {
+                            ProgressView()
+                                .controlSize(.small)
+                                .tint(.white)
+                        }
+                        Label("Yedeği İçe Aktar", systemImage: "square.and.arrow.down")
+                    }
+                    .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(MavieGhostButtonStyle(compact: true))
+                .disabled(isActionBusy)
                 .accessibilityLabel("JSON Yedeğini İçe Aktar")
             }
         }
@@ -491,13 +687,18 @@ public struct SettingsView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Ekle") {
+                        errorMessage = nil
+                        store.lastError = nil
+                        feedbackMessage = nil
                         do {
                             try store.addProfile(name: newProfileName, isKids: newProfileKids, pin: newProfilePin)
+                            feedbackMessage = "Profil eklendi."
                             newProfileName = ""
                             newProfilePin = ""
                             newProfileKids = false
                             showAddProfile = false
                         } catch {
+                            feedbackMessage = nil
                             errorMessage = error.localizedDescription
                             showAddProfile = false
                         }
@@ -508,13 +709,23 @@ public struct SettingsView: View {
         .preferredColorScheme(.dark)
     }
 
-    private func statusCard(_ text: String, isError: Bool) -> some View {
+    private func statusCard(_ text: String, isError: Bool, onDismiss: (() -> Void)? = nil) -> some View {
         HStack(spacing: 10) {
             Image(systemName: isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
                 .foregroundStyle(isError ? MavieTheme.danger : MavieTheme.success)
             Text(text)
                 .font(.subheadline)
                 .foregroundStyle(.white)
+            Spacer()
+            if let onDismiss {
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(MavieTheme.muted)
+                        .frame(minWidth: 32, minHeight: 32)
+                }
+                .accessibilityLabel("Bildirimi Kapat")
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)

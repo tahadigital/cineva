@@ -37,13 +37,16 @@ jobs:
         run: pip install -r requirements.txt
       - name: Install native Ubuntu FFmpeg
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
-      - name: Run Python Backend & E2E Tier 1 Tests
+      - name: Run Python Unit & Integration Tests
         env:
           FFMPEG_PATH: /usr/bin/ffmpeg
           IMAGEIO_FFMPEG_EXE: /usr/bin/ffmpeg
-        run: |
-          python -m unittest discover -s tests -p "test_*.py" -v
-          python -m unittest discover -s tests/e2e -p "test_tier1*.py" -v
+        run: python -m unittest tests/test_*.py -v
+      - name: Run Python E2E Suite (Tiers 1-4)
+        env:
+          FFMPEG_PATH: /usr/bin/ffmpeg
+          IMAGEIO_FFMPEG_EXE: /usr/bin/ffmpeg
+        run: python -m tests.e2e.runner --tier all -v
       - name: Run Web Frontend & Website Unit Tests
         run: node --test tests/test_*.mjs
 

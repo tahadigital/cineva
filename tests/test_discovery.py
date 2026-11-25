@@ -177,3 +177,63 @@ class DiscoveryTests(unittest.TestCase):
                 self.assertGreater(remaining, 0)
                 self.assertLessEqual(remaining, 20.0)
                 self.assertFalse(discovery._running)
+
+    def test_build_handles_malformed_and_none_chart_weeks_without_crashing(self):
+        feed = {
+            'updatedAt': 1700000000,
+            'metas': copy.deepcopy(self.fixture['feed']['metas']),
+            'charts': [
+                None,
+                {'name': 'Bad1', 'kind': 'vod', 'rank': 1, 'week': None},
+                {'name': 'Bad2', 'kind': 'vod', 'rank': 2, 'week': 'not-a-date'},
+                *copy.deepcopy(self.fixture['feed']['charts']),
+            ],
+        }
+        result = discovery.build(self.fixture['catalog'], [], feed, dt.date(2026, 11, 6))
+        self.assertIn('shelves', result)
+        self.assertTrue(len(result['shelves']) >= 1)
+
+    def test_snapshot_isolates_multiple_directories_and_concurrent_refresh_writes(self):
+        with tempfile.TemporaryDirectory() as tmp_a, tempfile.TemporaryDirectory() as tmp_b:
+            dir_a, dir_b = Path(tmp_a), Path(tmp_b)
+            (dir_a / 'discovery-public.json').write_text(json.dumps({'updatedAt': time.time(), 'metas': [{'id': 'a1'}]}), encoding='utf-8')
+            (dir_b / 'discovery-public.json').write_text(json.dumps({'updatedAt': time.time(), 'metas': [{'id': 'b1'}]}), encoding='utf-8')
+            snap_a = discovery.snapshot(dir_a, enabled=False)
+            snap_b = discovery.snapshot(dir_b, enabled=False)
+            self.assertEqual(snap_a['metas'], [{'id': 'a1'}])
+            self.assertEqual(snap_b['metas'], [{'id': 'b1'}])
+
+            sample_cm = json.dumps({'metas': [{'id': 'tt1', 'name': 'Film 1', 'year': '2026', 'genres': ['Drama']}]})
+            with patch.object(discovery, 'get', return_value=sample_cm), \
+                 patch.object(discovery, 'netflix_entries', return_value=[]):
+                errors = []
+                def worker():
+                    try:
+                        discovery.refresh(dir_a)
+                    except BaseException as exc:
+                        errors.append(exc)
+                threads = [threading.Thread(target=worker) for _ in range(4)]
+                for t in threads:
+                    t.start()
+                for t in threads:
+                    t.join(timeout=5.0)
+                self.assertEqual(errors, [])
+                saved = json.loads((dir_a / 'discovery-public.json').read_text(encoding='utf-8'))
+                self.assertEqual(saved['version'], 3)
+
+    def test_daemon_map_uses_daemon_threads_preserves_order_and_isolates_errors(self):
+        seen_daemon = []
+
+        def work(x):
+            seen_daemon.append(threading.current_thread().daemon)
+            if x == 2:
+                raise RuntimeError('boom')
+            return x * 10
+
+        out = discovery._daemon_map(work, [1, 2, 3, 4], max_workers=2)
+        self.assertEqual([ok for ok, _ in out], [True, False, True, True])
+        self.assertEqual(out[0][1], 10)
+        self.assertIsInstance(out[1][1], RuntimeError)
+        self.assertEqual(out[2][1], 30)
+        self.assertEqual(out[3][1], 40)
+        self.assertTrue(all(seen_daemon))

@@ -4,6 +4,16 @@ public struct SportsView: View {
     @ObservedObject public var store: LibraryStore
     public var onPlay: (MediaItem, MediaDetail?) -> Void
 
+    private struct SportsGuideTaskKey: Equatable {
+        var dayIso: String
+        var source: String
+        var epgUrl: String
+        var reloadToken: Int
+    }
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .subheadline) private var timeWidth: CGFloat = 48
+
     @State private var selectedDayIso: String = SportsView.todayIso()
     @State private var events: [SportBroadcastEvent] = []
     @State private var matchedChannels: [String: MediaItem] = [:]
@@ -15,6 +25,8 @@ public struct SportsView: View {
     @State private var guideSource = "auto"
     @State private var activeSourceType = "sporekrani"
     @State private var isGuideConfigured = true
+    @State private var reloadToken = 0
+    @State private var pendingForceReload = false
 
     public init(store: LibraryStore, onPlay: @escaping (MediaItem, MediaDetail?) -> Void) {
         self.store = store
@@ -114,7 +126,6 @@ public struct SportsView: View {
                                     if selectedDayIso != day.id {
                                         selectedDayIso = day.id
                                         selectedSport = ""
-                                        Task { await loadGuide(force: false) }
                                     }
                                 } label: {
                                     Text(day.label)
@@ -155,7 +166,8 @@ public struct SportsView: View {
                                 .foregroundStyle(MavieTheme.muted)
                                 .multilineTextAlignment(.center)
                             Button("Tekrar Dene") {
-                                Task { await loadGuide(force: true) }
+                                pendingForceReload = true
+                                reloadToken += 1
                             }
                             .buttonStyle(MaviePrimaryButtonStyle(compact: true))
                         }
@@ -241,12 +253,11 @@ public struct SportsView: View {
                             LazyVStack(spacing: 10) {
                                 ForEach(filteredEvents) { ev in
                                     VStack(alignment: .leading, spacing: 6) {
-                                        HStack(alignment: .top, spacing: 12) {
-                                            Text(ev.time)
-                                                .font(.subheadline.weight(.bold).monospacedDigit())
-                                                .foregroundStyle(MavieTheme.turquoise)
-                                                .frame(width: 48, alignment: .leading)
-                                            VStack(alignment: .leading, spacing: 4) {
+                                        if dynamicTypeSize.isAccessibilitySize {
+                                            VStack(alignment: .leading, spacing: 6) {
+                                                Text(ev.time)
+                                                    .font(.subheadline.weight(.bold).monospacedDigit())
+                                                    .foregroundStyle(MavieTheme.turquoise)
                                                 Text(ev.league.isEmpty ? ev.sport : "\(ev.sport) · \(ev.league)")
                                                     .font(.caption2)
                                                     .foregroundStyle(MavieTheme.muted)
@@ -254,6 +265,23 @@ public struct SportsView: View {
                                                     .font(.subheadline.weight(.semibold))
                                                     .foregroundStyle(.white)
                                                 channelChips(for: ev)
+                                            }
+                                        } else {
+                                            HStack(alignment: .top, spacing: 12) {
+                                                Text(ev.time)
+                                                    .font(.subheadline.weight(.bold).monospacedDigit())
+                                                    .foregroundStyle(MavieTheme.turquoise)
+                                                    .frame(minWidth: timeWidth, alignment: .leading)
+                                                    .lineLimit(1)
+                                                VStack(alignment: .leading, spacing: 4) {
+                                                    Text(ev.league.isEmpty ? ev.sport : "\(ev.sport) · \(ev.league)")
+                                                        .font(.caption2)
+                                                        .foregroundStyle(MavieTheme.muted)
+                                                    Text(ev.title)
+                                                        .font(.subheadline.weight(.semibold))
+                                                        .foregroundStyle(.white)
+                                                    channelChips(for: ev)
+                                                }
                                             }
                                         }
                                     }
@@ -278,23 +306,26 @@ public struct SportsView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        Task { await loadGuide(force: true) }
+                        pendingForceReload = true
+                        reloadToken += 1
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
                     .accessibilityLabel("Spor yayın akışını yenile")
                 }
             }
-            .task {
-                if events.isEmpty {
-                    await loadGuide(force: false)
-                }
+            .task(id: SportsGuideTaskKey(
+                dayIso: selectedDayIso,
+                source: guideSource,
+                epgUrl: store.connection.epgUrl,
+                reloadToken: reloadToken
+            )) {
+                let force = pendingForceReload
+                pendingForceReload = false
+                await loadGuide(force: force)
             }
             .onChange(of: store.items) { _ in
                 matchedChannels = SportsChannels.matchChannels(events: events, liveItems: store.items)
-            }
-            .onChange(of: store.connection.epgUrl) { _ in
-                Task { await loadGuide(force: false) }
             }
         }
     }
@@ -305,7 +336,6 @@ public struct SportsView: View {
             if guideSource != mode {
                 guideSource = mode
                 selectedSport = ""
-                Task { await loadGuide(force: false) }
             }
         } label: {
             Text(title)
@@ -366,20 +396,28 @@ public struct SportsView: View {
         isLoading = true
         errorMessage = nil
         do {
+            try Task.checkCancellation()
             let response = try await SportsGuideService.shared.load(
                 dayIso: selectedDayIso,
                 epgUrl: store.connection.epgUrl,
                 sourceMode: guideSource,
                 force: force
             )
+            guard !Task.isCancelled else { return }
             events = response.events
             isStale = response.stale
             activeSourceType = response.sourceType
             isGuideConfigured = response.configured
             matchedChannels = SportsChannels.matchChannels(events: response.events, liveItems: store.items)
+            isLoading = false
+        } catch is CancellationError {
+            return
+        } catch let urlErr as URLError where urlErr.code == .cancelled {
+            return
         } catch {
+            guard !Task.isCancelled else { return }
             errorMessage = error.localizedDescription
+            isLoading = false
         }
-        isLoading = false
     }
 }

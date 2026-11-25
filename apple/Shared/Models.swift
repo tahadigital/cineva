@@ -272,8 +272,8 @@ public struct MediaItem: Identifiable, Codable, Hashable, Sendable {
         self.categoryName = try c.decodeIfPresent(String.self, forKey: .categoryName)
             ?? l.decodeIfPresent(String.self, forKey: .categoryName)
             ?? ""
-        self.poster = (try c.decodeIfPresent(String.self, forKey: .poster)) ?? ""
-        self.backdrop = (try c.decodeIfPresent(String.self, forKey: .backdrop)) ?? ""
+        self.poster = Self.sanitizedRemoteImageURL((try c.decodeIfPresent(String.self, forKey: .poster)) ?? "")
+        self.backdrop = Self.sanitizedRemoteImageURL((try c.decodeIfPresent(String.self, forKey: .backdrop)) ?? "")
 
         if let y = try? c.decodeIfPresent(String.self, forKey: .year) {
             self.year = y
@@ -307,9 +307,10 @@ public struct MediaItem: Identifiable, Codable, Hashable, Sendable {
             ?? l.decodeIfPresent(String.self, forKey: .audioCodec)
             ?? ""
         self.genres = (try c.decodeIfPresent(String.self, forKey: .genres)) ?? ""
-        self.sourceUrl = try c.decodeIfPresent(String.self, forKey: .sourceUrl)
+        let rawSourceUrl = try c.decodeIfPresent(String.self, forKey: .sourceUrl)
             ?? l.decodeIfPresent(String.self, forKey: .sourceUrl)
             ?? ""
+        self.sourceUrl = Self.sanitizedImportedSourceURL(rawSourceUrl)
         self.tvgId = try c.decodeIfPresent(String.self, forKey: .tvgId)
             ?? l.decodeIfPresent(String.self, forKey: .tvgId)
             ?? ""
@@ -362,6 +363,36 @@ public struct MediaItem: Identifiable, Codable, Hashable, Sendable {
     private static func sanitizedExtension(_ raw: String) -> String {
         let filtered = String(raw.lowercased().filter { $0.isASCII && ($0.isLetter || $0.isNumber) }.prefix(10))
         return filtered.isEmpty ? "mp4" : filtered
+    }
+
+    public static func sanitizedRemoteImageURL(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let url = URL(string: trimmed),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = url.host,
+              !host.isEmpty else {
+            return ""
+        }
+        return String(trimmed.prefix(4000))
+    }
+
+    public static func sanitizedImportedSourceURL(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let url = URL(string: trimmed),
+              let scheme = url.scheme?.lowercased() else {
+            return ""
+        }
+        if scheme == "http" || scheme == "https" {
+            guard let host = url.host, !host.isEmpty else { return "" }
+            return trimmed
+        }
+        if scheme == "file" {
+            return trimmed
+        }
+        return ""
     }
 }
 
@@ -683,6 +714,8 @@ public struct SyncTrackPreferenceData: Codable, Hashable, Sendable {
     }
 }
 
+public typealias SyncTrackPreference = SyncTrackPreferenceRecord
+
 public struct SyncTrackPreferenceRecord: Codable, Hashable, Sendable {
     public var itemId: String
     public var data: SyncTrackPreferenceData
@@ -738,6 +771,7 @@ public struct LibrarySyncPayload: Codable, Hashable, Sendable {
     public var playlists: [Playlist]
     public var playlistItems: [SyncPlaylistItemRecord]
     public var trackPreferences: [SyncTrackPreferenceRecord]
+    public var appleTrackPreferences: [SyncTrackPreferenceRecord]?
 
     private enum CodingKeys: String, CodingKey {
         case version
@@ -748,6 +782,7 @@ public struct LibrarySyncPayload: Codable, Hashable, Sendable {
         case playlists
         case playlistItems
         case trackPreferences
+        case appleTrackPreferences
     }
 
     public init(
@@ -758,7 +793,8 @@ public struct LibrarySyncPayload: Codable, Hashable, Sendable {
         progress: [WatchProgress] = [],
         playlists: [Playlist] = [],
         playlistItems: [SyncPlaylistItemRecord]? = nil,
-        trackPreferences: [SyncTrackPreferenceRecord] = []
+        trackPreferences: [SyncTrackPreferenceRecord] = [],
+        appleTrackPreferences: [SyncTrackPreferenceRecord]? = nil
     ) {
         self.version = version
         self.exportedAt = exportedAt
@@ -772,6 +808,7 @@ public struct LibrarySyncPayload: Codable, Hashable, Sendable {
             self.playlistItems = Self.buildPlaylistItems(from: playlists)
         }
         self.trackPreferences = trackPreferences
+        self.appleTrackPreferences = appleTrackPreferences
     }
 
     public init(from decoder: Decoder) throws {
@@ -805,6 +842,7 @@ public struct LibrarySyncPayload: Codable, Hashable, Sendable {
             ? Self.buildPlaylistItems(from: decodedPlaylists)
             : decodedPlaylistItems
         self.trackPreferences = (try c.decodeIfPresent([SyncTrackPreferenceRecord].self, forKey: .trackPreferences)) ?? []
+        self.appleTrackPreferences = try c.decodeIfPresent([SyncTrackPreferenceRecord].self, forKey: .appleTrackPreferences)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -818,6 +856,9 @@ public struct LibrarySyncPayload: Codable, Hashable, Sendable {
         let derivedItems = Self.buildPlaylistItems(from: playlists, extra: playlistItems)
         try c.encode(derivedItems, forKey: .playlistItems)
         try c.encode(trackPreferences, forKey: .trackPreferences)
+        if let appleTrackPreferences, !appleTrackPreferences.isEmpty {
+            try c.encode(appleTrackPreferences, forKey: .appleTrackPreferences)
+        }
         try c.encode(items, forKey: .items)
     }
 

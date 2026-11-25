@@ -11,8 +11,10 @@ final class MavieMacDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     private var overlayHostingView: NSHostingView<LaunchOverlayView>!
     private var preferencesWindow: NSWindow?
     private let serverManager = ServerProcessManager()
+    private let overlayState = LaunchOverlayState()
     private var statusCancellable: AnyCancellable?
-    private var hasLoadedWebApp = false
+    private var loadedBaseURL: URL?
+    private var webContentCrashCount = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -36,10 +38,20 @@ final class MavieMacDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
 
         let overlay = LaunchOverlayView(
             manager: serverManager,
+            overlayState: overlayState,
             onRetry: { [weak self] in
-                self?.hasLoadedWebApp = false
-                self?.showOverlay()
-                self?.serverManager.restart()
+                guard let self else { return }
+                self.loadedBaseURL = nil
+                self.overlayState.webError = nil
+                self.webContentCrashCount = 0
+                self.showOverlay()
+                if self.serverManager.status.isReady {
+                    let targetURL = self.serverManager.baseURL
+                    self.loadedBaseURL = targetURL
+                    self.webView.load(URLRequest(url: targetURL))
+                } else {
+                    self.serverManager.restart()
+                }
             },
             onQuit: {
                 NSApp.terminate(nil)
@@ -107,30 +119,38 @@ final class MavieMacDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
                 guard let self else { return }
                 switch status {
                 case .ready:
-                    if !self.hasLoadedWebApp {
-                        self.hasLoadedWebApp = true
-                        self.webView.load(URLRequest(url: self.serverManager.baseURL))
+                    let targetURL = self.serverManager.baseURL
+                    if self.loadedBaseURL != targetURL {
+                        self.loadedBaseURL = targetURL
+                        self.overlayState.webError = nil
+                        self.webView.load(URLRequest(url: targetURL))
                     }
                 case .failed:
+                    self.loadedBaseURL = nil
                     self.showOverlay()
                 case .idle, .starting:
+                    self.loadedBaseURL = nil
+                    self.overlayState.webError = nil
                     self.showOverlay()
                 }
             }
     }
 
     private func showOverlay() {
+        overlayState.isVisible = true
         overlayHostingView.isHidden = false
         overlayHostingView.alphaValue = 1.0
     }
 
     private func hideOverlay() {
+        overlayState.isVisible = false
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.25
             overlayHostingView.animator().alphaValue = 0.0
         }, completionHandler: { [weak self] in
-            Task { @MainActor in
-                self?.overlayHostingView.isHidden = true
+            Task { @MainActor [weak self] in
+                guard let self, !self.overlayState.isVisible else { return }
+                self.overlayHostingView.isHidden = true
             }
         })
     }
@@ -285,14 +305,23 @@ final class MavieMacDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     }
 
     @objc private func restartServer() {
-        hasLoadedWebApp = false
+        loadedBaseURL = nil
+        overlayState.webError = nil
+        webContentCrashCount = 0
         showOverlay()
         serverManager.restart()
     }
 
     @objc private func reloadPage() {
         if serverManager.status.isReady {
-            webView.reload()
+            overlayState.webError = nil
+            let targetURL = serverManager.baseURL
+            if webView.url == nil || webView.url?.port != serverManager.port {
+                loadedBaseURL = targetURL
+                webView.load(URLRequest(url: targetURL))
+            } else {
+                webView.reload()
+            }
         } else {
             restartServer()
         }
@@ -316,14 +345,55 @@ final class MavieMacDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     func applicationWillTerminate(_ notification: Notification) {
         statusCancellable?.cancel()
         webView?.stopLoading()
-        serverManager.stop()
+        serverManager.stopSynchronouslyForTermination()
     }
 
     // MARK: - WKWebView Delegates
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        if serverManager.status.isReady {
+        webContentCrashCount = 0
+        if serverManager.status.isReady && overlayState.webError == nil {
             hideOverlay()
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        handleWebNavigationError(error)
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        handleWebNavigationError(error)
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        loadedBaseURL = nil
+        webContentCrashCount += 1
+        guard serverManager.status.isReady else { return }
+        if webContentCrashCount <= 1 {
+            overlayState.webError = nil
+            showOverlay()
+            let targetURL = serverManager.baseURL
+            loadedBaseURL = targetURL
+            webView.load(URLRequest(url: targetURL))
+        } else {
+            overlayState.webError = "Web görünümü beklenmedik şekilde sonlandı. Yeniden denemek için Tekrar Dene’ye tıklayın."
+            showOverlay()
+        }
+    }
+
+    private func handleWebNavigationError(_ error: Error) {
+        let nsErr = error as NSError
+        if nsErr.domain == NSURLErrorDomain && nsErr.code == NSURLErrorCancelled {
+            return
+        }
+        if nsErr.domain == "WebKitErrorDomain" && nsErr.code == 102 {
+            return
+        }
+        loadedBaseURL = nil
+        if serverManager.status.isReady {
+            let safeDesc = MavieHTTPClient.redactSensitiveURLs(in: error.localizedDescription)
+            overlayState.webError = "Yerel arayüz yüklenemedi: \(safeDesc)"
+            showOverlay()
         }
     }
 

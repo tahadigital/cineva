@@ -107,5 +107,39 @@ data class Playlist(val id: String, val name: String, val count: Int, val items:
 data class UserProfile(val id: String, val name: String, val avatarColor: String, val isKids: Boolean = false, val hasPin: Boolean = false, val active: Boolean = false)
 data class SyncState(val running: Boolean = false, val message: String = "", val completedSteps: Int = 0, val totalSteps: Int = 6, val error: String? = null)
 
+enum class MavieErrorCode {
+    UNKNOWN,
+    OFFLINE,
+    DNS_FAILED,
+    TIMEOUT,
+    TLS_FAILED,
+    CONNECTION_REFUSED,
+    CONNECTION_RESET,
+    AUTH_REJECTED,
+    SUBSCRIPTION_INACTIVE,
+    NOT_FOUND,
+    RATE_LIMITED,
+    SERVER_ERROR,
+    HTTP_ERROR,
+    INVALID_RESPONSE,
+    EMPTY_CATALOG,
+    PAYLOAD_TOO_LARGE,
+    INVALID_INPUT,
+    UNSAFE_URL,
+    STORAGE_ERROR,
+    KEYSTORE_ERROR,
+    PROFILE_NOT_FOUND,
+    PROFILE_PIN_INVALID,
+    PLAYBACK_INVALID_SOURCE,
+    PLAYBACK_INIT_FAILED,
+    PLAYBACK_STALLED,
+    PLAYBACK_NETWORK_LOST,
+    SYNC_PAIR_FAILED,
+}
+
 /** Only user-safe text is carried outward; never append HTTP URLs or bodies. */
-class IptvException(message: String) : Exception(message)
+class IptvException(
+    message: String,
+    val code: MavieErrorCode = MavieErrorCode.UNKNOWN,
+    cause: Throwable? = null,
+) : Exception(message, cause)

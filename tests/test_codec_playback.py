@@ -269,6 +269,66 @@ class CodecPlaybackTests(unittest.TestCase):
             self.app.stop_all()
             manager.close()
 
+    def test_reaped_playback_session_returns_http_410_on_ping_pause_and_media_while_active_missing_segment_404(self):
+        manager = PlaybackManager(self.app.DATA, ffmpeg_path=None)
+        self.app.playback = manager
+        try:
+            sid_reaped = "c" * 32
+            sid_active = "d" * 32
+            for sid in (sid_reaped, sid_active):
+                sdir = self.app.DATA / "playback" / sid
+                sdir.mkdir(parents=True, exist_ok=True)
+                self.app.media_sessions[sid] = {
+                    "resources": {}, "reverse": {}, "touched": 9999999999.0,
+                    "sourceToken": "tok-" + sid[:4], "owner": None, "item": "episode:303",
+                    "multiview": False, "multiviewSlot": None,
+                }
+            # Put only sid_active in PlaybackManager._sessions (sid_reaped simulates reaped session)
+            from playback import _Session
+            import time as _t
+            class FakeProc:
+                def poll(self): return None
+                def send_signal(self, _sig): pass
+                def terminate(self): pass
+                def wait(self, timeout=None): return 0
+            with manager._lock:
+                manager._sessions[sid_active] = _Session(sid_active, self.app.DATA / "playback" / sid_active, FakeProc(), _t.monotonic())
+
+            for method, path, body in (
+                ("POST", f"/api/play/{sid_reaped}/ping", {"position": 1}),
+                ("POST", f"/api/play/{sid_reaped}/pause", {"paused": True}),
+                ("GET", f"/media/{sid_reaped}/index.m3u8", None),
+            ):
+                conn = HTTPConnection("127.0.0.1", self.http.server_port, timeout=5)
+                try:
+                    hdrs = {"Cookie": "akis_device=codec-device"}
+                    raw_body = None
+                    if body is not None:
+                        hdrs["Content-Type"] = "application/json"
+                        raw_body = json.dumps(body)
+                    conn.request(method, path, raw_body, hdrs)
+                    resp = conn.getresponse()
+                    payload = json.loads(resp.read())
+                finally:
+                    conn.close()
+                self.assertEqual(resp.status, 410, (method, path, payload))
+                self.assertEqual(payload.get("error_code"), "session_expired")
+                self.assertEqual(payload.get("code"), "session_expired")
+            self.assertNotIn(sid_reaped, self.app.media_sessions)
+
+            # Active session missing segment still returns 404
+            conn = HTTPConnection("127.0.0.1", self.http.server_port, timeout=5)
+            try:
+                conn.request("GET", f"/media/{sid_active}/seg_999999999.ts", headers={"Cookie": "akis_device=codec-device"})
+                resp = conn.getresponse()
+                payload = json.loads(resp.read())
+            finally:
+                conn.close()
+            self.assertEqual(resp.status, 404, payload)
+        finally:
+            self.app.stop_all()
+            manager.close()
+
 
 if __name__ == "__main__":
     unittest.main()

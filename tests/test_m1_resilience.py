@@ -9,6 +9,8 @@ import json
 import os
 import signal
 import socket
+import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -27,11 +29,11 @@ class UrlValidationAndSsrfTests(unittest.TestCase):
     def test_validate_host_vs_validate_source_url(self):
         self.assertEqual(server.validate_host('http://xtream.example:8080/'), 'http://xtream.example:8080')
         with self.assertRaises(ValueError):
-            server.validate_host('http://xtream.example:8080/get.php?username=u1&type=m3u_plus')
+            server.validate_host('http://xtream.example:8080/get.php?username=demo_user&type=m3u_plus')
         with self.assertRaises(ValueError):
             server.validate_host('http://xtream.example:8080/#frag')
 
-        m3u_url = 'http://provider.example:8080/get.php?username=u1&password=p1&type=m3u_plus&output=mpegts'
+        m3u_url = 'http://provider.example:8080/get.php?username=demo_user&password=demo_pass&type=m3u_plus&output=mpegts'
         self.assertEqual(server.validate_source_url(m3u_url), m3u_url)
         epg_url = 'https://epg.example/xmltv.php?id=123&tz=tr'
         self.assertEqual(server.validate_source_url(epg_url), epg_url)
@@ -222,6 +224,24 @@ class ServerM3uPlusAndNetworkTests(unittest.TestCase):
                     self.wfile.write(b'TS01')
                     return
 
+                if self.path == '/bad-extm3u':
+                    body = b'NOT_AN_M3U8_PLAYLIST'
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/vnd.apple.mpegurl; charset=utf-8')
+                    self.send_header('Content-Length', str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+
+                if self.path == '/html-charset':
+                    body = b'<html>error</html>'
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'text/html; charset=utf-8')
+                    self.send_header('Content-Length', str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+
                 if self.path == '/bad-proxy':
                     self.send_response(403); self.send_header('Content-Length', '0'); self.end_headers(); return
 
@@ -271,9 +291,9 @@ class ServerM3uPlusAndNetworkTests(unittest.TestCase):
         server.sync_state.update(self.orig_sync_state)
         self.tmp.cleanup()
 
-    def req(self, method, path, data=None):
+    def req(self, method, path, data=None, *, auth=True):
         conn = http.client.HTTPConnection('127.0.0.1', self.srv.server_port, timeout=10)
-        headers = {'Cookie': 'mavie_device=m1-dev'}
+        headers = {'Cookie': 'mavie_device=m1-dev'} if auth else {}
         body = None
         if data is not None:
             body = json.dumps(data).encode('utf-8')
@@ -314,7 +334,7 @@ class ServerM3uPlusAndNetworkTests(unittest.TestCase):
                     self.mock_state['mode'] = mode
                     self.mock_state['attempts'] = 0
                     self.mock_state['m3u_fetches'] = 0
-                    m3u_url = f'http://127.0.0.1:{self.up_port}/get.php?username=u1&password=p1&type=m3u_plus&output=mpegts&m={mode}'
+                    m3u_url = f'http://127.0.0.1:{self.up_port}/get.php?username=demo_user&password=demo_pass&type=m3u_plus&output=mpegts&m={mode}'
                     epg_url = f'http://127.0.0.1:{self.up_port}/xmltv.php?token=custom'
                     with patch.object(server.time, 'sleep'):
                         st, _, raw = self.req('POST', '/api/settings', {
@@ -360,7 +380,7 @@ class ServerM3uPlusAndNetworkTests(unittest.TestCase):
         self.mock_state['body'] = (
             f'#EXTM3U\n#EXTINF:-1,Kanal 1\nhttp://127.0.0.1:{self.up_port}/live/u/p/1\n'.encode('utf-8')
         )
-        m3u_url = f'http://127.0.0.1:{self.up_port}/get.php?username=u1&password=p1&type=m3u_plus'
+        m3u_url = f'http://127.0.0.1:{self.up_port}/get.php?username=demo_user&password=demo_pass&type=m3u_plus'
         with patch.object(server, 'safe_public_url', side_effect=self._allow_mock_upstream_only):
             st, _, _ = self.req('POST', '/api/settings', {'type': 'm3u', 'm3uUrl': m3u_url})
             self.assertEqual(st, 200)
@@ -421,8 +441,8 @@ class ServerM3uPlusAndNetworkTests(unittest.TestCase):
         prov = server.Provider({
             'type': 'xtream',
             'host': f'http://127.0.0.1:{self.up_port}',
-            'username': 'u1',
-            'password': 'p1',
+            'username': 'demo_user',
+            'password': 'demo_pass',
         })
         with patch.object(server, 'safe_public_url', side_effect=self._allow_mock_upstream_only):
             self.mock_state['mode'] = 'xtream_flaky'
@@ -436,6 +456,187 @@ class ServerM3uPlusAndNetworkTests(unittest.TestCase):
             with self.assertRaises(RuntimeError) as ctx:
                 prov.api()
             self.assertIn('401', str(ctx.exception))
+
+    def test_launch_sync_sets_syncing_true_synchronously_before_thread_starts(self):
+        gate = threading.Event()
+        started = []
+        orig_thread = threading.Thread
+
+        class ControlledThread:
+            def __init__(self, target=None, args=(), daemon=None, name=None):
+                self._target = target
+                self._args = args
+            def start(self):
+                started.append((self._target, self._args))
+
+        def selective_thread(*args, **kwargs):
+            target = kwargs.get('target') if 'target' in kwargs else (args[1] if len(args) > 1 else None)
+            if target is server.sync_catalog:
+                return ControlledThread(*args, **kwargs)
+            return orig_thread(*args, **kwargs)
+
+        with patch.object(server.threading, 'Thread', side_effect=selective_thread):
+            ok = server.launch_sync()
+            self.assertTrue(ok)
+            self.assertEqual(len(started), 1)
+            self.assertTrue(server.sync_state['syncing'])
+            st, _, raw = self.req('GET', '/api/status')
+            self.assertEqual(st, 200)
+            self.assertTrue(json.loads(raw)['catalog']['syncing'])
+            # Drain lock by executing captured target directly
+            with patch.object(server.provider, 'account', side_effect=lambda: (gate.wait(0.05), {'status': 'Active'})[1]):
+                started[0][0](*started[0][1])
+        self.assertFalse(server.sync_state['syncing'])
+        self.assertFalse(server.sync_lock.locked())
+
+    def test_launch_sync_concurrent_deduplication_and_start_failure_cleanup(self):
+        entered = threading.Event()
+        release = threading.Event()
+
+        def slow_sync(_acquired=False):
+            if not _acquired and not server.sync_lock.acquire(blocking=False):
+                return
+            try:
+                entered.set()
+                release.wait(2.0)
+            finally:
+                with server.sync_state_lock:
+                    server.sync_state['syncing'] = False
+                server.sync_lock.release()
+
+        barrier = threading.Barrier(8)
+        results = []
+        results_lock = threading.Lock()
+
+        def worker():
+            barrier.wait()
+            ok = server.launch_sync()
+            with results_lock:
+                results.append(ok)
+
+        with patch.object(server, 'sync_catalog', side_effect=slow_sync):
+            threads = [threading.Thread(target=worker) for _ in range(8)]
+            for t in threads:
+                t.start()
+            self.assertTrue(entered.wait(2.0))
+            release.set()
+            for t in threads:
+                t.join(timeout=3.0)
+        self.assertEqual(results.count(True), 1)
+        self.assertEqual(results.count(False), 7)
+        self.assertFalse(server.sync_state['syncing'])
+        self.assertFalse(server.sync_lock.locked())
+
+        with patch.object(server.threading.Thread, 'start', side_effect=RuntimeError('thread limit')):
+            with self.assertRaises(RuntimeError):
+                server.launch_sync()
+        self.assertFalse(server.sync_state['syncing'])
+        self.assertFalse(server.sync_lock.locked())
+
+    def test_non_local_status_redacts_m3u_and_epg_query_credentials_while_loopback_keeps_them(self):
+        m3u_url = f'http://provider.example:8080/get.php?username=demo_user&password=demo_pass&type=m3u_plus&token=tok9'
+        epg_url = 'https://epg.example/xmltv.php?token=epgsecret&fmt=xml'
+        server.provider = server.Provider({'type': 'm3u', 'name': 'Test', 'm3uUrl': m3u_url, 'epgUrl': epg_url})
+
+        st_local, _, raw_local = self.req('GET', '/api/status')
+        self.assertEqual(st_local, 200)
+        body_local = json.loads(raw_local)
+        self.assertEqual(body_local['connection']['m3uUrl'], m3u_url)
+        self.assertEqual(body_local['connection']['epgUrl'], epg_url)
+
+        with patch.object(server.Handler, 'is_local', property(lambda _self: False)):
+            st_lan, _, raw_lan = self.req('GET', '/api/status')
+        self.assertEqual(st_lan, 200)
+        body_lan = json.loads(raw_lan)
+        self.assertNotIn('demo_user', body_lan['connection']['m3uUrl'])
+        self.assertNotIn('demo_pass', body_lan['connection']['m3uUrl'])
+        self.assertNotIn('tok9', body_lan['connection']['m3uUrl'])
+        self.assertIn('REDACTED', body_lan['connection']['m3uUrl'])
+        self.assertNotIn('epgsecret', body_lan['connection']['epgUrl'])
+        self.assertIn('REDACTED', body_lan['connection']['epgUrl'])
+
+        fake_guide = {
+            'date': '2026-11-25', 'timezone': 'Europe/Istanbul', 'source': epg_url,
+            'sourceType': 'xmltv', 'stale': False, 'events': [], 'configured': True,
+        }
+        with patch.object(server.sports, 'get_listings', return_value=dict(fake_guide)), \
+             patch.object(server.Handler, 'is_local', property(lambda _self: False)):
+            st_sp, _, raw_sp = self.req('GET', '/api/sports?source=xmltv')
+        self.assertEqual(st_sp, 200)
+        sp_body = json.loads(raw_sp)
+        self.assertNotIn('epgsecret', sp_body.get('source', ''))
+        self.assertIn('REDACTED', sp_body.get('source', ''))
+
+    def test_structured_error_codes_and_ass_cue_sanitization(self):
+        st_unauth, _, raw_unauth = self.req('GET', '/api/home', auth=False)
+        self.assertEqual(st_unauth, 401)
+        self.assertEqual(json.loads(raw_unauth).get('error_code'), 'unauthorized')
+
+        st_404, _, raw_404 = self.req('GET', '/api/does-not-exist')
+        self.assertEqual(st_404, 404)
+        self.assertEqual(json.loads(raw_404).get('error_code'), 'not_found')
+
+        st_extra_ping, _, raw_extra = self.req('POST', '/api/play/abc123/extra/ping', {})
+        self.assertEqual(st_extra_ping, 404)
+        self.assertEqual(json.loads(raw_extra).get('error_code'), 'not_found')
+
+        with patch.object(server.Handler, 'is_local', property(lambda _self: False)):
+            st_loc, _, raw_loc = self.req('POST', '/api/demo', {})
+        self.assertEqual(st_loc, 403)
+        self.assertEqual(json.loads(raw_loc).get('error_code'), 'local_only')
+
+        ass_src = (
+            '[Events]\n'
+            'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n'
+            'Dialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,Line1\\N\\NLine2 --> Next\n'
+        )
+        vtt = server.Handler._ass_to_vtt(ass_src)
+        self.assertIn('00:00:01.000 --> 00:00:03.000\nLine1\nLine2 -> Next', vtt)
+        self.assertNotIn('Line1\n\nLine2', vtt)
+
+    def test_proxy_value_error_and_invalid_extm3u_record_source_failure(self):
+        self._orig_safe_public_url = server.safe_public_url
+        sid = 'test-proxy-m2'
+        with server.resource_lock:
+            server.media_sessions[sid] = {'resources': {}, 'reverse': {}, 'touched': time.monotonic()}
+
+        # 1. ValueError from userinfo/SSRF URL in proxy() sets source_error and returns 502 JSON
+        bad_url_path = server.resource_for(sid, f'http://u:p@127.0.0.1:{self.up_port}/seg.ts')
+        st1, _, raw1 = self.req('GET', bad_url_path)
+        self.assertEqual(st1, 502, raw1)
+        self.assertEqual(json.loads(raw1)['code'], 'upstream_unavailable')
+        with server.resource_lock:
+            self.assertEqual(server.media_sessions[sid]['source_error']['code'], 'upstream_unavailable')
+
+        with patch.object(server, 'safe_public_url', side_effect=self._allow_mock_upstream_only):
+            # 2. Non-#EXTM3U playlist triggers source_failure('upstream_unavailable')
+            bad_m3u_path = server.resource_for(sid, f'http://127.0.0.1:{self.up_port}/bad-extm3u.m3u8'.replace('.m3u8', ''))
+            st2, _, raw2 = self.req('GET', bad_m3u_path)
+            self.assertEqual(st2, 502, raw2)
+            self.assertEqual(json.loads(raw2)['code'], 'upstream_unavailable')
+
+            # 3. Stripped Content-Type text/html; charset=utf-8 triggers upstream_unavailable
+            html_path = server.resource_for(sid, f'http://127.0.0.1:{self.up_port}/html-charset')
+            st3, _, raw3 = self.req('GET', html_path)
+            self.assertEqual(st3, 502, raw3)
+            self.assertEqual(json.loads(raw3)['code'], 'upstream_unavailable')
+
+    def test_host_allowed_accepts_socket_local_rfc1918_when_lan_ips_empty(self):
+        class FakeConn:
+            def __init__(self, ip):
+                self._ip = ip
+            def getsockname(self):
+                return (self._ip, 8844)
+
+        handler = server.Handler.__new__(server.Handler)
+        handler.connection = FakeConn('192.168.1.50')
+        with patch.object(server, 'lan_ips', return_value=[]):
+            handler.headers = {'Host': '192.168.1.50:8844'}
+            self.assertTrue(handler.host_allowed())
+            handler.headers = {'Host': '10.0.0.99:8844'}
+            self.assertFalse(handler.host_allowed())
+            handler.headers = {'Host': 'evil.com@192.168.1.50:8844'}
+            self.assertFalse(handler.host_allowed())
 
 
 class DesktopProxyAndWindowsPauseTests(unittest.TestCase):
@@ -591,3 +792,218 @@ class WindowsPackagingStaticTests(unittest.TestCase):
             low = txt.lower()
             for tok in legacy_tokens:
                 self.assertNotIn(tok, low, f'Legacy token {tok!r} found in {name}')
+
+    def test_windows_soft_pause_throttles_internal_proxy_reads(self):
+        large_payload = b'A' * (128 * 1024)
+
+        class LargeUpstream(BaseHTTPRequestHandler):
+            protocol_version = 'HTTP/1.1'
+            def log_message(self, *_args): pass
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header('Content-Type', 'video/mp2t')
+                self.send_header('Content-Length', str(len(large_payload)))
+                self.end_headers()
+                self.wfile.write(large_payload)
+
+        with tempfile.TemporaryDirectory(prefix='mavie-soft-pause-') as tmp:
+            data = Path(tmp)
+            orig_data, orig_db, orig_cfg = server.DATA, server.DB, server.CONFIG_FILE
+            orig_playback = server.playback
+            server.DATA = data
+            server.DB = data / 'state.sqlite3'
+            server.CONFIG_FILE = data / 'config.json'
+            server.initialize()
+            mgr = playback.PlaybackManager(data, ffmpeg_path=None)
+            server.playback = mgr
+            up = ThreadingHTTPServer(('127.0.0.1', 0), LargeUpstream)
+            up_thread = threading.Thread(target=up.serve_forever, daemon=True)
+            up_thread.start()
+            srv = ThreadingHTTPServer(('127.0.0.1', 0), server.Handler)
+            srv.daemon_threads = True
+            srv_thread = threading.Thread(target=srv.serve_forever, daemon=True)
+            srv_thread.start()
+
+            class FakeProc:
+                def poll(self): return None
+                def send_signal(self, _sig): pass
+                def terminate(self): pass
+                def wait(self, timeout=None): return 0
+
+            sid = 'b' * 32
+            token = 'soft-pause-tok'
+            sdir = data / 'playback' / sid
+            sdir.mkdir(parents=True, exist_ok=True)
+            sess = playback._Session(sid, sdir, FakeProc(), time.monotonic())
+            with mgr._lock:
+                mgr._sessions[sid] = sess
+            with server.resource_lock:
+                server.internal_sources[token] = {
+                    'url': f'http://127.0.0.1:{up.server_port}/stream.ts',
+                    'touched': time.monotonic(),
+                    'sessionId': sid,
+                }
+
+            received = bytearray()
+            done = threading.Event()
+            first_byte = threading.Event()
+
+            def read_proxy():
+                conn = http.client.HTTPConnection('127.0.0.1', srv.server_port, timeout=10)
+                try:
+                    conn.request('GET', f'/internal/source/{token}')
+                    resp = conn.getresponse()
+                    while True:
+                        chunk = resp.read1(4096)
+                        if not chunk:
+                            break
+                        received.extend(chunk)
+                        first_byte.set()
+                finally:
+                    conn.close()
+                    done.set()
+
+            try:
+                with patch.object(playback.signal, 'SIGSTOP', None, create=True), \
+                     patch.object(playback.signal, 'SIGCONT', None, create=True), \
+                     patch.object(server, 'safe_public_url', side_effect=lambda u: u):
+                    mgr.pause(sid, True)
+                    reader = threading.Thread(target=read_proxy, daemon=True)
+                    reader.start()
+                    self.assertTrue(first_byte.wait(2.0))
+                    # While paused, proxy must throttle after first byte instead of draining full 128 KiB
+                    self.assertFalse(done.wait(0.6))
+                    self.assertLess(len(received), len(large_payload))
+                    mgr.pause(sid, False)
+                    self.assertTrue(done.wait(5.0))
+                    reader.join(timeout=2)
+                    self.assertEqual(bytes(received), large_payload)
+            finally:
+                with mgr._lock:
+                    mgr._sessions.pop(sid, None)
+                with server.resource_lock:
+                    server.internal_sources.pop(token, None)
+                mgr.close()
+                srv.shutdown(); srv.server_close(); srv_thread.join(timeout=2)
+                up.shutdown(); up.server_close(); up_thread.join(timeout=2)
+                server.playback = orig_playback
+                server.DATA, server.DB, server.CONFIG_FILE = orig_data, orig_db, orig_cfg
+
+    def test_direct_unittest_invocation_and_zero_resource_warnings(self):
+        proc = subprocess.run(
+            [sys.executable, '-c', 'import tests.test_play_order, tests.test_proxy_pause, tests.test_tracks'],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+        closed_called = []
+
+        class FailingConn:
+            def __init__(self, *_a, **_kw):
+                self.row_factory = None
+            def execute(self, _sql):
+                raise RuntimeError('PRAGMA failed')
+            def close(self):
+                closed_called.append(True)
+
+        with patch.object(server.sqlite3, 'connect', return_value=FailingConn()):
+            with self.assertRaises(RuntimeError):
+                server.connect()
+        self.assertEqual(closed_called, [True])
+
+    def test_desktop_invalid_mavie_port_and_bind_retry(self):
+        if str(ROOT / 'desktop') not in sys.path:
+            sys.path.insert(0, str(ROOT / 'desktop'))
+        import mavie_desktop
+
+        self.assertEqual(mavie_desktop.parse_preferred_port(''), 8844)
+        self.assertEqual(mavie_desktop.parse_preferred_port('9001'), 9001)
+        for bad in ('notanumber', '0', '-1', '65536'):
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError):
+                    mavie_desktop.parse_preferred_port(bad)
+
+        with tempfile.TemporaryDirectory(prefix='mavie-port-err-') as tmp:
+            dialogs = []
+            with patch.dict(os.environ, {'MAVIE_DATA_DIR': tmp, 'MAVIE_PORT': 'notanumber'}), \
+                 patch.object(mavie_desktop, 'show_error_dialog', side_effect=lambda t, m: dialogs.append((t, m))):
+                rc = mavie_desktop.main()
+            self.assertEqual(rc, 1)
+            self.assertEqual(len(dialogs), 1)
+            log_text = (Path(tmp) / 'desktop.log').read_text(encoding='utf-8')
+            self.assertIn('Geçersiz port', log_text)
+
+        # Port-bind TOCTOU retry succeeds on second port
+        import server as srv_mod
+        calls = {'n': 0}
+
+        def flaky_run_server(*, host, port, install_signals, stop_event, ready_event):
+            calls['n'] += 1
+            if calls['n'] == 1:
+                raise OSError('Address already in use')
+            ready_event.set()
+            stop_event.wait(2.0)
+
+        with tempfile.TemporaryDirectory(prefix='mavie-bind-retry-') as tmp:
+            with patch.dict(os.environ, {'MAVIE_DATA_DIR': tmp, 'MAVIE_PORT': '18890', 'MAVIE_HEADLESS_SMOKE': '1'}), \
+                 patch.object(mavie_desktop, 'find_free_port', side_effect=[18890, 18891]), \
+                 patch.object(mavie_desktop, 'wait_for_health', side_effect=[False, True]), \
+                 patch.object(srv_mod, 'run_server', side_effect=flaky_run_server):
+                rc = mavie_desktop.main()
+            self.assertEqual(rc, 0)
+            self.assertEqual(calls['n'], 2)
+
+    def test_desktop_macos_chrome_quick_exit_handoff_fallback(self):
+        if str(ROOT / 'desktop') not in sys.path:
+            sys.path.insert(0, str(ROOT / 'desktop'))
+        import mavie_desktop
+
+        class FakeProc:
+            def __init__(self, rc):
+                self._rc = rc
+            def wait(self):
+                return self._rc
+
+        stop_ev = threading.Event()
+        # 1. Quick exit rc=0 -> handoff fallback window keeps server alive
+        with patch.object(mavie_desktop.subprocess, 'Popen', return_value=FakeProc(0)), \
+             patch.object(mavie_desktop, 'show_fallback_window') as fb_mock, \
+             patch.object(mavie_desktop.time, 'monotonic', side_effect=[100.0, 100.2]):
+            rc = mavie_desktop.launch_browser_or_fallback('http://127.0.0.1:8844', stop_ev, browser_cmd=['/usr/bin/chrome'])
+        self.assertEqual(rc, 0)
+        fb_mock.assert_called_once()
+
+        # 2. Quick exit rc=1 -> webbrowser.open + fallback window
+        with patch.object(mavie_desktop.subprocess, 'Popen', return_value=FakeProc(1)), \
+             patch.object(mavie_desktop.webbrowser, 'open') as wb_mock, \
+             patch.object(mavie_desktop, 'show_fallback_window') as fb_mock, \
+             patch.object(mavie_desktop.time, 'monotonic', side_effect=[200.0, 200.3]):
+            rc = mavie_desktop.launch_browser_or_fallback('http://127.0.0.1:8844', stop_ev, browser_cmd=['/usr/bin/chrome'])
+        self.assertEqual(rc, 0)
+        wb_mock.assert_called_once()
+        fb_mock.assert_called_once()
+
+        # 3. Normal exit (>=2s) -> no fallback window, returns rc
+        with patch.object(mavie_desktop.subprocess, 'Popen', return_value=FakeProc(0)), \
+             patch.object(mavie_desktop, 'show_fallback_window') as fb_mock, \
+             patch.object(mavie_desktop.time, 'monotonic', side_effect=[300.0, 305.0]):
+            rc = mavie_desktop.launch_browser_or_fallback('http://127.0.0.1:8844', stop_ev, browser_cmd=['/usr/bin/chrome'])
+        self.assertEqual(rc, 0)
+        fb_mock.assert_not_called()
+
+    def test_windows_packaging_close_apps_upx_false_and_website_no_db_dep(self):
+        iss_src = (ROOT / 'windows' / 'MavieSetup.iss').read_text(encoding='utf-8')
+        spec_src = (ROOT / 'windows' / 'mavie.spec').read_text(encoding='utf-8')
+        bat_src = (ROOT / 'windows' / 'Mavie.bat').read_text(encoding='utf-8')
+        pkg = json.loads((ROOT / 'website' / 'package.json').read_text(encoding='utf-8'))
+        web_html = (ROOT / 'website' / 'index.html').read_text(encoding='utf-8')
+
+        self.assertIn('CloseApplications=yes', iss_src)
+        self.assertIn('AppMutex=MavieDesktopMutex', iss_src)
+        self.assertIn('upx=False', spec_src)
+        self.assertIn('.venv\\Scripts\\pythonw.exe', bat_src)
+        self.assertNotIn('@netlify/database', json.dumps(pkg))
+        self.assertIn('class="skip-link"', web_html)

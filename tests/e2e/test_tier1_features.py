@@ -156,6 +156,33 @@ class Tier1F1SetupAndSourceLoadingTests(unittest.TestCase):
             self.assertNotIn("demo_pass", json.dumps(st))
             self.assertNotIn("demo_pass", json.dumps(c.get("/api/export").json))
 
+    def test_xtream_sync_status_reports_syncing_or_populated_immediately(self) -> None:
+        with MockUpstreamServer() as mock:
+            srv = LocalMediaServerProcess(
+                allow_mock_port=mock.port,
+                mock_base_url=mock.base_url,
+            ).start()
+            self.addCleanup(srv.stop)
+            c = srv.paired_client()
+
+            res = c.post(
+                "/api/settings",
+                {
+                    "type": "xtream",
+                    "name": "Sync Race Check",
+                    "host": mock.base_url,
+                    "username": "demo_user",
+                    "password": "demo_pass",
+                },
+            )
+            self.assertEqual(res.status, 200, res.text)
+            immediate = c.get("/api/status").json["catalog"]
+            self.assertTrue(
+                immediate["syncing"] or immediate["live"] > 0,
+                f"Expected syncing=True or populated live>0 immediately after /api/settings, got {immediate}",
+            )
+            _wait_sync_done(c)
+
     def test_local_media_directory_scan_and_sidecar_subtitles(self) -> None:
         srv = LocalMediaServerProcess().start()
         self.addCleanup(srv.stop)

@@ -21,20 +21,26 @@ android {
         vectorDrawables.useSupportLibrary = true
     }
     signingConfigs {
-        if (signingProperties.isNotEmpty()) create("personal") {
-            val mavieStore = rootProject.file("signing/mavie-release.jks")
-            storeFile = if (mavieStore.exists()) mavieStore else rootProject.file("signing/akis-release.jks")
-            storePassword = signingProperties.getProperty("storePassword")
-            keyAlias = signingProperties.getProperty("keyAlias", "akis")
-            keyPassword = signingProperties.getProperty("keyPassword")
+        if (signingProperties.isNotEmpty()) {
+            val configuredPath = signingProperties.getProperty("storeFile", "signing/mavie-release.jks")
+            val store = rootProject.file(configuredPath)
+            if (store.exists()) {
+                create("personal") {
+                    storeFile = store
+                    storePassword = signingProperties.getProperty("storePassword")
+                    keyAlias = signingProperties.getProperty("keyAlias", "mavie")
+                    keyPassword = signingProperties.getProperty("keyPassword")
+                }
+            }
         }
     }
+    val hasPersonalSigning = signingConfigs.findByName("personal")?.storeFile?.exists() == true
     buildTypes {
-        debug { if (signingProperties.isNotEmpty()) signingConfig = signingConfigs.getByName("personal") }
+        debug { if (hasPersonalSigning) signingConfig = signingConfigs.getByName("personal") }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = if (signingProperties.isNotEmpty()) signingConfigs.getByName("personal") else signingConfigs.getByName("debug")
+            signingConfig = if (hasPersonalSigning) signingConfigs.getByName("personal") else signingConfigs.getByName("debug")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

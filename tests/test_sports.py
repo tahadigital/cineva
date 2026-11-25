@@ -3,6 +3,8 @@ import gzip
 import http.client
 import io
 import json
+import threading
+import time
 import unittest
 from unittest.mock import patch
 
@@ -221,3 +223,53 @@ class GuideTests(unittest.TestCase):
         # Corrupt gzip in parse_xmltv raises RuntimeError instead of zlib.error
         with self.assertRaises(RuntimeError):
             sports.parse_xmltv(b'\x1f\x8bcorrupt-gzip', DAY)
+
+    def test_concurrent_get_listings_different_keys_do_not_serialize_behind_slow_fetch(self):
+        slow_day = DAY
+        fast_day = DAY + dt.timedelta(days=1)
+        slow_started = threading.Event()
+        release_slow = threading.Event()
+        fast_finished = threading.Event()
+
+        def timed_fetch(url, **_kwargs):
+            if 'slow.xml' in url:
+                slow_started.set()
+                release_slow.wait(3.0)
+                return io.BytesIO(SAMPLE_XMLTV)
+            return io.BytesIO(SAMPLE_XMLTV)
+
+        with patch.object(sports, '_cache', {}), patch.object(sports, '_inflight', {}):
+            t_slow = threading.Thread(
+                target=lambda: sports.get_listings(slow_day, timed_fetch, epg_url='https://epg.example/slow.xml'),
+                daemon=True,
+            )
+            t_slow.start()
+            self.assertTrue(slow_started.wait(2.0))
+            res_fast = sports.get_listings(fast_day, timed_fetch, epg_url='https://epg.example/fast.xml')
+            fast_finished.set()
+            self.assertTrue(fast_finished.is_set())
+            self.assertEqual(res_fast['date'], fast_day.isoformat())
+            release_slow.set()
+            t_slow.join(timeout=2.0)
+
+    def test_preserves_xmltv_dtd_malformed_and_sporekrani_parse_errors(self):
+        with patch.object(sports, '_cache', {}), patch.object(sports, '_inflight', {}), patch.object(sports.time, 'sleep'):
+            with self.assertRaises(RuntimeError) as dtd_ctx:
+                sports.get_listings(
+                    DAY,
+                    lambda *a, **k: io.BytesIO(b'<?xml version="1.0"?><!DOCTYPE tv><tv></tv>'),
+                    epg_url='https://epg.example/dtd.xml',
+                )
+            self.assertIn('DTD', str(dtd_ctx.exception))
+
+            with self.assertRaises(RuntimeError) as bad_ctx:
+                sports.get_listings(
+                    DAY,
+                    lambda *a, **k: io.BytesIO(b'<tv><broken'),
+                    epg_url='https://epg.example/bad.xml',
+                )
+            self.assertIn('XMLTV yayın rehberi okunamadı', str(bad_ctx.exception))
+
+            with self.assertRaises(RuntimeError) as sk_ctx:
+                sports.get_listings(DAY, lambda *a, **k: io.BytesIO(b'<html>no state</html>'), epg_url='')
+            self.assertIn('Spor yayın rehberi şu anda okunamadı', str(sk_ctx.exception))

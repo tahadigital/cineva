@@ -13,8 +13,18 @@ import javax.crypto.spec.GCMParameterSpec
 
 internal data class SavedAccount(val settings: ConnectionSettings, val info: AccountInfo)
 
+internal sealed interface CredentialLoadResult {
+    data object Empty : CredentialLoadResult
+    data class Loaded(val account: SavedAccount) : CredentialLoadResult
+    data class Failed(val error: IptvException) : CredentialLoadResult
+}
+
 internal interface AccountStore {
     fun load(): SavedAccount?
+    fun loadResult(): CredentialLoadResult = when (val acc = load()) {
+        null -> CredentialLoadResult.Empty
+        else -> CredentialLoadResult.Loaded(acc)
+    }
     fun save(account: SavedAccount)
     fun clear()
 }
@@ -39,7 +49,6 @@ internal class CredentialStore(context: Context) : AccountStore {
     }
 
     override fun save(account: SavedAccount) {
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
         val plain = JSONObject()
             .put("host", account.settings.host)
             .put("username", account.settings.username)
@@ -54,54 +63,110 @@ internal class CredentialStore(context: Context) : AccountStore {
             .put("maxConnections", account.info.maxConnections)
             .toString()
             .toByteArray(Charsets.UTF_8)
-        val encrypted = cipher.doFinal(plain)
-        plain.fill(0)
-        val saved = preferences.edit()
-            .putString("iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
-            .putString("payload", Base64.encodeToString(encrypted, Base64.NO_WRAP)).commit()
-        if (!saved) throw IptvException("Bağlantı bu cihazda güvenli biçimde kaydedilemedi.")
-    }
-
-    override fun load(): SavedAccount? {
-        val iv = preferences.getString("iv", null) ?: return null
-        val payload = preferences.getString("payload", null) ?: return null
-        return try {
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
-                init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP)))
-            }
-            val plain = cipher.doFinal(Base64.decode(payload, Base64.NO_WRAP))
-            val data = JSONObject(plain.toString(Charsets.UTF_8))
+        val (ivEncoded, payloadEncoded) = try {
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
+            val encrypted = cipher.doFinal(plain)
+            Base64.encodeToString(cipher.iv, Base64.NO_WRAP) to Base64.encodeToString(encrypted, Base64.NO_WRAP)
+        } catch (err: Exception) {
+            throw IptvException("Bağlantı bu cihazda güvenli biçimde kaydedilemedi.", MavieErrorCode.KEYSTORE_ERROR, err)
+        } finally {
             plain.fill(0)
-            val sourceType = SourceMode.fromKey(data.optString("sourceType", "xtream"))
-            val epgUrl = data.optString("epgUrl")
-            val settings = ConnectionSettings(
-                host = data.optString("host"),
-                username = data.optString("username"),
-                password = data.optString("password"),
-                sourceType = sourceType,
-                m3uUrl = data.optString("m3uUrl"),
-                epgUrl = epgUrl,
-            )
-            SavedAccount(
-                settings,
-                AccountInfo(
-                    id = data.getString("id"),
-                    username = settings.username,
-                    host = settings.host,
-                    name = data.optString("name", "Kişisel Kütüphane"),
-                    status = data.optString("status", "Active"),
-                    expiresAt = data.optLong("expiresAt").takeIf { it > 0 },
-                    maxConnections = data.optInt("maxConnections", 1),
-                    sourceType = sourceType,
-                    epgUrl = epgUrl,
-                ),
-            )
-        } catch (_: Exception) {
-            null
+        }
+        val saved = preferences.edit()
+            .putString("iv", ivEncoded)
+            .putString("payload", payloadEncoded)
+            .commit()
+        if (!saved) {
+            throw IptvException("Bağlantı bu cihazda güvenli biçimde kaydedilemedi.", MavieErrorCode.STORAGE_ERROR)
         }
     }
 
+    override fun loadResult(): CredentialLoadResult {
+        val iv = preferences.getString("iv", null)
+        val payload = preferences.getString("payload", null)
+        return loadFrom(
+            iv = iv,
+            payload = payload,
+            decodeBase64 = { Base64.decode(it, Base64.NO_WRAP) },
+            decrypt = { ivBytes, payloadBytes ->
+                val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
+                    init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, ivBytes))
+                }
+                cipher.doFinal(payloadBytes)
+            },
+            clearCorrupt = {
+                preferences.edit().remove("iv").remove("payload").commit()
+            },
+        )
+    }
+
+    override fun load(): SavedAccount? = (loadResult() as? CredentialLoadResult.Loaded)?.account
+
     override fun clear() {
         preferences.edit().clear().commit()
+    }
+
+    internal companion object {
+        fun loadFrom(
+            iv: String?,
+            payload: String?,
+            decodeBase64: (String) -> ByteArray = { java.util.Base64.getDecoder().decode(it) },
+            decrypt: (ByteArray, ByteArray) -> ByteArray,
+            clearCorrupt: () -> Unit,
+        ): CredentialLoadResult {
+            if (iv == null && payload == null) return CredentialLoadResult.Empty
+            if (iv.isNullOrBlank() || payload.isNullOrBlank()) {
+                runCatching { clearCorrupt() }
+                return CredentialLoadResult.Failed(
+                    IptvException(
+                        "Kayıtlı oturum anahtarı okunamadı. Güvenlik nedeniyle yeniden giriş yap.",
+                        MavieErrorCode.KEYSTORE_ERROR,
+                    )
+                )
+            }
+            return try {
+                val plain = decrypt(decodeBase64(iv), decodeBase64(payload))
+                try {
+                    val data = JSONObject(plain.toString(Charsets.UTF_8))
+                    val sourceType = SourceMode.fromKey(data.optString("sourceType", "xtream"))
+                    val epgUrl = data.optString("epgUrl")
+                    val settings = ConnectionSettings(
+                        host = data.optString("host"),
+                        username = data.optString("username"),
+                        password = data.optString("password"),
+                        sourceType = sourceType,
+                        m3uUrl = data.optString("m3uUrl"),
+                        epgUrl = epgUrl,
+                    )
+                    CredentialLoadResult.Loaded(
+                        SavedAccount(
+                            settings,
+                            AccountInfo(
+                                id = data.getString("id"),
+                                username = settings.username,
+                                host = settings.host,
+                                name = data.optString("name", "Kişisel Kütüphane"),
+                                status = data.optString("status", "Active"),
+                                expiresAt = data.optLong("expiresAt").takeIf { it > 0 },
+                                maxConnections = data.optInt("maxConnections", 1),
+                                sourceType = sourceType,
+                                epgUrl = epgUrl,
+                            ),
+                        )
+                    )
+                } finally {
+                    plain.fill(0)
+                }
+            } catch (err: Exception) {
+                runCatching { clearCorrupt() }
+                CredentialLoadResult.Failed(
+                    IptvException(
+                        "Kayıtlı oturum anahtarı okunamadı. Güvenlik nedeniyle yeniden giriş yap.",
+                        MavieErrorCode.KEYSTORE_ERROR,
+                        err,
+                    )
+                )
+            }
+        }
     }
 }

@@ -25,6 +25,10 @@ SolidCompression=yes
 WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
+CloseApplications=yes
+CloseApplicationsFilter=*.exe
+RestartApplications=no
+AppMutex=MavieDesktopMutex
 
 [Languages]
 Name: "turkish"; MessagesFile: "compiler:Languages\Turkish.isl"

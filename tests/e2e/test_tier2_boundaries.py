@@ -324,6 +324,22 @@ class Tier2F3DiscoveryBoundariesTests(unittest.TestCase):
         self.assertEqual(home.status, 200)
         self.assertIn("discovery", home.json)
 
+    def test_discovery_malformed_chart_week_does_not_crash_home(self) -> None:
+        srv = LocalMediaServerProcess().start()
+        self.addCleanup(srv.stop)
+        c = srv.paired_client()
+        c.post("/api/demo", {})
+        feed = {
+            "version": 3,
+            "updatedAt": time.time(),
+            "charts": [{"name": "Big Buck Bunny", "kind": "vod", "rank": 1, "week": "bad-week", "source": "netflix"}],
+            "metas": [],
+        }
+        (srv.data_dir / "discovery-public.json").write_text(json.dumps(feed), encoding="utf-8")
+        home = c.get("/api/home")
+        self.assertEqual(home.status, 200, home.text)
+        self.assertIn("discovery", home.json)
+
     def test_discovery_remake_same_title_different_year_not_merged(self) -> None:
         catalog = [
             {"id": "vod:1984", "kind": "vod", "name": "Dune", "year": "1984", "poster": "", "rating": 6.5},
@@ -386,6 +402,21 @@ class Tier2F4SportsBoundariesTests(unittest.TestCase):
                 r = c.get(f"/api/sports?epgUrl={epg}&source=xmltv")
                 self.assertEqual(r.status, 502, r.text)
                 self.assertNotIn("root:", r.text)
+
+    def test_sports_preserves_xxe_and_malformed_xml_error_messages(self) -> None:
+        with MockUpstreamServer() as mock:
+            srv = LocalMediaServerProcess(allow_mock_port=mock.port, mock_base_url=mock.base_url).start()
+            self.addCleanup(srv.stop)
+            c = srv.paired_client()
+            epg_xxe = urllib.parse.quote(f"{mock.base_url}/err/xxe.xml", safe="")
+            r_xxe = c.get(f"/api/sports?epgUrl={epg_xxe}&source=xmltv")
+            self.assertEqual(r_xxe.status, 502, r_xxe.text)
+            self.assertIn("DTD", (r_xxe.json or {}).get("error", ""))
+
+            epg_bad = urllib.parse.quote(f"{mock.base_url}/err/bad.xml", safe="")
+            r_bad = c.get(f"/api/sports?epgUrl={epg_bad}&source=xmltv")
+            self.assertEqual(r_bad.status, 502, r_bad.text)
+            self.assertIn("okunamadı", (r_bad.json or {}).get("error", ""))
 
     @requires_target("M1")
     def test_sports_ssrf_blocks_private_epg_url_query_param(self) -> None:
@@ -555,6 +586,31 @@ class Tier2F5PlaybackAndPlaylistBoundariesTests(unittest.TestCase):
         self.assertEqual(c.get("/api/subtitles/vod:1/../../etc/passwd.vtt").status, 404)
         self.assertEqual(c.get("/api/subtitles/vod:1/0.vtt").status, 403)
 
+    def test_local_ass_sidecar_subtitle_served_as_valid_webvtt(self) -> None:
+        srv = LocalMediaServerProcess().start()
+        self.addCleanup(srv.stop)
+        c = srv.paired_client()
+        with tempfile.TemporaryDirectory(prefix="mavie_ass_e2e_") as media_dir:
+            mp = Path(media_dir)
+            (mp / "Sample.2025.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"0" * 32)
+            (mp / "Sample.2025.tr.ass").write_text(
+                "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+                "Dialogue: 0,0:00:02.10,0:00:04.50,Default,,0,0,0,,{\\b1}Merhaba\\NWebVTT{\\b0}\n",
+                encoding="utf-8",
+            )
+            c.post("/api/settings", {"type": "local", "localDir": media_dir, "name": "ASS E2E"})
+            deadline = time.monotonic() + 5.0
+            items = []
+            while time.monotonic() < deadline and not items:
+                items = c.get("/api/catalog?kind=vod").json["items"]
+                time.sleep(0.05)
+            sub = c.get(f"/api/subtitles/{items[0]['id']}/0.vtt")
+            self.assertEqual(sub.status, 200, sub.text)
+            self.assertTrue(sub.text.startswith("WEBVTT"))
+            self.assertIn("00:00:02.100 --> 00:00:04.500", sub.text)
+            self.assertIn("Merhaba\nWebVTT", sub.text)
+            self.assertNotIn("{\\b1}", sub.text)
+
 
 # =============================================================================
 # F6: Auth, Profiles, Backup & Security Boundaries
@@ -614,6 +670,25 @@ class Tier2F6AuthProfilesAndSecurityBoundariesTests(unittest.TestCase):
         for path in ("/%2e%2e/server.py", "/data/config.json", "/../../etc/passwd"):
             r = c.get(path)
             self.assertIn(r.status, (400, 403, 404))
+
+    def test_host_userinfo_bypass_rejected_403_and_put_method_returns_json_405(self) -> None:
+        srv = LocalMediaServerProcess().start()
+        self.addCleanup(srv.stop)
+        c = srv.paired_client()
+
+        conn = http.client.HTTPConnection("127.0.0.1", srv.port, timeout=5)
+        try:
+            conn.request("GET", "/api/health", headers={"Host": f"evil.com@127.0.0.1:{srv.port}"})
+            r_host = conn.getresponse()
+            r_host.read()
+        finally:
+            conn.close()
+        self.assertEqual(r_host.status, 403)
+
+        r_put = c.put("/api/health", {})
+        self.assertEqual(r_put.status, 405, r_put.text)
+        self.assertEqual(r_put.headers.get("x-content-type-options"), "nosniff")
+        self.assertEqual((r_put.json or {}).get("error_code"), "method_not_allowed")
 
     def test_backup_import_rejects_bad_version_bad_id_and_ignores_config(self) -> None:
         srv = LocalMediaServerProcess().start()

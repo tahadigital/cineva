@@ -1,8 +1,5 @@
 {
   "name": "mavie-website",
   "private": true,
-  "type": "module",
-  "dependencies": {
-    "@netlify/database": "latest"
-  }
+  "type": "module"
 }

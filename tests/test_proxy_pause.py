@@ -1,10 +1,18 @@
 """A paused local decoder must not truncate its provider proxy response."""
 
 from http.client import HTTPConnection
+from pathlib import Path
 import socket
+import sys
 import time
 import unittest
 from unittest.mock import patch
+
+_TESTS_DIR = Path(__file__).resolve().parent
+_ROOT_DIR = _TESTS_DIR.parent
+for _p in (str(_TESTS_DIR), str(_ROOT_DIR)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 import test_codec_playback as codec_fixture
 

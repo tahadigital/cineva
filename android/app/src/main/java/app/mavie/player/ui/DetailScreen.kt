@@ -178,7 +178,15 @@ fun MavieDetailScreen(
                                 Text("Ayrıntılar hazırlanıyor…", color = MavieMuted, fontSize = 12.sp)
                             }
                         }
-                        if (state.error != null) item("error") { MessagePanel("Ayrıntılar alınamadı", state.error, action = "Yeniden dene", onAction = onRetry) }
+                        if (state.error != null) item("error") {
+                            MessagePanel(
+                                "Ayrıntılar alınamadı",
+                                state.error,
+                                action = "Yeniden dene",
+                                onAction = onRetry,
+                                hint = errorHintFor(state.errorCode),
+                            )
+                        }
                     }
                     VerticalDivider(color = Color(0xFF282B34), thickness = 1.dp)
                     LazyColumn(Modifier.weight(0.56f).fillMaxHeight(), contentPadding = PaddingValues(top = 12.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -221,7 +229,15 @@ fun MavieDetailScreen(
                             Text("Ayrıntılar hazırlanıyor…", color = MavieMuted, fontSize = 12.sp)
                         }
                     }
-                    if (state.error != null) item("error") { MessagePanel("Ayrıntılar alınamadı", state.error, action = "Yeniden dene", onAction = onRetry) }
+                    if (state.error != null) item("error") {
+                        MessagePanel(
+                            "Ayrıntılar alınamadı",
+                            state.error,
+                            action = "Yeniden dene",
+                            onAction = onRetry,
+                            hint = errorHintFor(state.errorCode),
+                        )
+                    }
                     if (media.kind == "series") {
                         item("season-heading") {
                             Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {

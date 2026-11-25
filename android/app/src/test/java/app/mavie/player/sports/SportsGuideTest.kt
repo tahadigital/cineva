@@ -1,5 +1,6 @@
 package app.mavie.player.sports
 
+import app.mavie.player.data.MavieErrorCode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelAndJoin
@@ -113,6 +114,67 @@ class SportsGuideTest {
             assertNotNull(server.takeRequest(3, TimeUnit.SECONDS))
             withTimeout(2_000) { job.cancelAndJoin() }
             assertTrue("CancellationException must propagate out of SportsGuide.load()", caughtCancel)
+        }
+    }
+
+    @Test
+    fun rejectsXmltvDoctypeAndEntityAfterLargeLeadingPadding() {
+        val padded = " ".repeat(8192) + "<!DOCTYPE tv><tv/>"
+        try {
+            SportsGuide.parseXmltv(padded, day)
+            fail("Expected SportsGuideException for padded <!DOCTYPE")
+        } catch (ex: SportsGuideException) {
+            assertEquals(MavieErrorCode.UNSAFE_URL, ex.code)
+        }
+
+        val entityPadded = " ".repeat(8192) + "<tv><!ENTITY xxe 'bad'></tv>"
+        try {
+            SportsGuide.parseXmltv(entityPadded, day)
+            fail("Expected SportsGuideException for padded <!ENTITY")
+        } catch (ex: SportsGuideException) {
+            assertEquals(MavieErrorCode.UNSAFE_URL, ex.code)
+        }
+    }
+
+    @Test(timeout = 10_000)
+    fun loadRejectsRedirectToCloudMetadataAndLinkLocalWithUnsafeUrlCode() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(302)
+                    .setHeader("Location", "http://169.254.169.254/latest/meta-data/"),
+            )
+            try {
+                SportsGuide.load(
+                    day = day,
+                    force = true,
+                    epgUrl = server.url("/redirect-ssrf.xml").toString(),
+                )
+                fail("Expected redirect SSRF to be rejected")
+            } catch (ex: SportsGuideException) {
+                assertEquals(MavieErrorCode.UNSAFE_URL, ex.code)
+            }
+        }
+    }
+
+    @Test(timeout = 10_000)
+    fun loadRejectsCrossHostRedirectForCredentialedEpgUrl() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(302)
+                    .setHeader("Location", "http://evil.example.test/steal.xml"),
+            )
+            try {
+                SportsGuide.load(
+                    day = day,
+                    force = true,
+                    epgUrl = server.url("/xmltv.php?username=demo_user&password=demo_pass").toString(),
+                )
+                fail("Expected cross-host credential redirect to be rejected")
+            } catch (ex: SportsGuideException) {
+                assertEquals(MavieErrorCode.UNSAFE_URL, ex.code)
+            }
         }
     }
 }

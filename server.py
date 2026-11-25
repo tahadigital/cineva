@@ -2,11 +2,11 @@
 """Mavie: local personal media, M3U/Xtream/XMLTV EPG catalog, state and playback service."""
 from __future__ import annotations
 import argparse, base64, collections, contextlib, datetime as dt, hashlib, html, http.client, http.cookies
-import ipaddress, json, math, mimetypes, os, re, secrets, signal, socket, sqlite3, sys
+import ipaddress, json, math, mimetypes, os, re, secrets, signal, socket, sqlite3, subprocess, sys
 import threading, time, unicodedata, ssl, urllib.error, urllib.parse, urllib.request, zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from playback import PlaybackManager, BITMAP_SUBTITLES, _infer_language as infer_subtitle_language
+from playback import PlaybackManager, BITMAP_SUBTITLES, SessionExpiredError, _infer_language as infer_subtitle_language
 import discovery
 import local_media
 import m3u
@@ -84,9 +84,13 @@ class DatabaseConnection(sqlite3.Connection):
 
 def connect():
     c = sqlite3.connect(DB, timeout=20, factory=DatabaseConnection)
-    c.row_factory = sqlite3.Row
-    c.execute('PRAGMA foreign_keys=ON')
-    return c
+    try:
+        c.row_factory = sqlite3.Row
+        c.execute('PRAGMA foreign_keys=ON')
+        return c
+    except BaseException:
+        c.close()
+        raise
 
 
 def initialize():
@@ -156,6 +160,32 @@ def validate_source_url(value):
     try: _ = u.port
     except ValueError: raise ValueError('Kaynak portu geçersiz.') from None
     return urllib.parse.urlunsplit((u.scheme, u.netloc, u.path, u.query, ''))
+
+
+_SENSITIVE_QUERY_KEYS = frozenset({'username', 'password', 'token', 'pass', 'pwd', 'auth', 'key', 'apikey', 'api_key'})
+
+
+def redact_url_credentials(url):
+    raw = str(url or '').strip()
+    if not raw:
+        return ''
+    try:
+        u = urllib.parse.urlsplit(raw)
+    except ValueError:
+        return ''
+    netloc = u.hostname or ''
+    if ':' in netloc:
+        netloc = f'[{netloc}]'
+    try:
+        if u.port is not None:
+            netloc = f'{netloc}:{u.port}'
+    except ValueError:
+        pass
+    q = [
+        (k, 'REDACTED' if k.lower() in _SENSITIVE_QUERY_KEYS else v)
+        for k, v in urllib.parse.parse_qsl(u.query, keep_blank_values=True)
+    ]
+    return urllib.parse.urlunsplit((u.scheme, netloc, u.path, urllib.parse.urlencode(q), u.fragment))
 
 
 _RFC1918_NETWORKS = (
@@ -367,9 +397,16 @@ class Provider:
 
 provider = Provider(load_config())
 sync_lock = threading.Lock()
+sync_state_lock = threading.Lock()
 sync_state = {'syncing': False, 'error': None}
+profile_lock = threading.RLock()
 play_lock = threading.Lock()
 resource_lock = threading.RLock()
+
+
+def get_sync_state():
+    with sync_state_lock:
+        return dict(sync_state)
 media_sessions = {}
 internal_sources = {}
 play_clients = {}
@@ -431,9 +468,11 @@ def _pop_prefetched_m3u(url):
     return None
 
 
-def sync_catalog():
-    if not sync_lock.acquire(blocking=False): return
-    sync_state.update(syncing=True, error=None)
+def sync_catalog(_acquired=False):
+    global _library_version
+    if not _acquired and not sync_lock.acquire(blocking=False): return
+    with sync_state_lock:
+        sync_state.update(syncing=True, error=None)
     try:
         allrows, catrows = [], []
         if provider.mode == 'demo':
@@ -506,22 +545,37 @@ def sync_catalog():
             c.executemany(UPSERT_ITEM, allrows)
             c.execute('INSERT OR REPLACE INTO meta VALUES(?,?)', ('catalog_updated', json.dumps(stamp())))
             c.execute('INSERT OR REPLACE INTO meta VALUES(?,?)', ('account', json.dumps(account)))
+        with _home_lock:
+            _library_version += 1
     except Exception as e:
-        if isinstance(e, (ValueError, RuntimeError)):
-            sync_state['error'] = str(e)
-        elif isinstance(e, urllib.error.HTTPError):
-            sync_state['error'] = _http_error_message(e.code)
-        elif isinstance(e, (urllib.error.URLError, TimeoutError, http.client.HTTPException, OSError)):
-            sync_state['error'] = 'Kaynağa ulaşılamadı. Ağ bağlantısını kontrol edip mevcut içeriklerle devam edin.'
-        else:
-            sync_state['error'] = 'Katalog güncellenemedi. Mevcut içerikler korundu.'
+        with sync_state_lock:
+            if isinstance(e, (ValueError, RuntimeError)):
+                sync_state['error'] = str(e)
+            elif isinstance(e, urllib.error.HTTPError):
+                sync_state['error'] = _http_error_message(e.code)
+            elif isinstance(e, (urllib.error.URLError, TimeoutError, http.client.HTTPException, OSError)):
+                sync_state['error'] = 'Kaynağa ulaşılamadı. Ağ bağlantısını kontrol edip mevcut içeriklerle devam edin.'
+            else:
+                sync_state['error'] = 'Katalog güncellenemedi. Mevcut içerikler korundu.'
     finally:
-        sync_state['syncing'] = False
+        with sync_state_lock:
+            sync_state['syncing'] = False
         sync_lock.release()
 
 
 def launch_sync():
-    if not sync_state['syncing']: threading.Thread(target=sync_catalog, daemon=True, name='catalog-sync').start()
+    if not sync_lock.acquire(blocking=False):
+        return False
+    with sync_state_lock:
+        sync_state.update(syncing=True, error=None)
+    try:
+        threading.Thread(target=sync_catalog, args=(True,), daemon=True, name='catalog-sync').start()
+        return True
+    except BaseException:
+        with sync_state_lock:
+            sync_state['syncing'] = False
+        sync_lock.release()
+        raise
 
 
 ITEM_SELECT = '''SELECT i.*,f.item_id IS NOT NULL AS favorite,p.position AS p_position,p.duration AS p_duration,p.completed AS p_completed,p.updated_at AS p_updated FROM items i LEFT JOIN favorites f ON f.item_id=i.id LEFT JOIN progress p ON p.item_id=i.id'''
@@ -620,13 +674,20 @@ def _restore_profile_tables(c, snap):
 
 
 def switch_profile(target_id, pin=''):
-    with sync_lock:
+    with connect() as c:
+        row = c.execute('SELECT id,pin_hash FROM profiles WHERE id=?', (target_id,)).fetchone()
+    if not row:
+        raise ValueError('Profil bulunamadı.')
+    pre_pin_hash = row['pin_hash']
+    if pre_pin_hash and not _verify_pin(pin, pre_pin_hash):
+        raise ValueError('Profil PIN kodu hatalı.')
+    with profile_lock:
         current_id = active_profile_id()
         with connect() as c:
             row = c.execute('SELECT id,pin_hash FROM profiles WHERE id=?', (target_id,)).fetchone()
             if not row:
                 raise ValueError('Profil bulunamadı.')
-            if row['pin_hash'] and not _verify_pin(pin, row['pin_hash']):
+            if row['pin_hash'] != pre_pin_hash and row['pin_hash'] and not _verify_pin(pin, row['pin_hash']):
                 raise ValueError('Profil PIN kodu hatalı.')
             if target_id == current_id:
                 return active_profile()
@@ -635,7 +696,7 @@ def switch_profile(target_id, pin=''):
             snap = json.loads(snap_row['data']) if snap_row else {}
             _restore_profile_tables(c, snap)
             c.execute('INSERT OR REPLACE INTO meta VALUES(?,?)', ('active_profile', json.dumps(target_id)))
-    return active_profile()
+        return active_profile()
 
 
 def surprise_pick():
@@ -685,6 +746,7 @@ def catalog(q):
 
 _home_cache = {'lib_key': None, 'library': [], 'rec_key': None, 'recommendations': None}
 _home_lock = threading.Lock()
+_library_version = 0
 
 
 def home():
@@ -739,13 +801,20 @@ def home():
             recent.append(item)
             if len(seen) == 12: break
     feed = discovery.snapshot(DATA, enabled=provider.mode in ('xtream', 'm3u', 'local'))
+    profile_id = active_profile_id()
     with connect() as c:
-        lib_key = (str(DB), tuple(c.execute("SELECT count(*), coalesce(max(added),0), coalesce(max(rowid),0) FROM items WHERE kind IN ('vod','series')").fetchone()))
+        with _home_lock:
+            lib_ver = _library_version
+        lib_key = (
+            str(DB),
+            lib_ver,
+            tuple(c.execute("SELECT count(*), coalesce(max(added),0), coalesce(max(rowid),0), coalesce(sum(length(extra)),0) FROM items WHERE kind IN ('vod','series')").fetchone()),
+        )
         hist_key = (
             tuple(c.execute("SELECT count(*), coalesce(max(updated_at),''), coalesce(sum(position),0), coalesce(sum(completed),0) FROM progress").fetchone()),
             tuple(c.execute("SELECT count(*), coalesce(max(created_at),'') FROM favorites").fetchone()),
         )
-        rec_key = (lib_key, hist_key, is_kids, feed.get('updatedAt'), len(feed.get('metas', ())), len(feed.get('charts', ())))
+        rec_key = (lib_key, hist_key, profile_id, is_kids, feed.get('updatedAt'), len(feed.get('metas', ())), len(feed.get('charts', ())))
         with _home_lock:
             cached_rec = _home_cache['recommendations'] if _home_cache['rec_key'] == rec_key else None
             cached_lib = _home_cache['library'] if _home_cache['lib_key'] == lib_key else None
@@ -833,6 +902,9 @@ def detail(iid):
         seasons = [{'season': n, 'name': f'{n}. Sezon', 'episodes': es} for n, es in sorted(grouped.items())]
     if r['kind'] in ('vod', 'series'):
         with connect() as c: c.execute('UPDATE items SET extra=? WHERE id=?', (json.dumps(info, ensure_ascii=False), iid))
+        with _home_lock:
+            global _library_version
+            _library_version += 1
         r = get_row(iid)
     return {'item': item_json(r), 'info': info, 'seasons': seasons}
 
@@ -856,14 +928,33 @@ def lan_ips():
     if now - _lan_cache[0] < 30.0:
         return _lan_cache[1]
     out = set()
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.connect(('8.8.8.8', 80)); out.add(s.getsockname()[0])
-    except OSError: pass
+    for target in (('8.8.8.8', 80), ('192.168.1.1', 80), ('192.168.0.1', 80), ('10.0.0.1', 80), ('172.16.0.1', 80)):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect(target)
+                out.add(s.getsockname()[0])
+        except OSError:
+            pass
     try:
         for a in socket.getaddrinfo(socket.gethostname(), None, family=socket.AF_INET): out.add(a[4][0])
     except OSError: pass
-    result = sorted(x for x in out if ipaddress.ip_address(x).is_private and not ipaddress.ip_address(x).is_loopback)
+    def _is_lan_ipv4(val):
+        try:
+            ip = ipaddress.ip_address(val)
+            return ip.version == 4 and ip.is_private and not ip.is_loopback and not ip.is_link_local
+        except ValueError:
+            return False
+    result = sorted(x for x in out if _is_lan_ipv4(x))
+    if not result and sys.platform != 'win32':
+        cmd = ['ifconfig'] if (sys.platform == 'darwin' or 'bsd' in sys.platform) else ['ip', '-4', '-o', 'addr', 'show']
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1, check=False)
+            for addr in re.findall(r'\binet\s+(\d+\.\d+\.\d+\.\d+)\b', proc.stdout or ''):
+                if _is_lan_ipv4(addr):
+                    out.add(addr)
+            result = sorted(x for x in out if _is_lan_ipv4(x))
+        except (OSError, subprocess.SubprocessError):
+            pass
     _lan_cache = (now, result)
     return result
 
@@ -960,19 +1051,20 @@ def track_preferences(iid):
 
 
 def save_track_preferences(iid, changes):
-    pref = track_preferences(iid)
-    patterns = {'audio': r'(?:auto|stream:[0-9]{1,5})', 'subtitle': r'(?:off|stream:[0-9]{1,5})',
-                'clientAudio': r'(?:auto|hls:[0-9]{1,5}|native:[0-9]{1,5})',
-                'clientSubtitle': r'(?:off|hls:[0-9]{1,5}|native:[0-9]{1,5})'}
-    for key, pattern in patterns.items():
-        if key in changes:
-            value = changes[key]
-            if value is not None and (not isinstance(value, str) or not re.fullmatch(pattern, value)):
-                raise ValueError('Ses veya altyazı seçimi geçersiz.')
-            if value is None and key in ('audio', 'subtitle'): raise ValueError('Parça seçimi boş olamaz.')
-            pref[key] = value
-    with connect() as c: c.execute('INSERT OR REPLACE INTO track_preferences VALUES(?,?,?)', (iid, json.dumps(pref), stamp()))
-    return pref
+    with profile_lock:
+        pref = track_preferences(iid)
+        patterns = {'audio': r'(?:auto|stream:[0-9]{1,5})', 'subtitle': r'(?:off|stream:[0-9]{1,5})',
+                    'clientAudio': r'(?:auto|hls:[0-9]{1,5}|native:[0-9]{1,5})',
+                    'clientSubtitle': r'(?:off|hls:[0-9]{1,5}|native:[0-9]{1,5})'}
+        for key, pattern in patterns.items():
+            if key in changes:
+                value = changes[key]
+                if value is not None and (not isinstance(value, str) or not re.fullmatch(pattern, value)):
+                    raise ValueError('Ses veya altyazı seçimi geçersiz.')
+                if value is None and key in ('audio', 'subtitle'): raise ValueError('Parça seçimi boş olamaz.')
+                pref[key] = value
+        with connect() as c: c.execute('INSERT OR REPLACE INTO track_preferences VALUES(?,?,?)', (iid, json.dumps(pref), stamp()))
+        return pref
 
 
 def cached_tracks(iid, fresh=False):
@@ -1201,7 +1293,10 @@ def play_item(iid, mode, start, options=None):
                 except PlaybackError:
                     playback.stop(sid)
                     raise
-                with resource_lock: media_sessions[sid] = {'resources': {}, 'reverse': {}, 'touched': time.monotonic(), 'sourceToken': token, 'owner': None, 'item': iid, 'multiview': is_multiview, 'multiviewSlot': mv_slot}
+                with resource_lock:
+                    media_sessions[sid] = {'resources': {}, 'reverse': {}, 'touched': time.monotonic(), 'sourceToken': token, 'owner': None, 'item': iid, 'multiview': is_multiview, 'multiviewSlot': mv_slot}
+                    if token is not None and token in internal_sources:
+                        internal_sources[token]['sessionId'] = sid
                 result['mode'] = mode
             save_track_preferences(iid, selection)
             result.update(tracks=tracks, selection=selection, externalSubtitles=sidecar_subtitles(iid, r))
@@ -1238,11 +1333,32 @@ class Handler(BaseHTTPRequestHandler):
     def is_local(self):
         try: return ipaddress.ip_address(self.client_address[0]).is_loopback
         except ValueError: return False
+    def _matches_local_socket_ip(self, host):
+        try:
+            host_ip = ipaddress.ip_address(host)
+            sock_raw = self.connection.getsockname()[0].split('%', 1)[0]
+            sock_ip = ipaddress.ip_address(sock_raw)
+        except (ValueError, OSError, IndexError):
+            return False
+        host_ip = getattr(host_ip, 'ipv4_mapped', None) or host_ip
+        sock_ip = getattr(sock_ip, 'ipv4_mapped', None) or sock_ip
+        return host_ip == sock_ip and host_ip.is_private and not host_ip.is_loopback and not host_ip.is_link_local
+
     def host_allowed(self):
-        try: host = urllib.parse.urlsplit('http://' + self.headers.get('Host', '')).hostname or ''
-        except ValueError: return False
-        host = host.lower()
-        return host in ('localhost', '127.0.0.1', '::1') or host in lan_ips()
+        raw_host = self.headers.get('Host', '')
+        if not raw_host or any(ch.isspace() for ch in raw_host) or any(ch in raw_host for ch in ('@', '/', '\\', '?', '#')):
+            return False
+        try:
+            u = urllib.parse.urlsplit('http://' + raw_host)
+            _ = u.port
+        except ValueError:
+            return False
+        if u.username is not None or u.password is not None or not u.hostname:
+            return False
+        host = u.hostname.lower()
+        if host in ('localhost', '127.0.0.1', '::1') or host in lan_ips():
+            return True
+        return self._matches_local_socket_ip(host)
     def authorized(self):
         try:
             c = http.cookies.SimpleCookie(self.headers.get('Cookie', ''))
@@ -1283,17 +1399,24 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(d, dict): raise ValueError('İstek nesne olmalı.')
         return d
     def guard(self, mutation=False):
-        if not self.host_allowed(): self.send_json({'error': 'Sunucu adresine izin verilmiyor.'}, 403); return False
+        if not self.host_allowed(): self.send_json({'error': 'Sunucu adresine izin verilmiyor.', 'error_code': 'host_not_allowed'}, 403); return False
         if mutation:
             origin = self.headers.get('Origin')
             if origin and origin not in ('http://' + self.headers.get('Host', ''), 'https://' + self.headers.get('Host', '')):
-                self.send_json({'error': 'Bu kaynaktan değişiklik yapılamaz.'}, 403); return False
+                self.send_json({'error': 'Bu kaynaktan değişiklik yapılamaz.', 'error_code': 'origin_not_allowed'}, 403); return False
         return True
     def require_auth(self):
-        if not self.authorized(): self.send_json({'error': 'Bu cihazı ana cihazdaki eşleştirme koduyla bağlayın.'}, 401); return False
+        if not self.authorized(): self.send_json({'error': 'Bu cihazı ana cihazdaki eşleştirme koduyla bağlayın.', 'error_code': 'unauthorized'}, 401); return False
         return True
     def handle_error(self, e):
         if isinstance(e, (BrokenPipeError, ConnectionResetError)): return
+        if isinstance(e, SessionExpiredError):
+            code = 410
+            message = str(e) or 'Oynatma oturumu sona erdi.'
+            payload = {'error': message, 'error_code': 'session_expired', 'code': 'session_expired'}
+            try: self.send_json(payload, code)
+            except (BrokenPipeError, ConnectionResetError): pass
+            return
         code = 400 if isinstance(e, ValueError) else (502 if isinstance(e, (RuntimeError, urllib.error.URLError, TimeoutError, http.client.HTTPException)) else 500)
         if isinstance(e, (ValueError, RuntimeError)):
             message = str(e)
@@ -1301,7 +1424,13 @@ class Handler(BaseHTTPRequestHandler):
             message = _http_error_message(e.code)
         else:
             message = 'İşlem tamamlanamadı. Yeniden deneyin.'
-        payload = {'error': message}
+        error_code = (
+            e.code if isinstance(e, PlaybackError) and e.code else
+            'invalid_request' if code == 400 else
+            'upstream_error' if code == 502 else
+            'internal_error'
+        )
+        payload = {'error': message, 'error_code': error_code}
         if isinstance(e, PlaybackError):
             if e.code == 'superseded': code = 409
             if e.mode: payload['mode'] = e.mode
@@ -1321,10 +1450,10 @@ class Handler(BaseHTTPRequestHandler):
                     'licenses': ['LibVLC (LGPL-2.1+)', 'hls.js (Apache-2.0)', 'TMDB Discovery (opsiyonel resmi API)'],
                 })
             if p.startswith('/internal/source/'):
-                if not self.is_local: return self.send_json({'error': 'Erişim yok.'}, 403)
+                if not self.is_local: return self.send_json({'error': 'Erişim yok.', 'error_code': 'forbidden'}, 403)
                 token = p.split('/')[-1]
                 with resource_lock: source = internal_sources.get(token)
-                if not source: return self.send_json({'error': 'Kaynak süresi doldu.'}, 404)
+                if not source: return self.send_json({'error': 'Kaynak süresi doldu.', 'error_code': 'not_found'}, 404)
                 # FFmpeg intentionally stops reading while its prefetch buffer
                 # is full or the user pauses. That must not time out a local
                 # proxy write. Upstream reads retain their network timeout.
@@ -1332,6 +1461,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.proxy(source['url'], source_token=token)
             if p == '/api/status':
                 if not self.authorized(): return self.send_json({'authorized': False, 'pairingRequired': True})
+                sync_info = get_sync_state()
                 result = {
                     'authorized': True,
                     'configured': provider.configured,
@@ -1339,13 +1469,13 @@ class Handler(BaseHTTPRequestHandler):
                         'name': provider.config.get('name', 'Medya Kaynağı'),
                         'type': provider.mode,
                         'host': provider.config.get('host', ''),
-                        'm3uUrl': provider.config.get('m3uUrl', ''),
+                        'm3uUrl': provider.config.get('m3uUrl', '') if self.is_local else redact_url_credentials(provider.config.get('m3uUrl', '')),
                         'localDir': provider.config.get('localDir', '') if self.is_local else '',
-                        'epgUrl': provider.config.get('epgUrl') or provider.config.get('discoveredEpgUrl', ''),
+                        'epgUrl': (provider.config.get('epgUrl') or provider.config.get('discoveredEpgUrl', '')) if self.is_local else redact_url_credentials(provider.config.get('epgUrl') or provider.config.get('discoveredEpgUrl', '')),
                     },
                     'profile': active_profile(),
                     'account': meta_get('account', {}),
-                    'catalog': {**counts(), 'updatedAt': meta_get('catalog_updated'), **sync_state},
+                    'catalog': {**counts(), 'updatedAt': meta_get('catalog_updated'), **sync_info},
                     'network': {'localUrl': f'http://localhost:{HTTP_PORT}', 'lanUrls': [f'http://{ip}:{HTTP_PORT}' for ip in lan_ips()]},
                     'ffmpeg': playback.available,
                 }
@@ -1364,6 +1494,8 @@ class Handler(BaseHTTPRequestHandler):
                     if source_mode not in ('auto', 'sporekrani', 'xmltv'):
                         raise ValueError('Geçersiz spor rehberi kaynağı.')
                     guide = sports.get_listings(day, remote, epg_url=epg_url, refresh=q.get('refresh') == ['1'], source_mode=source_mode)
+                    if not self.is_local and guide.get('source'):
+                        guide['source'] = redact_url_credentials(guide['source'])
                     guide['hasEpg'] = bool(epg_url)
                     with connect() as c:
                         channels = c.execute("SELECT id,name FROM items WHERE kind='live' ORDER BY id").fetchall()
@@ -1385,14 +1517,20 @@ class Handler(BaseHTTPRequestHandler):
                 if p == '/api/export':
                     return self.send_json(export_state_dict(), extra={'Content-Disposition': 'attachment; filename="mavie-yedek.json"'})
                 if p.startswith('/media/'): return self.media(p)
-                return self.send_json({'error': 'Sayfa bulunamadı.'}, 404)
+                return self.send_json({'error': 'Sayfa bulunamadı.', 'error_code': 'not_found'}, 404)
             return self.static(p)
         except Exception as e: self.handle_error(e)
     def do_POST(self): self.mutate('POST')
     def do_PATCH(self): self.mutate('PATCH')
+    def do_PUT(self):
+        try:
+            if not self.guard(): return
+            self.send_json({'error': 'Bu HTTP yöntemi desteklenmiyor.', 'error_code': 'method_not_allowed'}, 405, {'Allow': 'GET, HEAD, POST, PATCH, DELETE'})
+        except Exception as e:
+            self.handle_error(e)
     def do_DELETE(self): self.mutate('DELETE')
     def mutate(self, method):
-        global provider
+        global provider, _library_version
         try:
             if not self.guard(mutation=True): return
             p = urllib.parse.unquote(urllib.parse.urlsplit(self.path).path)
@@ -1401,20 +1539,23 @@ class Handler(BaseHTTPRequestHandler):
                 now = time.monotonic(); ip = self.client_address[0]
                 with resource_lock:
                     pair_attempts[ip] = [x for x in pair_attempts[ip] if x > now - 300]
-                    if len(pair_attempts[ip]) >= 10: return self.send_json({'error': 'Çok fazla deneme. 5 dakika sonra yeniden deneyin.'}, 429)
+                    if len(pair_attempts[ip]) >= 10: return self.send_json({'error': 'Çok fazla deneme. 5 dakika sonra yeniden deneyin.', 'error_code': 'rate_limited'}, 429)
                     pair_attempts[ip].append(now)
-                    if not secrets.compare_digest(code_attempt, PAIR_CODE): return self.send_json({'error': 'Eşleştirme kodu yanlış.'}, 403)
+                    if not secrets.compare_digest(code_attempt, PAIR_CODE): return self.send_json({'error': 'Eşleştirme kodu yanlış.', 'error_code': 'invalid_pairing_code'}, 403)
                     pair_attempts[ip].clear()
                 return self.send_json({'ok': True}, extra={'Set-Cookie': self.device_cookie()})
             if not self.require_auth(): return
             d = self.body() if method != 'DELETE' or int(self.headers.get('Content-Length', '0') or 0) > 0 else {}
             if p == '/api/demo' and method == 'POST':
-                if not self.is_local: return self.send_json({'error': 'Demo kaynağı yalnızca ana cihaz üzerinden açılabilir.'}, 403)
-                if sync_state['syncing']: raise ValueError('Katalog güncelleniyor. Bittikten sonra tekrar deneyin.')
+                if not self.is_local: return self.send_json({'error': 'Demo kaynağı yalnızca ana cihaz üzerinden açılabilir.', 'error_code': 'local_only'}, 403)
+                if get_sync_state()['syncing']: raise ValueError('Katalog güncelleniyor. Bittikten sonra tekrar deneyin.')
                 stop_all()
-                with connect() as c:
-                    for table in ('items', 'categories', 'favorites', 'progress', 'playlist_items', 'media_tracks', 'track_preferences'): c.execute('DELETE FROM ' + table)
-                    c.execute("DELETE FROM meta WHERE key='catalog_updated'")
+                with profile_lock:
+                    with connect() as c:
+                        for table in ('items', 'categories', 'favorites', 'progress', 'playlist_items', 'media_tracks', 'track_preferences', 'profile_snapshots'): c.execute('DELETE FROM ' + table)
+                        c.execute("DELETE FROM meta WHERE key='catalog_updated'")
+                with _home_lock:
+                    _library_version += 1
                 config = {'type': 'demo', 'name': 'Açık Sinema (Demo)'}
                 save_config(config); provider = Provider(config); sync_catalog()
                 return self.send_json({'ok': True})
@@ -1427,37 +1568,49 @@ class Handler(BaseHTTPRequestHandler):
                 raw_pin = str(d.get('pin', '')).strip()
                 pin_hash = _hash_pin(raw_pin)
                 pid = 'p_' + secrets.token_urlsafe(8)
-                with connect() as c:
-                    c.execute('INSERT INTO profiles VALUES(?,?,?,?,?,?)', (pid, name, color, int(is_kids), pin_hash, stamp()))
+                with profile_lock:
+                    with connect() as c:
+                        c.execute('INSERT INTO profiles VALUES(?,?,?,?,?,?)', (pid, name, color, int(is_kids), pin_hash, stamp()))
                 return self.send_json({'ok': True, 'profile': {'id': pid, 'name': name, 'avatarColor': color, 'isKids': is_kids, 'hasPin': bool(pin_hash)}}, 201)
             if p == '/api/profiles/switch' and method == 'POST':
                 pid = str(d.get('id', '')).strip()
                 ip = self.client_address[0]
+                key = 'pin:' + ip
                 now = time.monotonic()
                 with resource_lock:
-                    pair_attempts['pin:' + ip] = [x for x in pair_attempts['pin:' + ip] if x > now - 300]
-                    if len(pair_attempts['pin:' + ip]) >= 10:
-                        return self.send_json({'error': 'Çok fazla PIN denemesi. 5 dakika bekleyin.'}, 429)
-                    try:
-                        profile = switch_profile(pid, d.get('pin', ''))
-                        pair_attempts['pin:' + ip].clear()
-                    except ValueError as err:
-                        if 'PIN' in str(err):
-                            pair_attempts['pin:' + ip].append(now)
-                            return self.send_json({'error': str(err)}, 403)
-                        raise
+                    attempts = [x for x in pair_attempts[key] if x > now - 300]
+                    pair_attempts[key] = attempts
+                    if len(attempts) >= 10:
+                        return self.send_json({'error': 'Çok fazla PIN denemesi. 5 dakika bekleyin.', 'error_code': 'rate_limited'}, 429)
+                try:
+                    profile = switch_profile(pid, d.get('pin', ''))
+                except ValueError as err:
+                    if 'PIN' in str(err):
+                        with resource_lock:
+                            pair_attempts[key].append(time.monotonic())
+                        return self.send_json({'error': str(err), 'error_code': 'invalid_pin'}, 403)
+                    raise
+                with resource_lock:
+                    pair_attempts[key].clear()
                 return self.send_json({'ok': True, 'profile': profile})
             if p.startswith('/api/profiles/') and method == 'DELETE':
                 pid = p[len('/api/profiles/'):]
+                if not pid:
+                    return self.send_json({'error': 'Profil bulunamadı.', 'error_code': 'not_found'}, 404)
                 if pid == 'default': raise ValueError('Ana profil silinemez.')
-                if pid == active_profile_id(): switch_profile('default')
-                with connect() as c:
-                    c.execute('DELETE FROM profiles WHERE id=?', (pid,))
-                    c.execute('DELETE FROM profile_snapshots WHERE profile_id=?', (pid,))
+                with profile_lock:
+                    with connect() as c:
+                        exists = c.execute('SELECT 1 FROM profiles WHERE id=?', (pid,)).fetchone()
+                    if not exists:
+                        return self.send_json({'error': 'Profil bulunamadı.', 'error_code': 'not_found'}, 404)
+                    if pid == active_profile_id(): switch_profile('default')
+                    with connect() as c:
+                        c.execute('DELETE FROM profiles WHERE id=?', (pid,))
+                        c.execute('DELETE FROM profile_snapshots WHERE profile_id=?', (pid,))
                 return self.send_json({'ok': True})
             if p == '/api/settings' and method == 'POST':
-                if not self.is_local: return self.send_json({'error': 'Medya kaynağını yalnızca ana cihaz üzerinden değiştirebilirsiniz.'}, 403)
-                if sync_state['syncing']: raise ValueError('Katalog güncelleniyor. Bittikten sonra kaynağı değiştirin.')
+                if not self.is_local: return self.send_json({'error': 'Medya kaynağını yalnızca ana cihaz üzerinden değiştirebilirsiniz.', 'error_code': 'local_only'}, 403)
+                if get_sync_state()['syncing']: raise ValueError('Katalog güncelleniyor. Bittikten sonra kaynağı değiştirin.')
                 source_type = str(d.get('type') or ('local' if d.get('localDir') else ('m3u' if d.get('m3uUrl') else 'xtream'))).strip().lower()
                 epg_url = validate_source_url(d['epgUrl']) if str(d.get('epgUrl', '')).strip() else ''
                 allow_lan_opt = bool(d['allowLanSources']) if 'allowLanSources' in d else None
@@ -1494,94 +1647,119 @@ class Handler(BaseHTTPRequestHandler):
                     changed = provider.mode != 'xtream' or any(config[k] != provider.config.get(k) for k in ('host', 'username', 'password'))
                 if changed:
                     stop_all()
-                    with connect() as c:
-                        for table in ('items', 'categories', 'favorites', 'progress', 'playlist_items', 'media_tracks', 'track_preferences'): c.execute('DELETE FROM ' + table)
-                        c.execute("DELETE FROM meta WHERE key='catalog_updated'")
+                    with profile_lock:
+                        with connect() as c:
+                            for table in ('items', 'categories', 'favorites', 'progress', 'playlist_items', 'media_tracks', 'track_preferences', 'profile_snapshots'): c.execute('DELETE FROM ' + table)
+                            c.execute("DELETE FROM meta WHERE key='catalog_updated'")
+                    with _home_lock:
+                        _library_version += 1
                 save_config(config); provider = test_provider; meta_set('account', account); launch_sync()
                 return self.send_json({'ok': True})
             if p == '/api/catalog/sync' and method == 'POST': launch_sync(); return self.send_json({'ok': True}, 202)
             if p == '/api/favorites' and method == 'POST':
                 iid = str(d.get('id', '')); get_row(iid)
-                with connect() as c:
-                    if d.get('favorite', True): c.execute('INSERT OR IGNORE INTO favorites VALUES(?,?)', (iid, stamp()))
-                    else: c.execute('DELETE FROM favorites WHERE item_id=?', (iid,))
+                with profile_lock:
+                    with connect() as c:
+                        if d.get('favorite', True): c.execute('INSERT OR IGNORE INTO favorites VALUES(?,?)', (iid, stamp()))
+                        else: c.execute('DELETE FROM favorites WHERE item_id=?', (iid,))
                 return self.send_json({'ok': True})
             if p == '/api/progress' and method == 'POST':
                 iid = str(d.get('id', '')); r = get_row(iid)
                 if d.get('sessionId'):
                     with resource_lock: session = media_sessions.get(str(d['sessionId']))
                     if not session or session['item'] != iid:
-                        return self.send_json({'error': 'İzleme başka bir oturumda devam ediyor.'}, 410)
+                        return self.send_json({'error': 'İzleme başka bir oturumda devam ediyor.', 'error_code': 'session_expired'}, 410)
                 if r['kind'] not in ('vod', 'episode'): return self.send_json({'ok': True})
                 pos = max(0, number(d.get('position'))); dur = max(0, number(d.get('duration')))
                 if dur: pos = min(pos, dur)
                 completed = bool(d.get('completed')) or (dur > 0 and pos / dur >= .95)
-                with connect() as c: c.execute('INSERT OR REPLACE INTO progress VALUES(?,?,?,?,?)', (iid, pos, dur, int(completed), stamp()))
+                with profile_lock:
+                    with connect() as c: c.execute('INSERT OR REPLACE INTO progress VALUES(?,?,?,?,?)', (iid, pos, dur, int(completed), stamp()))
                 return self.send_json({'ok': True})
             if p.startswith('/api/progress/') and method == 'DELETE':
-                with connect() as c: c.execute('DELETE FROM progress WHERE item_id=?', (p[len('/api/progress/'):],))
+                with profile_lock:
+                    with connect() as c: c.execute('DELETE FROM progress WHERE item_id=?', (p[len('/api/progress/'):],))
                 return self.send_json({'ok': True})
             if p == '/api/playlists' and method == 'POST':
                 name = string(d.get('name'), 100).strip()
                 if not name: raise ValueError('Liste adı boş olamaz.')
                 pid = secrets.token_urlsafe(12)
-                with connect() as c: c.execute('INSERT INTO playlists VALUES(?,?,?)', (pid, name, stamp()))
+                with profile_lock:
+                    with connect() as c: c.execute('INSERT INTO playlists VALUES(?,?,?)', (pid, name, stamp()))
                 return self.send_json({'ok': True, 'id': pid}, 201)
             if p.startswith('/api/playlists/') and method in ('PATCH', 'DELETE'):
                 pid = p[len('/api/playlists/'):]
-                with connect() as c:
-                    if not c.execute('SELECT 1 FROM playlists WHERE id=?', (pid,)).fetchone(): raise ValueError('Liste bulunamadı.')
-                    if method == 'DELETE': c.execute('DELETE FROM playlists WHERE id=?', (pid,))
-                    else:
-                        if 'name' in d:
-                            name = string(d['name'], 100).strip()
-                            if not name: raise ValueError('Liste adı boş olamaz.')
-                            c.execute('UPDATE playlists SET name=? WHERE id=?', (name, pid))
-                        if d.get('itemId'):
-                            iid = str(d['itemId']); get_row(iid)
-                            n = c.execute('SELECT coalesce(max(position),-1)+1 FROM playlist_items WHERE playlist_id=?', (pid,)).fetchone()[0]
-                            c.execute('INSERT OR IGNORE INTO playlist_items VALUES(?,?,?)', (pid, iid, n))
-                        if d.get('removeItemId'): c.execute('DELETE FROM playlist_items WHERE playlist_id=? AND item_id=?', (pid, str(d['removeItemId'])))
-                        if isinstance(d.get('order'), list):
-                            existing = {r[0] for r in c.execute('SELECT item_id FROM playlist_items WHERE playlist_id=?', (pid,))}
-                            order = d['order']
-                            if not all(isinstance(x, str) for x in order) or len(order) != len(existing) or set(order) != existing: raise ValueError('Sıralama listedeki tüm içerikleri içermeli.')
-                            c.executemany('UPDATE playlist_items SET position=? WHERE playlist_id=? AND item_id=?', [(i, pid, iid) for i, iid in enumerate(order)])
+                with profile_lock:
+                    with connect() as c:
+                        if not c.execute('SELECT 1 FROM playlists WHERE id=?', (pid,)).fetchone(): raise ValueError('Liste bulunamadı.')
+                        if method == 'DELETE': c.execute('DELETE FROM playlists WHERE id=?', (pid,))
+                        else:
+                            if 'name' in d:
+                                name = string(d['name'], 100).strip()
+                                if not name: raise ValueError('Liste adı boş olamaz.')
+                                c.execute('UPDATE playlists SET name=? WHERE id=?', (name, pid))
+                            if d.get('itemId'):
+                                iid = str(d['itemId']); get_row(iid)
+                                n = c.execute('SELECT coalesce(max(position),-1)+1 FROM playlist_items WHERE playlist_id=?', (pid,)).fetchone()[0]
+                                c.execute('INSERT OR IGNORE INTO playlist_items VALUES(?,?,?)', (pid, iid, n))
+                            if d.get('removeItemId'): c.execute('DELETE FROM playlist_items WHERE playlist_id=? AND item_id=?', (pid, str(d['removeItemId'])))
+                            if isinstance(d.get('order'), list):
+                                existing = {r[0] for r in c.execute('SELECT item_id FROM playlist_items WHERE playlist_id=?', (pid,))}
+                                order = d['order']
+                                if not all(isinstance(x, str) for x in order) or len(order) != len(existing) or set(order) != existing: raise ValueError('Sıralama listedeki tüm içerikleri içermeli.')
+                                c.executemany('UPDATE playlist_items SET position=? WHERE playlist_id=? AND item_id=?', [(i, pid, iid) for i, iid in enumerate(order)])
                 return self.send_json({'ok': True})
             if p == '/api/play' and method == 'POST': return self.send_json(play_item(str(d.get('id', '')), str(d.get('mode', 'direct')), d.get('start', 0), d))
             if p.startswith('/api/play/'):
-                sid = p.split('/')[3]
+                parts = p.strip('/').split('/')
+                sid = parts[2] if len(parts) >= 3 else ''
+                if not sid:
+                    return self.send_json({'error': 'Oynatma oturumu kimliği geçersiz.', 'error_code': 'invalid_session'}, 400)
                 with resource_lock:
                     s = media_sessions.get(sid)
                     if s: s['touched'] = time.monotonic()
-                if method == 'DELETE':
+                if method == 'DELETE' and len(parts) == 3:
                     stop_session(sid)
                     return self.send_json({'ok': True})
-                if method == 'POST' and p.endswith('/ping'):
-                    if not s: return self.send_json({'error': 'Oynatma başka cihazda başlatıldı veya oturum sona erdi.'}, 410)
-                    window = playback.ping(sid, position=d.get('position')) if s.get('sourceToken') else {}
+                if method == 'POST' and len(parts) == 4 and parts[3] == 'ping':
+                    if not s: return self.send_json({'error': 'Oynatma başka cihazda başlatıldı veya oturum sona erdi.', 'error_code': 'session_expired', 'code': 'session_expired'}, 410)
+                    if s.get('sourceToken'):
+                        try:
+                            window = playback.ping(sid, position=d.get('position'))
+                        except FileNotFoundError as exc:
+                            stop_session(sid)
+                            return self.send_json({'error': str(exc) or 'Oynatma oturumu sona erdi.', 'error_code': 'session_expired', 'code': 'session_expired'}, 410)
+                    else:
+                        window = {}
                     return self.send_json({'ok': True, **(window or {})})
-                if method == 'POST' and p.endswith('/pause'):
-                    if not s: return self.send_json({'error': 'Oynatma oturumu sona erdi.'}, 410)
+                if method == 'POST' and len(parts) == 4 and parts[3] == 'pause':
+                    if not s: return self.send_json({'error': 'Oynatma oturumu sona erdi.', 'error_code': 'session_expired', 'code': 'session_expired'}, 410)
                     desired = bool(d.get('paused'))
-                    pause_state = playback.pause(sid, desired) if s.get('sourceToken') else {'paused': desired, 'processPaused': False, 'softPause': False}
+                    if s.get('sourceToken'):
+                        try:
+                            pause_state = playback.pause(sid, desired)
+                        except FileNotFoundError as exc:
+                            stop_session(sid)
+                            return self.send_json({'error': str(exc) or 'Oynatma oturumu sona erdi.', 'error_code': 'session_expired', 'code': 'session_expired'}, 410)
+                    else:
+                        pause_state = {'paused': desired, 'processPaused': False, 'softPause': False}
                     return self.send_json({'ok': True, **(pause_state or {})})
             if p == '/api/track-preferences' and method == 'POST':
                 iid = str(d.get('id', '')); get_row(iid)
                 return self.send_json({'ok': True, 'selection': save_track_preferences(iid, d)})
             if p == '/api/import' and method == 'POST': return self.import_state(d.get('data'))
             if p == '/api/devices/revoke' and method == 'POST':
-                if not self.is_local: return self.send_json({'error': 'Bu işlem yalnızca ana cihaz üzerinde kullanılabilir.'}, 403)
+                if not self.is_local: return self.send_json({'error': 'Bu işlem yalnızca ana cihaz üzerinde kullanılabilir.', 'error_code': 'local_only'}, 403)
                 with connect() as c: c.execute('DELETE FROM devices')
                 stop_all()
                 return self.send_json({'ok': True}, extra={'Set-Cookie': self.device_cookie()})
-            self.send_json({'error': 'İşlem bulunamadı.'}, 404)
+            self.send_json({'error': 'İşlem bulunamadı.', 'error_code': 'not_found'}, 404)
         except Exception as e: self.handle_error(e)
     def static(self, p):
         if p == '/': p = '/index.html'
         target = (PUBLIC / p.lstrip('/')).resolve()
         if not target.is_relative_to(PUBLIC.resolve()) or not target.is_file():
-            return self.send_json({'error': 'Dosya bulunamadı.'}, 404)
+            return self.send_json({'error': 'Dosya bulunamadı.', 'error_code': 'not_found'}, 404)
         ext = {}
         if self.is_local and p == '/index.html' and not self.authorized(): ext['Set-Cookie'] = self.device_cookie()
         # Assets are app-owned; provider metadata never becomes HTML.
@@ -1591,7 +1769,8 @@ class Handler(BaseHTTPRequestHandler):
         self.headers_out(200, typ + ('; charset=utf-8' if typ.startswith('text/') else ''), len(raw), ext)
         if self.command != 'HEAD': self.wfile.write(raw)
     def image(self, url):
-        if not url: return self.send_json({'error': 'Görsel yok.'}, 404)
+        if not url: return self.send_json({'error': 'Görsel yok.', 'error_code': 'not_found'}, 404)
+        url = validate_source_url(url)
         digest = hashlib.sha256(url.encode()).hexdigest()
         folder = DATA / 'images'; folder.mkdir(exist_ok=True)
         target = folder / digest
@@ -1600,12 +1779,12 @@ class Handler(BaseHTTPRequestHandler):
                 b = target.read_bytes()
             else:
                 with remote(url, timeout=12) as r:
-                    if not r.headers.get('Content-Type', '').lower().startswith('image/'): return self.send_json({'error': 'Görsel bulunamadı.'}, 404)
+                    if not r.headers.get('Content-Type', '').lower().startswith('image/'): return self.send_json({'error': 'Görsel bulunamadı.', 'error_code': 'not_found'}, 404)
                     b = r.read(5 * 1024 * 1024 + 1)
                 if len(b) > 5 * 1024 * 1024: raise ValueError('Görsel çok büyük.')
                 # Persist only raster images, never active SVG/HTML returned by a provider.
                 if not (b.startswith(b'\xff\xd8\xff') or b.startswith(b'\x89PNG') or b.startswith(b'GIF8') or (b.startswith(b'RIFF') and b[8:12] == b'WEBP')):
-                    return self.send_json({'error': 'Görsel biçimi desteklenmiyor.'}, 404)
+                    return self.send_json({'error': 'Görsel biçimi desteklenmiyor.', 'error_code': 'unsupported_media_type'}, 404)
                 target.write_bytes(b)
         typ = 'image/jpeg' if b.startswith(b'\xff\xd8') else ('image/png' if b.startswith(b'\x89PNG') else ('image/gif' if b.startswith(b'GIF') else 'image/webp'))
         self.headers_out(200, typ, len(b), {'Cache-Control': 'private, max-age=86400'})
@@ -1629,31 +1808,93 @@ class Handler(BaseHTTPRequestHandler):
             owner = media_sessions.get(sid) if sid else internal_sources.get(source_token)
             if owner is not None: owner['source_error'] = {'error': message, 'code': code}
         return PlaybackError(message, code=code)
+    @staticmethod
+    def _ass_to_vtt(text):
+        norm = text.replace('\r\n', '\n').replace('\r', '\n')
+        in_events = False
+        start_idx, end_idx, text_idx = 1, 2, 9
+        cues = []
+
+        def _fmt_ts(raw_ts):
+            m = re.match(r'^\s*(\d+):(\d{1,2}):(\d{1,2})[.,](\d{1,3})\s*$', raw_ts)
+            if not m:
+                return None
+            h, mi, s, frac = int(m[1]), int(m[2]), int(m[3]), m[4]
+            ms = int(frac) * (100 if len(frac) == 1 else (10 if len(frac) == 2 else 1))
+            return f'{h:02d}:{mi:02d}:{s:02d}.{ms:03d}'
+
+        for raw_line in norm.split('\n'):
+            line = raw_line.strip()
+            if not line:
+                continue
+            if line.startswith('[') and line.endswith(']'):
+                in_events = line.lower() == '[events]'
+                continue
+            if not in_events:
+                continue
+            low = line.lower()
+            if low.startswith('format:'):
+                fields = [f.strip().lower() for f in line.split(':', 1)[1].split(',')]
+                if 'start' in fields:
+                    start_idx = fields.index('start')
+                if 'end' in fields:
+                    end_idx = fields.index('end')
+                if 'text' in fields:
+                    text_idx = fields.index('text')
+                continue
+            if not low.startswith('dialogue:'):
+                continue
+            max_idx = max(start_idx, end_idx, text_idx)
+            parts = line.split(':', 1)[1].lstrip().split(',', max_idx)
+            if len(parts) <= max_idx:
+                continue
+            s_vtt = _fmt_ts(parts[start_idx])
+            e_vtt = _fmt_ts(parts[end_idx])
+            if not s_vtt or not e_vtt:
+                continue
+            cue = re.sub(r'\{[^}]*\}', '', parts[text_idx])
+            cue = cue.replace('\\N', '\n').replace('\\n', '\n').replace('\\h', ' ')
+            cue = re.sub(r'\n{2,}', '\n', cue).replace('-->', '->').strip()
+            if not cue:
+                continue
+            cues.append(f'{s_vtt} --> {e_vtt}\n{cue}')
+        return 'WEBVTT\n\n' + ('\n\n'.join(cues) + '\n' if cues else '')
+
     def serve_sidecar_subtitle(self, tail):
         parts = tail.strip('/').split('/')
         if len(parts) != 2 or not parts[1].endswith('.vtt') or '..' in parts:
-            return self.send_json({'error': 'Altyazı adresi geçersiz.'}, 404)
+            return self.send_json({'error': 'Altyazı adresi geçersiz.', 'error_code': 'not_found'}, 404)
         if provider.mode != 'local':
-            return self.send_json({'error': 'Yerel altyazı yalnızca yerel klasör modunda kullanılabilir.'}, 403)
+            return self.send_json({'error': 'Yerel altyazı yalnızca yerel klasör modunda kullanılabilir.', 'error_code': 'forbidden'}, 403)
         iid = urllib.parse.unquote(parts[0])
         try:
             idx = int(parts[1][:-4])
         except ValueError:
-            return self.send_json({'error': 'Altyazı dizini geçersiz.'}, 404)
+            return self.send_json({'error': 'Altyazı dizini geçersiz.', 'error_code': 'not_found'}, 404)
         r = get_row(iid)
         subs = json.loads(r['extra']).get('subtitles') or []
         if idx < 0 or idx >= len(subs):
-            return self.send_json({'error': 'Altyazı bulunamadı.'}, 404)
+            return self.send_json({'error': 'Altyazı bulunamadı.', 'error_code': 'not_found'}, 404)
         root = local_media.validate_local_dir(provider.config.get('localDir', ''))
         target = Path(subs[idx]).resolve()
         if not target.is_relative_to(root) or not target.is_file():
-            return self.send_json({'error': 'Altyazı dosyası bulunamadı.'}, 404)
-        raw_bytes = target.read_bytes()[:2 * 1024 * 1024]
+            return self.send_json({'error': 'Altyazı dosyası bulunamadı.', 'error_code': 'not_found'}, 404)
+        max_sub_bytes = 2 * 1024 * 1024
+        with target.open('rb') as f:
+            raw_bytes = f.read(max_sub_bytes + 1)
+        if len(raw_bytes) > max_sub_bytes:
+            raw_bytes = raw_bytes[:max_sub_bytes]
+            while raw_bytes and 0x80 <= raw_bytes[-1] <= 0xBF:
+                raw_bytes = raw_bytes[:-1]
+            if raw_bytes and raw_bytes[-1] >= 0xC0:
+                raw_bytes = raw_bytes[:-1]
         try:
             text = raw_bytes.decode('utf-8-sig')
         except UnicodeDecodeError:
             text = raw_bytes.decode('cp1254', errors='replace')
-        if not text.lstrip().startswith('WEBVTT'):
+        if target.suffix.lower() in ('.ass', '.ssa'):
+            text = self._ass_to_vtt(text)
+        elif not text.lstrip().startswith('WEBVTT'):
             text = 'WEBVTT\n\n' + re.sub(r'(\d{2}:\d{2}:\d{2}),(\d{3})', r'\1.\2', text.replace('\r\n', '\n'))
         out = text.encode('utf-8')
         self.headers_out(200, 'text/vtt; charset=utf-8', len(out))
@@ -1662,12 +1903,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def proxy_local(self, raw_path, sid=None):
         if provider.mode != 'local':
-            return self.send_json({'error': 'Yerel dosya modu etkin değil.'}, 403)
+            return self.send_json({'error': 'Yerel dosya modu etkin değil.', 'error_code': 'forbidden'}, 403)
         try:
             root = local_media.validate_local_dir(provider.config.get('localDir', ''))
             target = Path(raw_path).resolve()
             if not target.is_relative_to(root) or not target.is_file():
-                return self.send_json({'error': 'Medya dosyası bulunamadı.'}, 404)
+                return self.send_json({'error': 'Medya dosyası bulunamadı.', 'error_code': 'not_found'}, 404)
             size = target.stat().st_size
             typ = mimetypes.guess_type(str(target))[0] or 'video/mp4'
             range_hdr = self.headers.get('Range', '')
@@ -1678,7 +1919,7 @@ class Handler(BaseHTTPRequestHandler):
                 start = int(m.group(1))
                 end = int(m.group(2)) if m.group(2) else size - 1
                 if start >= size or start > end:
-                    return self.send_json({'error': 'Geçersiz zaman aralığı.'}, 416)
+                    return self.send_json({'error': 'Geçersiz zaman aralığı.', 'error_code': 'range_not_satisfiable'}, 416)
                 end = min(end, size - 1)
                 status = 206
                 extra['Content-Range'] = f'bytes {start}-{end}/{size}'
@@ -1699,7 +1940,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.wfile.write(chunk)
                     remaining -= len(chunk)
         except ValueError:
-            return self.send_json({'error': 'Medya dosyasına erişilemiyor.'}, 403)
+            return self.send_json({'error': 'Medya dosyasına erişilemiyor.', 'error_code': 'forbidden'}, 403)
     def proxy(self, url, sid=None, source_token=None):
         if isinstance(url, str) and url.startswith('local://'):
             return self.proxy_local(url[len('local://'):], sid)
@@ -1710,8 +1951,10 @@ class Handler(BaseHTTPRequestHandler):
         except urllib.error.HTTPError as e:
             e.close()
             if e.code == 416:
-                return self.send_json({'error': 'Bu zaman aralığı sunucu tarafından desteklenmiyor.'}, 416)
+                return self.send_json({'error': 'Bu zaman aralığı sunucu tarafından desteklenmiyor.', 'error_code': 'range_not_satisfiable'}, 416)
             raise self.source_failure(_http_error_message(e.code), 'upstream_unavailable', sid, source_token) from None
+        except ValueError as e:
+            raise self.source_failure(str(e) or 'Geçersiz yayın adresi.', 'upstream_unavailable', sid, source_token) from None
         except (urllib.error.URLError, TimeoutError, http.client.HTTPException, OSError):
             raise self.source_failure('IPTV video sunucusuna ulaşılamadı. Daha sonra yeniden deneyin.', 'upstream_unavailable', sid, source_token) from None
         with upstream as r:
@@ -1719,12 +1962,12 @@ class Handler(BaseHTTPRequestHandler):
                 owner = media_sessions.get(sid) if sid else internal_sources.get(source_token)
                 if (sid or source_token) and owner is None:
                     abort_connections([r])
-                    return self.send_json({'error': 'Oynatma oturumu sona erdi.'}, 410)
+                    return self.send_json({'error': 'Oynatma oturumu sona erdi.', 'error_code': 'session_expired', 'code': 'session_expired'}, 410)
                 if owner is not None:
                     # Completed responses are discarded on the next request to bound bookkeeping.
                     owner['connections'] = {x for x in owner.get('connections', ()) if not x.closed}
                     owner['connections'].add(r)
-            typ = r.headers.get('Content-Type', 'application/octet-stream').split(';')[0]
+            typ = (r.headers.get('Content-Type') or '').split(';')[0].strip() or 'application/octet-stream'
             if typ.lower() in ('text/html', 'application/xhtml+xml', 'image/svg+xml'):
                 try:
                     has_body = bool(r.read(1))
@@ -1738,12 +1981,14 @@ class Handler(BaseHTTPRequestHandler):
             if sid and is_hls:
                 try:
                     content = r.read(3 * 1024 * 1024 + 1)
-                    if len(content) > 3 * 1024 * 1024: raise RuntimeError('Yayın listesi çok büyük.')
+                    if len(content) > 3 * 1024 * 1024: raise self.source_failure('Yayın listesi çok büyük.', 'upstream_unavailable', sid, source_token)
                     content = _gunzip_limited(content, 3 * 1024 * 1024, r.headers.get('Content-Encoding', ''))
-                except (http.client.HTTPException, OSError, TimeoutError, zlib.error, EOFError):
+                except PlaybackError:
+                    raise
+                except (http.client.HTTPException, OSError, TimeoutError, zlib.error, EOFError, ValueError):
                     raise self.source_failure('IPTV yayın listesi okunamadı. Daha sonra yeniden deneyin.', 'upstream_unavailable', sid, source_token) from None
                 text = content.decode('utf-8-sig', errors='replace')
-                if not text.lstrip().startswith('#EXTM3U'): raise RuntimeError('Sunucu geçerli bir HLS yayını göndermedi.')
+                if not text.lstrip().startswith('#EXTM3U'): raise self.source_failure('Sunucu geçerli bir HLS yayını göndermedi.', 'upstream_unavailable', sid, source_token)
                 def rewrite(match): return 'URI="' + resource_for(sid, urllib.parse.urljoin(final_url, match[1])) + '"'
                 lines = []
                 for line in text.splitlines():
@@ -1772,6 +2017,23 @@ class Handler(BaseHTTPRequestHandler):
                             session = media_sessions.get(sid)
                             if not session: break
                             session['touched'] = time.monotonic()
+                    elif source_token:
+                        while True:
+                            with resource_lock:
+                                source = internal_sources.get(source_token)
+                                if not source:
+                                    flow_sid = None
+                                    stopped = True
+                                else:
+                                    source['touched'] = time.monotonic()
+                                    flow_sid = source.get('sessionId')
+                                    stopped = False
+                            if stopped:
+                                return
+                            if not flow_sid or playback is None or not callable(getattr(playback, 'wait_unpaused', None)):
+                                break
+                            if playback.wait_unpaused(flow_sid, timeout=0.5) is not False:
+                                break
                     # Forward available bytes without waiting for a full 128 KiB
                     # block, especially on slower live feeds.
                     block = r.read1(64 * 1024) if hasattr(r, 'read1') else r.read(64 * 1024)
@@ -1785,15 +2047,18 @@ class Handler(BaseHTTPRequestHandler):
         sid = parts[1]
         with resource_lock:
             s = media_sessions.get(sid)
-            if not s: return self.send_json({'error': 'Oynatma oturumu sona erdi.'}, 410)
+            if not s: return self.send_json({'error': 'Oynatma oturumu sona erdi.', 'error_code': 'session_expired', 'code': 'session_expired'}, 410)
             s['touched'] = time.monotonic()
         if len(parts) == 4 and parts[2] == 'proxy':
             with resource_lock: url = s['resources'].get(parts[3])
-            if not url: return self.send_json({'error': 'Yayın parçası bulunamadı.'}, 404)
+            if not url: return self.send_json({'error': 'Yayın parçası bulunamadı.', 'error_code': 'not_found'}, 404)
             return self.proxy(url, sid)
         if len(parts) != 3: raise ValueError('Yayın dosyası geçersiz.')
         try: path = playback.get_file(sid, parts[2])
-        except (ValueError, FileNotFoundError): return self.send_json({'error': 'Yayın parçası hazırlanıyor veya oturum sona erdi.'}, 404)
+        except SessionExpiredError:
+            stop_session(sid)
+            return self.send_json({'error': 'Oynatma oturumu sona erdi.', 'error_code': 'session_expired', 'code': 'session_expired'}, 410)
+        except (ValueError, FileNotFoundError): return self.send_json({'error': 'Yayın parçası hazırlanıyor veya oturum sona erdi.', 'error_code': 'segment_not_ready'}, 404)
         typ = 'application/vnd.apple.mpegurl' if path.suffix == '.m3u8' else ('text/vtt; charset=utf-8' if path.suffix == '.vtt' else 'video/mp2t')
         # Segments are immutable for their opaque session. Stream them instead
         # of allocating an entire high bitrate segment in every request thread.
@@ -1804,27 +2069,29 @@ class Handler(BaseHTTPRequestHandler):
                 if self.command != 'HEAD':
                     while block := content.read(64 * 1024): self.wfile.write(block)
         except FileNotFoundError:
-            return self.send_json({'error': 'Yayın parçası hazırlanıyor veya oturum sona erdi.'}, 404)
+            return self.send_json({'error': 'Yayın parçası hazırlanıyor veya oturum sona erdi.', 'error_code': 'segment_not_ready'}, 404)
     def import_state(self, data):
         merge_state_dict(data)
         return self.send_json({'ok': True})
 
 
 def export_state_dict():
-    with connect() as c:
-        return {
-            'version': 1,
-            'exportedAt': stamp(),
-            'favorites': [dict(r) for r in c.execute('SELECT * FROM favorites')],
-            'progress': [dict(r) for r in c.execute('SELECT * FROM progress')],
-            'playlists': [dict(r) for r in c.execute('SELECT * FROM playlists')],
-            'playlistItems': [dict(r) for r in c.execute('SELECT * FROM playlist_items')],
-            'trackPreferences': [dict(r) for r in c.execute('SELECT * FROM track_preferences')],
-            'items': backup_items(c),
-        }
+    with profile_lock:
+        with connect() as c:
+            return {
+                'version': 1,
+                'exportedAt': stamp(),
+                'favorites': [dict(r) for r in c.execute('SELECT * FROM favorites')],
+                'progress': [dict(r) for r in c.execute('SELECT * FROM progress')],
+                'playlists': [dict(r) for r in c.execute('SELECT * FROM playlists')],
+                'playlistItems': [dict(r) for r in c.execute('SELECT * FROM playlist_items')],
+                'trackPreferences': [dict(r) for r in c.execute('SELECT * FROM track_preferences')],
+                'items': backup_items(c),
+            }
 
 
 def merge_state_dict(data):
+    global _library_version
     if not isinstance(data, dict) or data.get('version') != 1: raise ValueError('Geçerli bir Mavie yedeği seçin.')
     tables = ('favorites', 'progress', 'playlists', 'playlistItems', 'trackPreferences', 'items')
     if any(not isinstance(data.get(t, []), list) or len(data.get(t, [])) > 100000 for t in tables): raise ValueError('Yedek biçimi veya boyutu geçersiz.')
@@ -1848,35 +2115,39 @@ def merge_state_dict(data):
         except ValueError: return True
     # Merge state; never run SQL or accept settings/credentials from an imported backup.
     try:
-        with connect() as c:
-            c.executemany('INSERT OR IGNORE INTO items VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)', metadata)
-            for r in data.get('favorites', []):
-                if ID_RE.fullmatch(str(r['item_id'])): c.execute('INSERT OR IGNORE INTO favorites VALUES(?,?)', (r['item_id'], parse_iso(r.get('created_at'))))
-            for r in data.get('progress', []):
-                if ID_RE.fullmatch(str(r['item_id'])):
+        with profile_lock:
+            with connect() as c:
+                c.executemany('INSERT OR IGNORE INTO items VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)', metadata)
+                for r in data.get('favorites', []):
+                    if ID_RE.fullmatch(str(r['item_id'])): c.execute('INSERT OR IGNORE INTO favorites VALUES(?,?)', (r['item_id'], parse_iso(r.get('created_at'))))
+                for r in data.get('progress', []):
+                    if ID_RE.fullmatch(str(r['item_id'])):
+                        updated = parse_iso(r.get('updated_at'))
+                        if is_newer(c, 'progress', r['item_id'], updated):
+                            pos = max(0, number(r.get('position'))); dur = max(0, number(r.get('duration')))
+                            c.execute('INSERT OR REPLACE INTO progress VALUES(?,?,?,?,?)', (r['item_id'], min(pos, dur) if dur else pos, dur, int(bool(r.get('completed'))), updated))
+                for r in data.get('playlists', []):
+                    if re.fullmatch(r'[A-Za-z0-9_-]{1,100}', str(r['id'])):
+                        c.execute('INSERT OR IGNORE INTO playlists VALUES(?,?,?)', (r['id'], string(r.get('name') or 'İçe aktarılan liste', 100), parse_iso(r.get('created_at'))))
+                for r in data.get('playlistItems', []):
+                    if ID_RE.fullmatch(str(r['item_id'])) and c.execute('SELECT 1 FROM playlists WHERE id=?', (r['playlist_id'],)).fetchone():
+                        c.execute('INSERT OR IGNORE INTO playlist_items VALUES(?,?,?)', (r['playlist_id'], r['item_id'], int(number(r.get('position')))))
+                for r in data.get('trackPreferences', []):
+                    if not isinstance(r, dict) or not ID_RE.fullmatch(str(r.get('item_id', ''))): raise ValueError('Yedekteki parça seçimi geçersiz.')
                     updated = parse_iso(r.get('updated_at'))
-                    if is_newer(c, 'progress', r['item_id'], updated):
-                        pos = max(0, number(r.get('position'))); dur = max(0, number(r.get('duration')))
-                        c.execute('INSERT OR REPLACE INTO progress VALUES(?,?,?,?,?)', (r['item_id'], min(pos, dur) if dur else pos, dur, int(bool(r.get('completed'))), updated))
-            for r in data.get('playlists', []):
-                if re.fullmatch(r'[A-Za-z0-9_-]{1,100}', str(r['id'])):
-                    c.execute('INSERT OR IGNORE INTO playlists VALUES(?,?,?)', (r['id'], string(r.get('name') or 'İçe aktarılan liste', 100), parse_iso(r.get('created_at'))))
-            for r in data.get('playlistItems', []):
-                if ID_RE.fullmatch(str(r['item_id'])) and c.execute('SELECT 1 FROM playlists WHERE id=?', (r['playlist_id'],)).fetchone():
-                    c.execute('INSERT OR IGNORE INTO playlist_items VALUES(?,?,?)', (r['playlist_id'], r['item_id'], int(number(r.get('position')))))
-            for r in data.get('trackPreferences', []):
-                if not isinstance(r, dict) or not ID_RE.fullmatch(str(r.get('item_id', ''))): raise ValueError('Yedekteki parça seçimi geçersiz.')
-                updated = parse_iso(r.get('updated_at'))
-                pref = r.get('data', '{}')
-                if isinstance(pref, str): pref = json.loads(pref)
-                if not isinstance(pref, dict): raise ValueError('Yedekteki parça seçimi geçersiz.')
-                checks = {'audio': r'(?:auto|stream:[0-9]{1,5})', 'subtitle': r'(?:off|stream:[0-9]{1,5})',
-                          'clientAudio': r'(?:auto|hls:[0-9]{1,5}|native:[0-9]{1,5})', 'clientSubtitle': r'(?:off|hls:[0-9]{1,5}|native:[0-9]{1,5})'}
-                if any(value is not None and (key not in checks or not isinstance(value, str) or not re.fullmatch(checks[key], value)) for key, value in pref.items()):
-                    raise ValueError('Yedekteki parça seçimi geçersiz.')
-                if pref.get('audio', 'auto') is None or pref.get('subtitle', 'off') is None: raise ValueError('Parça seçimi boş olamaz.')
-                if is_newer(c, 'track_preferences', r['item_id'], updated):
-                    c.execute('INSERT OR REPLACE INTO track_preferences VALUES(?,?,?)', (r['item_id'], json.dumps({key:value for key,value in pref.items() if key in checks}), updated))
+                    pref = r.get('data', '{}')
+                    if isinstance(pref, str): pref = json.loads(pref)
+                    if not isinstance(pref, dict): raise ValueError('Yedekteki parça seçimi geçersiz.')
+                    checks = {'audio': r'(?:auto|stream:[0-9]{1,5})', 'subtitle': r'(?:off|stream:[0-9]{1,5})',
+                              'clientAudio': r'(?:auto|hls:[0-9]{1,5}|native:[0-9]{1,5})', 'clientSubtitle': r'(?:off|hls:[0-9]{1,5}|native:[0-9]{1,5})'}
+                    if any(value is not None and (key not in checks or not isinstance(value, str) or not re.fullmatch(checks[key], value)) for key, value in pref.items()):
+                        raise ValueError('Yedekteki parça seçimi geçersiz.')
+                    if pref.get('audio', 'auto') is None or pref.get('subtitle', 'off') is None: raise ValueError('Parça seçimi boş olamaz.')
+                    if is_newer(c, 'track_preferences', r['item_id'], updated):
+                        c.execute('INSERT OR REPLACE INTO track_preferences VALUES(?,?,?)', (r['item_id'], json.dumps({key:value for key,value in pref.items() if key in checks}), updated))
+        if metadata:
+            with _home_lock:
+                _library_version += 1
 
     except (KeyError, TypeError, sqlite3.IntegrityError): raise ValueError('Yedek verileri geçersiz. Hiçbir değişiklik kaydedilmedi.') from None
 

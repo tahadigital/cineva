@@ -89,6 +89,26 @@ class DiscoveryTest {
     }
 
     @Test
+    fun decodeJsStringLiteralHandlesHexAndStandardEscapes() {
+        val encoded = """\x7B\x22key\x22:\x22O\'Brien \\ path\/1\nline2\t\x3Cok\x3E\x22\x7D"""
+        assertEquals("{\"key\":\"O'Brien \\ path/1\nline2\t<ok>\"}", decodeJsStringLiteral(encoded))
+        assertEquals("trailing \\xG", decodeJsStringLiteral("trailing \\xG"))
+    }
+
+    @Test
+    fun parsesNetflixGraphqlWithHexEscapesAndDeduplicates() {
+        val escaped = """\x7B\x22data\x22:\x7B\x22row1\x22:\x7B\x22top10Video\x22:\x7B\x22title\x22:\x22Alpha\x22,\x22releaseYear\x22:2025,\x22videoId\x22:101\x7D,\x22top10\x22:\x7B\x22category\x22:\x22MOVIES\x22,\x22weeklyRank\x22:2,\x22weekEndDate\x22:\x222026-11-15\x22\x7D\x7D,\x22row2\x22:\x7B\x22top10Video\x22:\x7B\x22title\x22:\x22Alpha\x22,\x22releaseYear\x22:2025,\x22videoId\x22:101\x7D,\x22top10\x22:\x7B\x22category\x22:\x22MOVIES\x22,\x22weeklyRank\x22:2,\x22weekEndDate\x22:\x222026-11-15\x22\x7D\x7D,\x22row3\x22:\x7B\x22top10Video\x22:\x7B\x22title\x22:\x22Ep 1\x22,\x22parentShow\x22:\x7B\x22title\x22:\x22Show X\x22,\x22videoId\x22:202\x7D\x7D,\x22top10\x22:\x7B\x22category\x22:\x22TV\x22,\x22weeklyRank\x22:1,\x22weekEndDate\x22:\x222026-11-15\x22\x7D\x7D\x7D\x7D"""
+        val html = "<script>netflix.reactContext.models.graphql = JSON.parse('$escaped');</script>"
+        val entries = parseNetflix(html)
+        assertEquals(2, entries.length())
+        assertEquals("vod", entries.getJSONObject(0).getString("kind"))
+        assertEquals("Alpha", entries.getJSONObject(0).getString("name"))
+        assertEquals("series", entries.getJSONObject(1).getString("kind"))
+        assertEquals("Show X", entries.getJSONObject(1).getString("name"))
+        assertEquals(202L, entries.getJSONObject(1).getLong("netflixId"))
+    }
+
+    @Test
     fun noHistoryDoesNotPretendToBePersonalized() {
         assertTrue(result(emptyList()).shelves.any { it.title.startsWith("Keşfet:") })
     }

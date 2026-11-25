@@ -20,7 +20,11 @@ import sys
 import threading
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+
+class SessionExpiredError(FileNotFoundError):
+    """Raised when a playback session was stopped or reaped."""
 
 
 _SESSION_ID = re.compile(r"[a-f0-9]{32}\Z")
@@ -121,6 +125,10 @@ class _Session:
     cache_start: float = 0.0
     cache_end: float = 0.0
     last_sequence: int = -1
+    flow_event: threading.Event = field(default_factory=threading.Event)
+
+    def __post_init__(self) -> None:
+        self.flow_event.set()
 
 
 def _executable(candidate: str | Path | None) -> str | None:
@@ -434,7 +442,7 @@ class PlaybackManager:
         with self._lock:
             session = self._sessions.get(session_id)
             if not session:
-                raise FileNotFoundError("Oynatma oturumu sona erdi.")
+                raise SessionExpiredError("Oynatma oturumu sona erdi.")
             if position is not None:
                 if isinstance(position, bool):
                     raise ValueError("Geçersiz oynatma zamanı.")
@@ -454,17 +462,35 @@ class PlaybackManager:
         with self._lock:
             session = self._sessions.get(session_id)
             if not session:
-                raise FileNotFoundError("Oynatma oturumu sona erdi.")
+                raise SessionExpiredError("Oynatma oturumu sona erdi.")
             desired = bool(paused)
             session.paused = desired
             soft_pause = getattr(signal, "SIGSTOP" if desired else "SIGCONT", None) is None
             self._sync_process_pause(session, strict=True)
+            self._update_flow_event(session)
             session.last_used = time.monotonic()
             return {
                 "paused": session.paused,
                 "processPaused": session.process_paused,
                 "softPause": soft_pause,
             }
+
+    @staticmethod
+    def _update_flow_event(session: _Session) -> None:
+        if session.paused or session.flow_paused:
+            session.flow_event.clear()
+        else:
+            session.flow_event.set()
+
+    def wait_unpaused(self, session_id: str, timeout: float = 0.5) -> bool:
+        with self._lock:
+            if self._closed or self._shutdown.is_set():
+                return True
+            session = self._sessions.get(session_id)
+            if not session or not (session.paused or session.flow_paused):
+                return True
+            event = session.flow_event
+        return event.wait(timeout)
 
     @staticmethod
     def _buffer_state(session: _Session) -> dict:
@@ -477,13 +503,17 @@ class PlaybackManager:
         pause_signal = getattr(signal, "SIGSTOP" if desired else "SIGCONT", None)
         if pause_signal is None:
             session.process_paused = False
+            self._update_flow_event(session)
             return
         if desired == session.process_paused or session.process.poll() is not None:
+            self._update_flow_event(session)
             return
         try:
             session.process.send_signal(pause_signal)
             session.process_paused = desired
+            self._update_flow_event(session)
         except OSError:
+            self._update_flow_event(session)
             if strict and session.process.poll() is None:
                 raise RuntimeError("Yayın duraklatılamadı. Yeniden oynatmayı deneyin.") from None
 
@@ -542,7 +572,7 @@ class PlaybackManager:
         with self._lock:
             session = self._sessions.get(session_id)
             if not session:
-                raise FileNotFoundError("Oynatma oturumu sona erdi.")
+                raise SessionExpiredError("Oynatma oturumu sona erdi.")
             path = session.directory / filename
             if path.is_symlink() or not path.is_file():
                 raise FileNotFoundError("Oynatma dosyası bulunamadı.")
@@ -552,6 +582,8 @@ class PlaybackManager:
     def stop(self, session_id: str) -> None:
         with self._lock:
             session = self._sessions.pop(session_id, None)
+            if session:
+                session.flow_event.set()
             if not self._sessions:
                 self._active.clear()
         if session:
@@ -594,6 +626,7 @@ class PlaybackManager:
                 idle = [session for session in self._sessions.values() if session.last_used < cutoff]
                 for session in idle:
                     self._sessions.pop(session.session_id, None)
+                    session.flow_event.set()
                 if not self._sessions:
                     self._active.clear()
             for session in idle:

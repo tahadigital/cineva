@@ -5,6 +5,7 @@ package app.mavie.player.player
  * audio/video output. Time advances only when actual output counters advance.
  * Immutable so an EOF event can preserve its clock before a later Stopped event.
  */
+@ConsistentCopyVisibility
 internal data class PlaybackOutputClock private constructor(
     private val estimatedPositionMs: Long,
     private val lastSampleMs: Long,

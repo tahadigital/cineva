@@ -250,13 +250,30 @@ public enum DiscoveryEngine {
         while i < escaped.endIndex {
             let ch = escaped[i]
             let next = escaped.index(after: i)
-            if ch == "\\" && next < escaped.endIndex && (escaped[next] == "\\" || escaped[next] == "'") {
-                unescaped.append(escaped[next])
-                i = escaped.index(after: next)
-            } else {
-                unescaped.append(ch)
-                i = next
+            if ch == "\\" && next < escaped.endIndex {
+                let escChar = escaped[next]
+                if escChar == "\\" || escChar == "'" {
+                    unescaped.append(escChar)
+                    i = escaped.index(after: next)
+                    continue
+                }
+                if escChar == "x" {
+                    let h1 = escaped.index(after: next)
+                    if h1 < escaped.endIndex {
+                        let h2 = escaped.index(after: h1)
+                        if h2 < escaped.endIndex {
+                            let hexRange = h1...h2
+                            if let byte = UInt8(escaped[hexRange], radix: 16) {
+                                unescaped.append(Character(UnicodeScalar(byte)))
+                                i = escaped.index(after: h2)
+                                continue
+                            }
+                        }
+                    }
+                }
             }
+            unescaped.append(ch)
+            i = next
         }
         guard let jsonData = unescaped.data(using: .utf8),
               let root = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
@@ -326,7 +343,8 @@ public enum DiscoveryEngine {
                         for: req,
                         session: session,
                         context: "Keşif servisi",
-                        retryDelays: [0.3, 0.9]
+                        retryDelays: [0.3, 0.9],
+                        maxBytes: 10 * 1024 * 1024
                     ),
                           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                           let rows = obj["metas"] as? [[String: Any]] else { return [] }
@@ -391,7 +409,8 @@ public enum DiscoveryEngine {
                     session: session,
                     context: "Netflix Türkiye",
                     fallbackUserAgent: MavieHTTPClient.browserUserAgent,
-                    retryDelays: [0.3, 0.9]
+                    retryDelays: [0.3, 0.9],
+                    maxBytes: 10 * 1024 * 1024
                 ) {
                     let html = MavieHTTPClient.decodeText(data, response: resp)
                     charts.append(contentsOf: parseNetflix(html: html))
@@ -414,7 +433,8 @@ public enum DiscoveryEngine {
                             session: session,
                             context: "Netflix başlık",
                             fallbackUserAgent: MavieHTTPClient.browserUserAgent,
-                            retryDelays: [0.3, 0.9]
+                            retryDelays: [0.3, 0.9],
+                            maxBytes: 10 * 1024 * 1024
                         ) {
                             let html = MavieHTTPClient.decodeText(data, response: resp)
                             let full = NSRange(html.startIndex..., in: html)

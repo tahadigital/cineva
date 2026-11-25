@@ -2,6 +2,11 @@ import CryptoKit
 import Foundation
 import SwiftUI
 
+private struct PersistedProgressState: Codable, Sendable {
+    var version: Int = 1
+    var progress: [String: WatchProgress] = [:]
+}
+
 private struct PersistedLibraryState: Codable {
     var sourceMode: SourceMode = .demo
     var items: [MediaItem] = []
@@ -78,11 +83,24 @@ public final class LibraryStore: ObservableObject {
 
     private let baseDirectory: URL
     private let storageURL: URL
+    private let progressURL: URL
     private let discoveryCacheURL: URL
+    private let credentialVault: CredentialVault
+    private let progressIOQueue = DispatchQueue(label: "app.mavie.library.progress-io", qos: .utility)
+    private var progressSaveWorkItem: DispatchWorkItem?
     private var favoriteCreatedAt: [String: String] = [:]
     private var trackPreferencesByItem: [String: SyncTrackPreferenceRecord] = [:]
+    private var failedPinAttempts: [String: (count: Int, lockedUntil: Date?)] = [:]
     private var discoveryRefreshAttempt: TimeInterval = 0
     private var discoveryRefreshing = false
+
+    private var localMediaDirectory: URL {
+        baseDirectory.appendingPathComponent("LocalMedia", isDirectory: true)
+    }
+
+    public var hasSavedXtreamPassword: Bool {
+        !connection.password.isEmpty
+    }
 
     public init(storageDirectory: URL? = nil) {
         let baseDir: URL
@@ -96,7 +114,12 @@ public final class LibraryStore: ObservableObject {
         try? FileManager.default.createDirectory(at: baseDir, withIntermediateDirectories: true)
         self.baseDirectory = baseDir
         self.storageURL = baseDir.appendingPathComponent("library_state.json")
+        self.progressURL = baseDir.appendingPathComponent("progress_state.json")
         self.discoveryCacheURL = baseDir.appendingPathComponent("discovery-public.json")
+        self.credentialVault = CredentialVault(
+            fallbackFileURL: baseDir.appendingPathComponent(".credentials_vault.json"),
+            useKeychain: storageDirectory == nil
+        )
 
         loadState()
         if let data = try? Data(contentsOf: discoveryCacheURL),
@@ -107,7 +130,7 @@ public final class LibraryStore: ObservableObject {
             profiles = [UserProfile(id: "default", name: "Ana Profil", avatarColor: "#7C3AED", active: true)]
         }
         if items.isEmpty && sourceMode == .demo {
-            loadDemoCatalog(persist: false)
+            loadDemoCatalog(persist: false, clearError: false)
         }
     }
 
@@ -138,7 +161,7 @@ public final class LibraryStore: ObservableObject {
 
     // MARK: - Catalog Sources
 
-    public func loadDemoCatalog(persist: Bool = true) {
+    public func loadDemoCatalog(persist: Bool = true, clearError: Bool = true) {
         sourceMode = .demo
         connection.sourceType = .demo
         items = DemoCatalog.items
@@ -152,6 +175,9 @@ public final class LibraryStore: ObservableObject {
             maxConnections: 1,
             sourceType: .demo
         )
+        if clearError {
+            lastError = nil
+        }
         statusBanner = "4 açık lisanslı demo filmi yüklendi."
         if persist { saveState() }
     }
@@ -169,10 +195,18 @@ public final class LibraryStore: ObservableObject {
         if !parsed.epgUrl.isEmpty { connection.epgUrl = parsed.epgUrl }
         items = parsed.items
         categories = parsed.categories
+        let safeHostLabel: String
+        if m3uUrl.isEmpty {
+            safeHostLabel = "Yerel Liste"
+        } else if let host = URL(string: m3uUrl)?.host, !host.isEmpty {
+            safeHostLabel = host
+        } else {
+            safeHostLabel = MavieHTTPClient.redactSensitiveURLs(in: m3uUrl)
+        }
         account = AccountInfo(
             id: "m3u",
             username: "M3U",
-            host: m3uUrl.isEmpty ? "Yerel Liste" : m3uUrl,
+            host: safeHostLabel,
             name: "M3U Kütüphanesi",
             status: "Active",
             sourceType: .m3u,
@@ -180,6 +214,26 @@ public final class LibraryStore: ObservableObject {
         )
         statusBanner = "\(parsed.items.count) içerik M3U listesinden yüklendi."
         lastError = nil
+        saveState()
+    }
+
+    public func clearSavedCredentials() {
+        connection.host = ""
+        connection.username = ""
+        connection.password = ""
+        connection.m3uUrl = ""
+        connection.epgUrl = ""
+        account.host = ""
+        account.username = ""
+        account.epgUrl = ""
+        do {
+            try credentialVault.clear()
+        } catch {
+            lastError = error.localizedDescription
+            return
+        }
+        lastError = nil
+        statusBanner = "Kayıtlı kaynak bilgileri temizlendi."
         saveState()
     }
 
@@ -229,6 +283,8 @@ public final class LibraryStore: ObservableObject {
                 fetched = try await MavieHTTPClient.fetchData(for: req, session: session, context: "M3U sunucusu")
             } catch is CancellationError {
                 throw CancellationError()
+            } catch let urlErr as URLError where urlErr.code == .cancelled {
+                throw CancellationError()
             } catch let primaryErr {
                 if !hadScheme, let fallbackURL = URL(string: "https://" + trimmed) {
                     var fallbackReq = URLRequest(url: fallbackURL)
@@ -236,6 +292,10 @@ public final class LibraryStore: ObservableObject {
                     do {
                         fetched = try await MavieHTTPClient.fetchData(for: fallbackReq, session: session, context: "M3U sunucusu")
                         resolvedURL = fallbackURL
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch let urlErr as URLError where urlErr.code == .cancelled {
+                        throw CancellationError()
                     } catch {
                         throw primaryErr
                     }
@@ -274,13 +334,21 @@ public final class LibraryStore: ObservableObject {
             let auth: XtreamAuthResult
             do {
                 auth = try await XtreamClient.authenticate(host: resolvedHost, username: username, password: password, session: session)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let urlErr as URLError where urlErr.code == .cancelled {
+                throw CancellationError()
             } catch let primaryErr {
                 if !hadScheme, !trimmedHost.isEmpty {
                     let httpsHost = "https://" + trimmedHost
-                    if let fallbackAuth = try? await XtreamClient.authenticate(host: httpsHost, username: username, password: password, session: session) {
+                    do {
+                        auth = try await XtreamClient.authenticate(host: httpsHost, username: username, password: password, session: session)
                         resolvedHost = httpsHost
-                        auth = fallbackAuth
-                    } else {
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch let urlErr as URLError where urlErr.code == .cancelled {
+                        throw CancellationError()
+                    } catch {
                         throw primaryErr
                     }
                 } else {
@@ -310,9 +378,31 @@ public final class LibraryStore: ObservableObject {
             async let vodCatsTask = fetchCatResult(.vod)
             async let seriesCatsTask = fetchCatResult(.series)
 
-            let liveCats = (try? await liveCatsTask.get()) ?? []
-            let vodCats = (try? await vodCatsTask.get()) ?? []
-            let seriesCats = (try? await seriesCatsTask.get()) ?? []
+            let liveCatRes = await liveCatsTask
+            let vodCatRes = await vodCatsTask
+            let seriesCatRes = await seriesCatsTask
+
+            func isCancelledError(_ err: Error) -> Bool {
+                if err is CancellationError { return true }
+                if let urlErr = err as? URLError, urlErr.code == .cancelled { return true }
+                return false
+            }
+
+            var failedKinds: [String] = []
+            func unwrapCategories(_ res: Result<[MediaCategory], Error>, label: String) throws -> [MediaCategory] {
+                switch res {
+                case .success(let list):
+                    return list
+                case .failure(let err):
+                    if isCancelledError(err) { throw CancellationError() }
+                    failedKinds.append(label)
+                    return []
+                }
+            }
+
+            let liveCats = try unwrapCategories(liveCatRes, label: "Canlı kategorileri")
+            let vodCats = try unwrapCategories(vodCatRes, label: "Film kategorileri")
+            let seriesCats = try unwrapCategories(seriesCatRes, label: "Dizi kategorileri")
 
             let liveMap = Dictionary(uniqueKeysWithValues: liveCats.map { ($0.id, $0.name) })
             let vodMap = Dictionary(uniqueKeysWithValues: vodCats.map { ($0.id, $0.name) })
@@ -326,7 +416,7 @@ public final class LibraryStore: ObservableObject {
             let vodRes = await vodTask
             let seriesRes = await seriesTask
 
-            var failedKinds: [String] = []
+            var failedStreams = 0
             var firstFailure: Error?
             var combinedItems: [MediaItem] = []
 
@@ -335,12 +425,16 @@ public final class LibraryStore: ObservableObject {
                 case .success(let list):
                     combinedItems.append(contentsOf: list)
                 case .failure(let err):
+                    if isCancelledError(err) {
+                        throw CancellationError()
+                    }
+                    failedStreams += 1
                     failedKinds.append(label)
                     if firstFailure == nil { firstFailure = err }
                 }
             }
 
-            if failedKinds.count == 3, let firstFailure {
+            if failedStreams == 3, let firstFailure {
                 throw firstFailure
             }
             guard !combinedItems.isEmpty else {
@@ -377,10 +471,7 @@ public final class LibraryStore: ObservableObject {
         }
     }
 
-    public func importLocalMediaFile(from sourceURL: URL) throws {
-        let localDir = baseDirectory.appendingPathComponent("LocalMedia", isDirectory: true)
-        try FileManager.default.createDirectory(at: localDir, withIntermediateDirectories: true)
-
+    private static func localMediaDestination(for sourceURL: URL, localDir: URL) -> URL {
         let rawName = sourceURL.lastPathComponent
         let sanitized = rawName
             .replacingOccurrences(of: "/", with: "_")
@@ -389,7 +480,13 @@ public final class LibraryStore: ObservableObject {
         let digest = Insecure.SHA1.hash(data: Data(sourceURL.absoluteString.utf8))
             .map { String(format: "%02x", $0) }
             .joined()
-        let destURL = localDir.appendingPathComponent("\(digest.prefix(10))_\(safeFileName)")
+        return localDir.appendingPathComponent("\(digest.prefix(10))_\(safeFileName)")
+    }
+
+    public func importLocalMediaFile(from sourceURL: URL) throws {
+        let localDir = localMediaDirectory
+        try FileManager.default.createDirectory(at: localDir, withIntermediateDirectories: true)
+        let destURL = Self.localMediaDestination(for: sourceURL, localDir: localDir)
 
         if sourceURL.standardizedFileURL != destURL.standardizedFileURL {
             if FileManager.default.fileExists(atPath: destURL.path) {
@@ -398,6 +495,32 @@ public final class LibraryStore: ObservableObject {
             try FileManager.default.copyItem(at: sourceURL, to: destURL)
         }
         let originalName = sourceURL.deletingPathExtension().lastPathComponent
+        addLocalMediaFile(url: destURL, displayName: originalName)
+    }
+
+    public func importLocalMediaFileAsync(from sourceURL: URL) async throws {
+        isBusy = true
+        lastError = nil
+        statusBanner = nil
+        defer { isBusy = false }
+
+        let localDir = localMediaDirectory
+        let destURL = Self.localMediaDestination(for: sourceURL, localDir: localDir)
+        let originalName = sourceURL.deletingPathExtension().lastPathComponent
+
+        try await Task.detached(priority: .userInitiated) {
+            try FileManager.default.createDirectory(at: localDir, withIntermediateDirectories: true)
+            if sourceURL.standardizedFileURL.resolvingSymlinksInPath() != destURL.standardizedFileURL.resolvingSymlinksInPath() {
+                let tmpURL = localDir.appendingPathComponent(".tmp_\(UUID().uuidString)_\(destURL.lastPathComponent)")
+                defer { try? FileManager.default.removeItem(at: tmpURL) }
+                try FileManager.default.copyItem(at: sourceURL, to: tmpURL)
+                if FileManager.default.fileExists(atPath: destURL.path) {
+                    try FileManager.default.removeItem(at: destURL)
+                }
+                try FileManager.default.moveItem(at: tmpURL, to: destURL)
+            }
+        }.value
+
         addLocalMediaFile(url: destURL, displayName: originalName)
     }
 
@@ -455,8 +578,26 @@ public final class LibraryStore: ObservableObject {
     }
 
     public func resolvePlayableURL(for item: MediaItem) throws -> URL {
-        if !item.sourceUrl.isEmpty, let url = URL(string: item.sourceUrl) {
-            return url
+        if !item.sourceUrl.isEmpty {
+            guard let url = URL(string: item.sourceUrl),
+                  let scheme = url.scheme?.lowercased() else {
+                throw MavieError.invalidURL("Güvenli olmayan veya geçersiz yayın adresi.")
+            }
+            if scheme == "http" || scheme == "https" {
+                guard let host = url.host, !host.isEmpty else {
+                    throw MavieError.invalidURL("Güvenli olmayan veya geçersiz yayın adresi.")
+                }
+                return url
+            }
+            if scheme == "file" {
+                let allowedRoot = localMediaDirectory.standardizedFileURL.resolvingSymlinksInPath().path
+                let candidatePath = url.standardizedFileURL.resolvingSymlinksInPath().path
+                guard candidatePath.hasPrefix(allowedRoot + "/") else {
+                    throw MavieError.invalidURL("Güvenli olmayan veya geçersiz yayın adresi.")
+                }
+                return url
+            }
+            throw MavieError.invalidURL("Güvenli olmayan veya geçersiz yayın adresi.")
         }
         if sourceMode == .xtream {
             return try XtreamClient.buildStreamURL(
@@ -467,6 +608,23 @@ public final class LibraryStore: ObservableObject {
             )
         }
         throw MavieError.invalidURL("Bu içerik için oynatılabilir yayın adresi bulunamadı.")
+    }
+
+    public func resolvePlaybackPlan(for item: MediaItem) throws -> PlaybackSourcePlan {
+        let primary = try resolvePlayableURL(for: item)
+        let fallback = PlaybackRecoveryState.liveFallbackURL(
+            for: item,
+            failedURL: primary,
+            sourceMode: sourceMode,
+            host: connection.host,
+            username: connection.username,
+            password: connection.password
+        )
+        return PlaybackSourcePlan(
+            primaryURL: primary,
+            liveTSFallbackURL: fallback,
+            isLive: item.kind == .live
+        )
     }
 
     // MARK: - Favorites, Progress & Playlists
@@ -490,7 +648,7 @@ public final class LibraryStore: ObservableObject {
         progressByItem[item.id]
     }
 
-    public func saveProgress(itemId: String, positionSeconds: Double, durationSeconds: Double) {
+    public func saveProgress(itemId: String, positionSeconds: Double, durationSeconds: Double, flush: Bool = false) {
         guard durationSeconds > 0 else { return }
         let ratio = positionSeconds / durationSeconds
         let completed = ratio >= 0.92
@@ -500,6 +658,66 @@ public final class LibraryStore: ObservableObject {
             durationSeconds: durationSeconds,
             completed: completed
         )
+        scheduleProgressWrite(immediate: flush)
+    }
+
+    public func flushProgressPersistence() {
+        scheduleProgressWrite(immediate: true)
+    }
+
+    private func scheduleProgressWrite(immediate: Bool) {
+        progressSaveWorkItem?.cancel()
+        progressSaveWorkItem = nil
+
+        let snapshot = PersistedProgressState(progress: progressByItem)
+        let targetURL = progressURL
+
+        if immediate {
+            progressIOQueue.sync {
+                do {
+                    let data = try JSONEncoder().encode(snapshot)
+                    try Self.writeProtectedData(data, to: targetURL)
+                } catch {
+                    Task { @MainActor [weak self] in
+                        self?.lastError = "İzleme ilerlemesi kaydedilemedi: \(error.localizedDescription)"
+                    }
+                }
+            }
+            return
+        }
+
+        let workItem = DispatchWorkItem { [weak self] in
+            do {
+                let data = try JSONEncoder().encode(snapshot)
+                try Self.writeProtectedData(data, to: targetURL)
+            } catch {
+                Task { @MainActor [weak self] in
+                    self?.lastError = "İzleme ilerlemesi kaydedilemedi: \(error.localizedDescription)"
+                }
+            }
+        }
+        progressSaveWorkItem = workItem
+        progressIOQueue.asyncAfter(deadline: .now() + 1.5, execute: workItem)
+    }
+
+    public func trackPreference(for itemId: String) -> SyncTrackPreferenceData? {
+        trackPreferencesByItem[itemId]?.data
+    }
+
+    public func saveTrackPreference(
+        itemId: String,
+        audio: String?,
+        subtitle: String?,
+        clientAudio: String? = nil,
+        clientSubtitle: String? = nil
+    ) {
+        let data = SyncTrackPreferenceData(
+            audio: audio,
+            subtitle: subtitle,
+            clientAudio: clientAudio,
+            clientSubtitle: clientSubtitle
+        )
+        trackPreferencesByItem[itemId] = SyncTrackPreferenceRecord(itemId: itemId, data: data)
         saveState()
     }
 
@@ -532,7 +750,7 @@ public final class LibraryStore: ObservableObject {
         guard !clean.isEmpty else {
             throw MavieError.validation("Profil adı boş olamaz.")
         }
-        let hashedPin = pin.isEmpty ? "" : SHA256.hash(data: Data(pin.utf8)).map { String(format: "%02x", $0) }.joined()
+        let hashedPin = pin.isEmpty ? "" : Self.makeSaltedPBKDF2PinHash(pin)
         let profile = UserProfile(
             id: "prof_\(UUID().uuidString.prefix(8))",
             name: clean,
@@ -548,11 +766,30 @@ public final class LibraryStore: ObservableObject {
     }
 
     public func switchProfile(id: String, pinAttempt: String = "") throws {
-        guard let target = profiles.first(where: { $0.id == id }) else { return }
+        guard let targetIdx = profiles.firstIndex(where: { $0.id == id }) else { return }
+        let target = profiles[targetIdx]
         if target.hasPin {
-            let attemptHash = SHA256.hash(data: Data(pinAttempt.utf8)).map { String(format: "%02x", $0) }.joined()
-            if attemptHash != target.pinHash {
-                throw MavieError.validation("Profil PIN kodu hatalı.")
+            let now = Date()
+            if let entry = failedPinAttempts[id], let lockedUntil = entry.lockedUntil, now < lockedUntil {
+                let remaining = max(1, Int(ceil(lockedUntil.timeIntervalSince(now))))
+                throw MavieError.validation("Çok fazla hatalı PIN denemesi. \(remaining) saniye sonra tekrar deneyin.")
+            }
+
+            let verification = Self.verifyPin(pinAttempt, storedHash: target.pinHash)
+            if !verification.matched {
+                let prevCount = (failedPinAttempts[id]?.lockedUntil.map { $0 <= now } ?? false) ? 0 : (failedPinAttempts[id]?.count ?? 0)
+                let newCount = prevCount + 1
+                if newCount >= 5 {
+                    failedPinAttempts[id] = (count: newCount, lockedUntil: now.addingTimeInterval(30))
+                    throw MavieError.validation("Çok fazla hatalı PIN denemesi. 30 saniye sonra tekrar deneyin.")
+                } else {
+                    failedPinAttempts[id] = (count: newCount, lockedUntil: nil)
+                    throw MavieError.validation("Profil PIN kodu hatalı.")
+                }
+            }
+            failedPinAttempts.removeValue(forKey: id)
+            if verification.needsUpgrade {
+                profiles[targetIdx].pinHash = Self.makeSaltedPBKDF2PinHash(pinAttempt)
             }
         }
         for i in profiles.indices {
@@ -648,6 +885,9 @@ public final class LibraryStore: ObservableObject {
         mergeSyncPayload(remotePayload)
         statusBanner = "Yerel ağ sunucusu ile eşitleme tamamlandı."
         saveState()
+        if !remotePayload.progress.isEmpty {
+            flushProgressPersistence()
+        }
     }
 
     public func buildSyncPayload(limitItems: Int? = nil) -> LibrarySyncPayload {
@@ -695,10 +935,16 @@ public final class LibraryStore: ObservableObject {
     }
 
     public func importBackupJSON(_ data: Data) throws {
+        guard data.count <= LanSyncClient.maxBackupBytes else {
+            throw MavieError.validation("Yedek dosyası çok büyük (en fazla 25 MB).")
+        }
         let payload = try JSONDecoder().decode(LibrarySyncPayload.self, from: data)
         mergeSyncPayload(payload)
         statusBanner = "Yedek içe aktarıldı."
         saveState()
+        if !payload.progress.isEmpty {
+            flushProgressPersistence()
+        }
     }
 
     // MARK: - Persistence & Helpers
@@ -745,7 +991,7 @@ public final class LibraryStore: ObservableObject {
                 }
             }
         }
-        for pref in payload.trackPreferences {
+        for pref in payload.trackPreferences + (payload.appleTrackPreferences ?? []) {
             if let existing = trackPreferencesByItem[pref.itemId],
                let existingDate = MavieDateParser.parseISO8601(existing.updatedAt),
                let incomingDate = MavieDateParser.parseISO8601(pref.updatedAt),
@@ -757,40 +1003,258 @@ public final class LibraryStore: ObservableObject {
     }
 
     private func loadState() {
-        guard let data = try? Data(contentsOf: storageURL),
-              let state = try? JSONDecoder().decode(PersistedLibraryState.self, from: data) else {
-            return
+        let fm = FileManager.default
+        var legacyProgress: [String: WatchProgress] = [:]
+        var needsResaveLibraryState = false
+
+        if fm.fileExists(atPath: storageURL.path) {
+            do {
+                let data = try Data(contentsOf: storageURL)
+                let state = try JSONDecoder().decode(PersistedLibraryState.self, from: data)
+                sourceMode = state.sourceMode
+                items = state.items
+                categories = state.categories
+                favoriteIds = Set(state.favoriteIds)
+                favoriteCreatedAt = state.favoriteCreatedAt
+                legacyProgress = state.progress
+                playlists = state.playlists
+                trackPreferencesByItem = Dictionary(uniqueKeysWithValues: state.trackPreferences.map { ($0.itemId, $0) })
+                profiles = state.profiles
+                connection = state.connection
+                account = state.account
+            } catch {
+                let backupName = quarantineCorruptFile(at: storageURL, prefix: "library_state")
+                lastError = "Kütüphane dosyası bozuk olduğu için yedeklendi (\(backupName))."
+            }
         }
-        sourceMode = state.sourceMode
-        items = state.items
-        categories = state.categories
-        favoriteIds = Set(state.favoriteIds)
-        favoriteCreatedAt = state.favoriteCreatedAt
-        progressByItem = state.progress
-        playlists = state.playlists
-        trackPreferencesByItem = Dictionary(uniqueKeysWithValues: state.trackPreferences.map { ($0.itemId, $0) })
-        profiles = state.profiles
-        connection = state.connection
-        account = state.account
+
+        let hadProgressFile = fm.fileExists(atPath: progressURL.path)
+        var loadedProgress: [String: WatchProgress] = [:]
+        if hadProgressFile {
+            do {
+                let progData = try Data(contentsOf: progressURL)
+                let progState = try JSONDecoder().decode(PersistedProgressState.self, from: progData)
+                loadedProgress = progState.progress
+            } catch {
+                let backupName = quarantineCorruptFile(at: progressURL, prefix: "progress_state")
+                let msg = "İzleme ilerlemesi dosyası bozuk olduğu için yedeklendi (\(backupName))."
+                lastError = lastError.map { "\($0) \(msg)" } ?? msg
+            }
+        }
+
+        if !legacyProgress.isEmpty {
+            for (itemId, legacyEntry) in legacyProgress {
+                if let current = loadedProgress[itemId] {
+                    if legacyEntry.updatedAt > current.updatedAt {
+                        loadedProgress[itemId] = legacyEntry
+                    }
+                } else {
+                    loadedProgress[itemId] = legacyEntry
+                }
+            }
+        }
+        progressByItem = loadedProgress
+
+        if !legacyProgress.isEmpty {
+            do {
+                let encoded = try JSONEncoder().encode(PersistedProgressState(progress: loadedProgress))
+                try Self.writeProtectedData(encoded, to: progressURL)
+                needsResaveLibraryState = true
+            } catch {
+                let msg = "İzleme ilerlemesi taşınamadı: \(error.localizedDescription)"
+                lastError = lastError.map { "\($0) \(msg)" } ?? msg
+            }
+        }
+
+        let vaultCreds = credentialVault.load()
+        let hadLegacyPlaintextSecrets = !connection.password.isEmpty || !connection.m3uUrl.isEmpty || !connection.epgUrl.isEmpty
+        if connection.password.isEmpty && !vaultCreds.xtreamPassword.isEmpty {
+            connection.password = vaultCreds.xtreamPassword
+        }
+        if connection.m3uUrl.isEmpty && !vaultCreds.m3uUrl.isEmpty {
+            connection.m3uUrl = vaultCreds.m3uUrl
+        }
+        if connection.epgUrl.isEmpty && !vaultCreds.epgUrl.isEmpty {
+            connection.epgUrl = vaultCreds.epgUrl
+        }
+        if account.epgUrl.isEmpty && !connection.epgUrl.isEmpty {
+            account.epgUrl = connection.epgUrl
+        }
+        if !account.host.isEmpty && (account.host.contains("://") || account.host.contains("?")) {
+            let redactedHost = URL(string: account.host)?.host ?? MavieHTTPClient.redactSensitiveURLs(in: account.host)
+            if redactedHost != account.host {
+                account.host = redactedHost
+                needsResaveLibraryState = true
+            }
+        }
+
+        if hadLegacyPlaintextSecrets {
+            needsResaveLibraryState = true
+        }
+        if needsResaveLibraryState {
+            saveState()
+        }
+    }
+
+    private func quarantineCorruptFile(at url: URL, prefix: String) -> String {
+        let ts = Int(Date().timeIntervalSince1970)
+        var backupName = "\(prefix).corrupt.\(ts).json"
+        var backupURL = url.deletingLastPathComponent().appendingPathComponent(backupName)
+        if FileManager.default.fileExists(atPath: backupURL.path) {
+            backupName = "\(prefix).corrupt.\(ts)_\(UUID().uuidString.prefix(6)).json"
+            backupURL = url.deletingLastPathComponent().appendingPathComponent(backupName)
+        }
+        do {
+            try FileManager.default.moveItem(at: url, to: backupURL)
+        } catch {
+            if (try? FileManager.default.copyItem(at: url, to: backupURL)) != nil {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+        return backupName
     }
 
     private func saveState() {
+        let creds = StoredCredentials(
+            xtreamPassword: connection.password,
+            m3uUrl: connection.m3uUrl,
+            epgUrl: connection.epgUrl
+        )
+        do {
+            try credentialVault.save(creds)
+        } catch {
+            lastError = "Kimlik bilgileri kaydedilemedi: \(error.localizedDescription)"
+        }
+
+        var scrubbedConnection = connection
+        scrubbedConnection.password = ""
+        scrubbedConnection.m3uUrl = ""
+        scrubbedConnection.epgUrl = ""
+
+        var scrubbedAccount = account
+        scrubbedAccount.epgUrl = ""
+        if !scrubbedAccount.host.isEmpty && (scrubbedAccount.host.contains("://") || scrubbedAccount.host.contains("?")) {
+            scrubbedAccount.host = URL(string: scrubbedAccount.host)?.host ?? MavieHTTPClient.redactSensitiveURLs(in: scrubbedAccount.host)
+        }
+
         let snapshot = PersistedLibraryState(
             sourceMode: sourceMode,
-            items: Array(items.prefix(4000)),
+            items: items,
             categories: categories,
             favoriteIds: Array(favoriteIds),
             favoriteCreatedAt: favoriteCreatedAt,
-            progress: progressByItem,
+            progress: [:],
             playlists: playlists,
             trackPreferences: Array(trackPreferencesByItem.values),
             profiles: profiles,
-            connection: connection,
-            account: account
+            connection: scrubbedConnection,
+            account: scrubbedAccount
         )
-        if let data = try? JSONEncoder().encode(snapshot) {
-            try? data.write(to: storageURL, options: [.atomic])
+        do {
+            let data = try JSONEncoder().encode(snapshot)
+            try Self.writeProtectedData(data, to: storageURL)
+        } catch {
+            lastError = "Kütüphane durumu kaydedilemedi: \(error.localizedDescription)"
         }
+    }
+
+    nonisolated private static func writeProtectedData(_ data: Data, to url: URL) throws {
+        #if os(iOS)
+        try data.write(to: url, options: [.atomic, .completeFileProtection])
+        #else
+        try data.write(to: url, options: [.atomic])
+        #endif
+    }
+
+    private static let pinIterations = 10_000
+
+    private static func makeSaltedPBKDF2PinHash(_ pin: String) -> String {
+        let key = SymmetricKey(size: .bits128)
+        let salt = key.withUnsafeBytes { Data($0) }
+        let dk = pbkdf2HMACSHA256(password: Data(pin.utf8), salt: salt, iterations: pinIterations, keyByteCount: 32)
+        return "pbkdf2_sha256$\(pinIterations)$\(hexString(salt))$\(hexString(dk))"
+    }
+
+    private static func verifyPin(_ attempt: String, storedHash: String) -> (matched: Bool, needsUpgrade: Bool) {
+        if storedHash.hasPrefix("pbkdf2_sha256$") {
+            let parts = storedHash.split(separator: "$", omittingEmptySubsequences: false)
+            guard parts.count == 4,
+                  let iterations = Int(parts[1]),
+                  iterations > 0,
+                  let salt = dataFromHex(String(parts[2])),
+                  let expectedDK = dataFromHex(String(parts[3])) else {
+                return (false, false)
+            }
+            let derived = pbkdf2HMACSHA256(
+                password: Data(attempt.utf8),
+                salt: salt,
+                iterations: iterations,
+                keyByteCount: expectedDK.count
+            )
+            return (constantTimeEquals(derived, expectedDK), false)
+        }
+
+        let legacyDigest = SHA256.hash(data: Data(attempt.utf8))
+        let legacyBytes = Data(legacyDigest)
+        guard let storedBytes = dataFromHex(storedHash) else {
+            return (false, false)
+        }
+        let matched = constantTimeEquals(legacyBytes, storedBytes)
+        return (matched, matched)
+    }
+
+    private static func pbkdf2HMACSHA256(password: Data, salt: Data, iterations: Int, keyByteCount: Int) -> Data {
+        let hashLen = 32
+        let blockCount = Int(ceil(Double(keyByteCount) / Double(hashLen)))
+        let key = SymmetricKey(data: password)
+        var derived = Data()
+        derived.reserveCapacity(blockCount * hashLen)
+
+        for blockIndex in 1...max(1, blockCount) {
+            var blockInput = salt
+            var beIndex = UInt32(blockIndex).bigEndian
+            withUnsafeBytes(of: &beIndex) { blockInput.append(contentsOf: $0) }
+
+            var u = Data(HMAC<SHA256>.authenticationCode(for: blockInput, using: key))
+            var t = u
+            if iterations > 1 {
+                for _ in 2...iterations {
+                    u = Data(HMAC<SHA256>.authenticationCode(for: u, using: key))
+                    for i in 0..<hashLen {
+                        t[i] ^= u[i]
+                    }
+                }
+            }
+            derived.append(t)
+        }
+        return derived.prefix(keyByteCount)
+    }
+
+    private static func constantTimeEquals(_ lhs: Data, _ rhs: Data) -> Bool {
+        guard lhs.count == rhs.count else { return false }
+        var diff: UInt8 = 0
+        for (a, b) in zip(lhs, rhs) {
+            diff |= (a ^ b)
+        }
+        return diff == 0
+    }
+
+    private static func hexString(_ data: Data) -> String {
+        data.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func dataFromHex(_ hex: String) -> Data? {
+        let chars = Array(hex)
+        guard chars.count % 2 == 0, !chars.isEmpty else { return nil }
+        var data = Data(capacity: chars.count / 2)
+        var i = 0
+        while i < chars.count {
+            let pair = String([chars[i], chars[i + 1]])
+            guard let byte = UInt8(pair, radix: 16) else { return nil }
+            data.append(byte)
+            i += 2
+        }
+        return data
     }
 
     private func foldTurkish(_ value: String) -> String {

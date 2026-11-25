@@ -437,6 +437,62 @@ class ServerHTTPTests(unittest.TestCase):
         result = self.api('GET', '/api/catalog?kind=vod&category=a')
         self.assertEqual([item['id'] for item in result['items']], [FIRST])
 
+    def test_host_header_with_userinfo_at_or_whitespace_rejected_403(self):
+        for bad_host in (
+            f'evil.com@127.0.0.1:{self.port}',
+            f'127.0.0.1:{self.port} @evil',
+            f'127.0.0.1:{self.port}/evil',
+        ):
+            with self.subTest(bad_host=bad_host):
+                self.api('GET', '/api/health', auth=False, headers={'Host': bad_host}, expected=403)
+
+    def test_put_returns_json_405_with_security_headers_and_empty_play_delete_400(self):
+        st, hdrs, payload = self.request('PUT', '/api/settings', {})
+        self.assertEqual(st, 405)
+        self.assertEqual(payload.get('error_code'), 'method_not_allowed')
+        self.assertEqual(hdrs.get('x-content-type-options'), 'nosniff')
+        self.assertEqual(hdrs.get('x-frame-options'), 'DENY')
+        self.assertIn('POST', hdrs.get('allow', ''))
+
+        st_del, _, payload_del = self.request('DELETE', '/api/play/')
+        self.assertEqual(st_del, 400)
+        self.assertEqual(payload_del.get('error_code'), 'invalid_session')
+
+        st_img, _, _ = self.request('GET', '/api/image?url=' + urlencode({'u': 'ftp://bad.example/a.png'}).split('=', 1)[1])
+        self.assertEqual(st_img, 400)
+
+    def test_home_cache_invalidates_on_profile_switch_and_detail_extra_update(self):
+        created = self.api('POST', '/api/profiles', {'name': 'CacheP2', 'isKids': False}, expected=201)['profile']
+        p2_id = created['id']
+
+        def cleanup():
+            self.request('POST', '/api/profiles/switch', {'id': 'default', 'pin': ''})
+            self.request('DELETE', f'/api/profiles/{p2_id}')
+            with _connect(self.data / 'state.sqlite3') as database:
+                database.execute("UPDATE items SET extra='{\"duration\":1000}' WHERE id=?", (FIRST,))
+
+        self.addCleanup(cleanup)
+
+        # Warm /api/home on default, then update items.extra directly in SQLite (simulating detail() metadata enrichment)
+        h1 = self.api('GET', '/api/home')
+        with _connect(self.data / 'state.sqlite3') as database:
+            database.execute(
+                'UPDATE items SET extra=? WHERE id=?',
+                (json.dumps({'duration': 1000, 'plot': 'Güncel Özet', 'backdrop': 'https://example.com/bd.jpg'}), FIRST),
+            )
+        h2 = self.api('GET', '/api/home')
+        rec = next(i for i in h2['recent'] if i['id'] == FIRST)
+        self.assertEqual(rec.get('plot'), 'Güncel Özet')
+        shelf_items = [i for s in h2.get('discovery', {}).get('shelves', []) for i in s.get('items', []) if i['id'] == FIRST]
+        if shelf_items:
+            self.assertEqual(shelf_items[0].get('plot'), 'Güncel Özet')
+        self.assertIsNotNone(h1)
+
+        # Profile switch invalidates _home_cache even with identical library/empty history
+        self.api('POST', '/api/profiles/switch', {'id': p2_id, 'pin': ''})
+        h3 = self.api('GET', '/api/home')
+        self.assertIn('discovery', h3)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

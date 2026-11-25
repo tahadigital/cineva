@@ -3,6 +3,7 @@ package app.mavie.player.data
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import okhttp3.Dns
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -37,8 +38,11 @@ class MavieRepositoryHttpTest {
         val itemsByAccount = linkedMapOf<String, MutableList<MediaItem>>()
         val categoriesByAccount = linkedMapOf<String, MutableMap<MediaKind, List<Category>>>()
         val cacheByAccount = linkedMapOf<String, MutableMap<String, Pair<String, Long>>>()
+        val favoritesByAccount = linkedMapOf<String, MutableSet<String>>()
+        val trackPrefsByAccount = linkedMapOf<String, MutableMap<String, TrackPreference>>()
         val batchSizes = mutableListOf<Int>()
         var committedItemCount = 0
+        var discoveryCatalogQueryCount = 0
 
         override fun replaceCatalog(account: String, kind: MediaKind, categories: List<Category>, items: List<MediaItem>) {
             categoriesByAccount.getOrPut(account) { linkedMapOf() }[kind] = categories
@@ -87,7 +91,35 @@ class MavieRepositoryHttpTest {
             limit: Int,
             offset: Int,
             checkCancelled: () -> Unit,
-        ): List<MediaItem> = itemsByAccount[account].orEmpty().drop(offset).take(limit)
+        ): List<MediaItem> {
+            val favs = favoritesByAccount[account].orEmpty()
+            val all = itemsByAccount[account].orEmpty().map { item ->
+                if (item.id in favs) item.copy(isFavorite = true) else item
+            }
+            val filtered = when {
+                where == "i.kind IN ('vod','series')" -> all.filter { it.kind == MediaKind.VOD || it.kind == MediaKind.SERIES }
+                where == "i.kind='vod'" -> all.filter { it.kind == MediaKind.VOD }
+                where == "i.kind='series'" -> all.filter { it.kind == MediaKind.SERIES }
+                where == "f.item_id IS NOT NULL" -> all.filter { it.id in favs }
+                where == "p.item_id IS NOT NULL OR f.item_id IS NOT NULL" -> all.filter { it.id in favs || it.progress != null }
+                where.contains("p.position>0") -> emptyList()
+                else -> all
+            }
+            return filtered.drop(offset).take(limit)
+        }
+
+        override fun slimItems(
+            account: String,
+            where: String,
+            args: List<String>,
+            order: String,
+            limit: Int,
+            offset: Int,
+            checkCancelled: () -> Unit,
+        ): List<MediaItem> {
+            if (where == "i.kind IN ('vod','series')") discoveryCatalogQueryCount++
+            return items(account, where, args, order, limit, offset, checkCancelled)
+        }
 
         override fun item(account: String, id: String): MediaItem? =
             itemsByAccount[account].orEmpty().firstOrNull { it.id == id }
@@ -110,12 +142,21 @@ class MavieRepositoryHttpTest {
         override fun liveChannelNames(account: String): List<Pair<String, String>> =
             itemsByAccount[account].orEmpty().filter { it.kind == MediaKind.LIVE }.map { it.id to it.name }
 
-        override fun favorite(account: String, item: MediaItem): Boolean = false
+        override fun favorite(account: String, item: MediaItem): Boolean {
+            val set = favoritesByAccount.getOrPut(account) { linkedSetOf() }
+            return if (set.add(item.id)) true else {
+                set.remove(item.id)
+                false
+            }
+        }
         override fun progress(account: String, itemId: String): WatchProgress? = null
         override fun saveProgress(account: String, item: MediaItem, position: Double, duration: Double) = Unit
         override fun clearProgress(account: String, itemId: String) = Unit
-        override fun trackPreference(account: String, itemId: String): TrackPreference = TrackPreference()
-        override fun saveTrackPreference(account: String, itemId: String, preference: TrackPreference) = Unit
+        override fun trackPreference(account: String, itemId: String): TrackPreference =
+            trackPrefsByAccount[account]?.get(itemId) ?: TrackPreference()
+        override fun saveTrackPreference(account: String, itemId: String, preference: TrackPreference) {
+            trackPrefsByAccount.getOrPut(account) { linkedMapOf() }[itemId] = preference
+        }
         override fun playlists(account: String): List<Playlist> = emptyList()
         override fun playlistItems(account: String, id: String): List<MediaItem> = emptyList()
         override fun createPlaylist(account: String, name: String): Playlist = Playlist("1", name, 0)
@@ -310,7 +351,7 @@ class MavieRepositoryHttpTest {
     }
 
     @Test(timeout = 15_000)
-    fun classifiesTimeoutDnsConnectSslHttpErrorsAndFallsBackNon443HttpsToHttp() = runBlocking {
+    fun classifiesTimeoutDnsConnectSslHttpErrorsWithoutSilentHttpDowngrade() = runBlocking {
         // 1. Timeout classification in both loginM3u and api()
         MockWebServer().use { server ->
             val shortTimeoutClient = MavieBaseHttpClient.newBuilder()
@@ -372,7 +413,7 @@ class MavieRepositoryHttpTest {
             assertTrue(ex.message.orEmpty().contains("bağlantı reddedildi"))
         }
 
-        // 4. SSL classification on port 443 AND non-443 https->http fallback
+        // 4. SSL classification on both non-443 and 443 ports (never silently downgrades https -> http)
         MockWebServer().use { server ->
             val sslFailFactory = object : SSLSocketFactory() {
                 override fun getDefaultCipherSuites(): Array<String> = emptyArray()
@@ -419,26 +460,37 @@ class MavieRepositoryHttpTest {
                 .build()
             val sslRepo = newRepo(client = sslClient, streamClient = sslClient)
 
-            // Non-443 https -> falls back to http:// and succeeds
-            server.enqueue(MockResponse().setBody("#EXTM3U\n#EXTINF:-1,Fallback HTTP\nhttp://stream.example.test/fb.ts\n"))
-            val fbM3u = sslRepo.loginM3u("Fallback M3U", "https://127.0.0.1:${server.port}/get.php?username=testuser&password=testpass")
-            assertEquals("127.0.0.1", fbM3u.host)
+            // Non-443 https -> must NOT silently downgrade to http://; classifies TLS_FAILED with 0 HTTP requests sent
+            try {
+                sslRepo.loginM3u("No Downgrade M3U", "https://127.0.0.1:${server.port}/get.php?username=testuser&password=testpass")
+                fail("Non-443 HTTPS must not silently downgrade to HTTP")
+            } catch (ex: IptvException) {
+                assertEquals(MavieErrorCode.TLS_FAILED, ex.code)
+                assertTrue(ex.message.orEmpty().contains("TLS/SSL"))
+            }
 
-            server.enqueue(MockResponse().setBody("""{"user_info":{"auth":1,"status":"Active"}}"""))
-            val fbXtream = sslRepo.login(ConnectionSettings("https://127.0.0.1:${server.port}", "testuser", "testpass"))
-            assertTrue(fbXtream.host.startsWith("http://"))
+            try {
+                sslRepo.login(ConnectionSettings("https://127.0.0.1:${server.port}", "testuser", "testpass"))
+                fail("Non-443 HTTPS must not silently downgrade to HTTP")
+            } catch (ex: IptvException) {
+                assertEquals(MavieErrorCode.TLS_FAILED, ex.code)
+                assertTrue(ex.message.orEmpty().contains("TLS/SSL"))
+            }
+            assertEquals(0, server.requestCount)
 
             // Port 443 https -> never downgrades, classifies SSL error
             try {
                 sslRepo.loginM3u("Strict 443", "https://strict.example.test:443/list.m3u")
                 fail("Port 443 must not fall back to HTTP")
             } catch (ex: IptvException) {
+                assertEquals(MavieErrorCode.TLS_FAILED, ex.code)
                 assertTrue(ex.message.orEmpty().contains("TLS/SSL"))
             }
             try {
                 sslRepo.login(ConnectionSettings("https://strict.example.test:443", "testuser", "testpass"))
                 fail("Port 443 must not fall back to HTTP")
             } catch (ex: IptvException) {
+                assertEquals(MavieErrorCode.TLS_FAILED, ex.code)
                 assertTrue(ex.message.orEmpty().contains("TLS/SSL"))
             }
 
@@ -524,5 +576,191 @@ class MavieRepositoryHttpTest {
             assertEquals(newEpg, repo.account.value?.epgUrl)
             assertEquals(newEpg, accounts.stored?.settings?.epgUrl)
         }
+    }
+
+    @Test(timeout = 10_000)
+    fun blocksRedirectSsrfCrossHostCredentialRedirectsAndHttpsDowngrades() = runBlocking {
+        MockWebServer().use { server ->
+            val repo = newRepo()
+
+            // 1. Credentialed URL redirecting to a different host -> UNSAFE_URL
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(302)
+                    .setHeader("Location", "http://evil.example.test/steal.m3u"),
+            )
+            try {
+                repo.loginM3u("CrossHost", server.url("/get.php?username=demo_user&password=demo_pass").toString())
+                fail("Cross-host credential redirect must be rejected")
+            } catch (ex: IptvException) {
+                assertEquals(MavieErrorCode.UNSAFE_URL, ex.code)
+            }
+
+            // 2. Redirect to cloud metadata IP -> UNSAFE_URL
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(302)
+                    .setHeader("Location", "http://169.254.169.254/latest/meta-data/"),
+            )
+            try {
+                repo.loginM3u("MetadataRedirect", server.url("/list.m3u").toString())
+                fail("Metadata redirect must be rejected")
+            } catch (ex: IptvException) {
+                assertEquals(MavieErrorCode.UNSAFE_URL, ex.code)
+            }
+
+            // 3. Redirect to non-HTTP scheme -> UNSAFE_URL
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(302)
+                    .setHeader("Location", "file:///etc/passwd"),
+            )
+            try {
+                repo.loginM3u("SchemeRedirect", server.url("/list.m3u").toString())
+                fail("Non-HTTP redirect must be rejected")
+            } catch (ex: IptvException) {
+                assertEquals(MavieErrorCode.UNSAFE_URL, ex.code)
+            }
+
+            // 4. Initial cloud metadata URL -> UNSAFE_URL without network call
+            try {
+                repo.loginM3u("DirectMetadata", "http://169.254.169.254/list.m3u")
+                fail("Direct metadata URL must be rejected")
+            } catch (ex: IptvException) {
+                assertEquals(MavieErrorCode.UNSAFE_URL, ex.code)
+            }
+
+            // 5. Direct validateRedirectHop: https -> http downgrade on credentialed URL -> TLS_FAILED
+            try {
+                repo.validateRedirectHop(
+                    "https://cdn.example.test/get.php?username=demo_user&password=demo_pass".toHttpUrl(),
+                    "http://cdn.example.test/get.php?username=demo_user&password=demo_pass",
+                )
+                fail("HTTPS->HTTP credential redirect must throw TLS_FAILED")
+            } catch (ex: IptvException) {
+                assertEquals(MavieErrorCode.TLS_FAILED, ex.code)
+            }
+
+            // Same-host HTTPS -> HTTPS redirect is allowed
+            val safeHop = repo.validateRedirectHop(
+                "https://cdn.example.test/start.m3u?username=demo_user&password=demo_pass".toHttpUrl(),
+                "https://cdn.example.test/final.m3u?username=demo_user&password=demo_pass",
+            )
+            assertEquals("https://cdn.example.test/final.m3u?username=demo_user&password=demo_pass", safeHop.toString())
+        }
+    }
+
+    @Test(timeout = 10_000)
+    fun mapsHttpStatusAndInvalidResponsesToStructuredMavieErrorCodes() = runBlocking {
+        MockWebServer().use { server ->
+            val repo = newRepo()
+            val cases = listOf(
+                401 to MavieErrorCode.AUTH_REJECTED,
+                403 to MavieErrorCode.AUTH_REJECTED,
+                404 to MavieErrorCode.NOT_FOUND,
+                429 to MavieErrorCode.RATE_LIMITED,
+                502 to MavieErrorCode.SERVER_ERROR,
+                418 to MavieErrorCode.HTTP_ERROR,
+            )
+            for ((status, expectedCode) in cases) {
+                server.enqueue(MockResponse().setResponseCode(status))
+                if (status == 403) server.enqueue(MockResponse().setResponseCode(403))
+                try {
+                    repo.loginM3u("Status $status", server.url("/status_$status.m3u").toString())
+                    fail("Expected IptvException for HTTP $status")
+                } catch (ex: IptvException) {
+                    assertEquals("HTTP $status code mismatch", expectedCode, ex.code)
+                }
+            }
+
+            server.enqueue(MockResponse().setResponseCode(200).setBody("<html>Not JSON</html>"))
+            try {
+                repo.login(ConnectionSettings(server.url("/").toString().trimEnd('/'), "testuser", "testpass"))
+                fail("Expected INVALID_RESPONSE for HTML")
+            } catch (ex: IptvException) {
+                assertEquals(MavieErrorCode.INVALID_RESPONSE, ex.code)
+            }
+        }
+    }
+
+    @Test(timeout = 10_000)
+    fun homeCachesDiscoveryByKeyAndInvalidatesOnHistoryOrFeedChanges() = runBlocking {
+        val catalog = FakeCatalogStore()
+        val updates = MutableStateFlow(1L)
+        var feedUpdatedAt = 100.0
+        val repo = MavieRepository(
+            database = catalog,
+            credentials = InMemoryAccountStore(),
+            discoveryUpdates = updates,
+            discoverySnapshot = { JSONObject().put("updatedAt", feedUpdatedAt) },
+            jsonParser = jvmJsonParser,
+        )
+        repo.loginDemo()
+        val firstItem = catalog.itemsByAccount.values.first().first()
+
+        // First home() computes discovery once
+        repo.home()
+        assertEquals(1, catalog.discoveryCatalogQueryCount)
+
+        // Second home() with identical versions/feed hits cache
+        repo.home()
+        assertEquals(1, catalog.discoveryCatalogQueryCount)
+
+        // Toggling favorite bumps historyVersion -> invalidates cache
+        repo.toggleFavorite(firstItem)
+        repo.home()
+        assertEquals(2, catalog.discoveryCatalogQueryCount)
+
+        // Bumping discoveryUpdates invalidates cache
+        updates.value = 2L
+        repo.home()
+        assertEquals(3, catalog.discoveryCatalogQueryCount)
+
+        // Changing feed updatedAt invalidates cache
+        feedUpdatedAt = 200.0
+        repo.home()
+        assertEquals(4, catalog.discoveryCatalogQueryCount)
+    }
+
+    @Test(timeout = 10_000)
+    fun updateEpgUrlValidatesSchemesBlocksMetadataAndPersistsCleanUrl() = runBlocking {
+        val accounts = InMemoryAccountStore()
+        val repo = newRepo(accounts = accounts)
+        repo.loginDemo()
+
+        val updated = repo.updateEpgUrl("  https://epg.example.test/guide.xml  ")
+        assertEquals("https://epg.example.test/guide.xml", updated.epgUrl)
+        assertEquals("https://epg.example.test/guide.xml", repo.account.value?.epgUrl)
+        assertEquals("https://epg.example.test/guide.xml", accounts.stored?.settings?.epgUrl)
+
+        val cleared = repo.updateEpgUrl("   ")
+        assertEquals("", cleared.epgUrl)
+
+        try {
+            repo.updateEpgUrl("http://169.254.169.254/epg.xml")
+            fail("Metadata EPG URL must be rejected")
+        } catch (ex: IptvException) {
+            assertEquals(MavieErrorCode.UNSAFE_URL, ex.code)
+        }
+
+        try {
+            repo.updateEpgUrl("ftp://epg.example.test/guide.xml")
+            fail("FTP EPG URL must be rejected")
+        } catch (ex: IptvException) {
+            assertEquals(MavieErrorCode.INVALID_INPUT, ex.code)
+        }
+    }
+
+    @Test(timeout = 10_000)
+    fun saveTrackPreferenceIgnoresStaleProfileWrites() = runBlocking {
+        val catalog = FakeCatalogStore()
+        val repo = newRepo(catalog = catalog)
+        repo.loginDemo()
+
+        repo.saveTrackPreference("vod:1", TrackPreference(audioId = 2, subtitleId = 5, subtitleOff = false), expectedProfileId = "stale_profile")
+        assertEquals(TrackPreference(), repo.trackPreference("vod:1"))
+
+        repo.saveTrackPreference("vod:1", TrackPreference(audioId = 2, subtitleId = 5, subtitleOff = false), expectedProfileId = "default")
+        assertEquals(TrackPreference(audioId = 2, subtitleId = 5, subtitleOff = false), repo.trackPreference("vod:1"))
     }
 }

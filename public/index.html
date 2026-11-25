@@ -84,7 +84,7 @@
   <dialog id="playerDialog" class="player-dialog" aria-labelledby="playerTitle">
     <div id="playerSurface" class="player-surface">
     <div class="video-stage">
-      <video id="video" playsinline preload="metadata" disablepictureinpicture></video>
+      <video id="video" playsinline preload="metadata"></video>
       <div id="playerOverlay" class="player-overlay"><div class="player-waiting-card"><div class="cinema-eq" aria-hidden="true"><span></span><span></span><span></span><span></span></div><span class="spinner"></span><span id="playerMessage">Yayın açılıyor…</span><small class="player-waiting-sub">Ses ve altyazı parçaları senkronize ediliyor</small></div></div>
     </div>
     <header class="player-heading player-chrome">
@@ -147,7 +147,7 @@
         <button type="button" id="skipForward" class="player-icon player-skip" aria-label="10 saniye ileri sar" title="10 saniye ileri sar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 3 5 5-5 5m5-5H10a6 6 0 0 0 0 12h3"/></svg><small aria-hidden="true">10</small></button>
         <div class="player-volume">
           <button type="button" id="mutePlayer" class="player-icon" aria-label="Sesi kapat" title="Sesi kapat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6h4l5 4V5L7 9H3m13 0a4 4 0 0 1 0 6m3-9a8 8 0 0 1 0 12"/></svg></button>
-          <input type="range" id="playerVolume" min="0" max="1" step=".05" value="1" aria-label="Ses seviyesi" orient="vertical">
+          <input type="range" id="playerVolume" min="0" max="1" step=".05" value="1" aria-label="Ses seviyesi">
         </div>
         <span id="seekBufferStatus" class="seek-buffer-status"></span>
         <button type="button" id="nextEpisodeShortcut" class="player-icon" aria-label="Sonraki bölüm" title="Sonraki bölüm" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 5 11 7-11 7Zm14 0v14"/></svg></button>

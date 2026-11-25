@@ -707,6 +707,8 @@ select option { background-color: #141824; color: #f5f7fb; }
 .multiview-tile:hover { border-color: rgba(255, 255, 255, 0.28); }
 .multiview-video-wrap { position:relative; aspect-ratio:16/9; background:#000; }
 .multiview-video-wrap video { width:100%; height:100%; object-fit:cover; display:block; }
+.multiview-tile-status { position:absolute; inset:0; display:grid; place-items:center; padding:12px; text-align:center; background:rgba(9,11,18,.84); color:#fecaca; font-size:12px; font-weight:600; pointer-events:none; }
+.multiview-tile-status[hidden] { display:none; }
 .multiview-bar { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 12px; background:rgba(14, 17, 26, 0.72); border-top:1px solid rgba(255,255,255,0.10); font-size:13px; }
 .multiview-bar select { min-width: 0; flex: 1; }
 .multiview-bar strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

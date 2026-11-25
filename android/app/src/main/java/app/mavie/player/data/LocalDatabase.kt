@@ -6,6 +6,7 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.database.sqlite.SQLiteStatement
+import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
 import java.util.UUID
@@ -21,16 +22,107 @@ internal fun MediaItem.toStoredJson(): JSONObject = JSONObject()
     .put("genres", genres).put("addedAt", addedAt).put("videoCodec", videoCodec).put("audioCodec", audioCodec)
     .put("sourceUrl", sourceUrl)
 
-internal fun storedItem(data: JSONObject): MediaItem = MediaItem(
+internal fun MediaItem.toSlimStoredJson(): JSONObject? =
+    if (plot.isEmpty()) null else toStoredJson().apply { remove("plot") }
+
+internal fun storedItem(data: JSONObject, includeDetails: Boolean = true): MediaItem = MediaItem(
     id = data.getString("id"), providerId = data.getString("providerId"), name = data.getString("name"),
     kind = MediaKind.fromKey(data.getString("kind")), categoryId = data.optString("categoryId"),
     categoryName = data.optString("categoryName"), poster = data.optString("poster"), backdrop = data.optString("backdrop"),
     year = data.optString("year"), rating = data.optDouble("rating", 0.0).finiteOrZero(), extension = data.optString("extension", "mp4"),
-    durationSeconds = data.optDouble("durationSeconds", 0.0).finiteOrZero(), plot = data.optString("plot"),
+    durationSeconds = data.optDouble("durationSeconds", 0.0).finiteOrZero(),
+    plot = if (includeDetails) data.optString("plot") else "",
     season = data.optInt("season"), episode = data.optInt("episode"), parentId = data.optString("parentId").takeUnless { it.isBlank() || it == "null" },
-    genres = data.optString("genres"), addedAt = data.optLong("addedAt"), videoCodec = data.optString("videoCodec"), audioCodec = data.optString("audioCodec"),
-    sourceUrl = data.optString("sourceUrl"),
+    genres = data.optString("genres"), addedAt = data.optLong("addedAt"),
+    videoCodec = if (includeDetails) data.optString("videoCodec") else "",
+    audioCodec = if (includeDetails) data.optString("audioCodec") else "",
+    sourceUrl = if (includeDetails) data.optString("sourceUrl") else "",
 )
+
+internal data class FavoriteSnapshotRow(val itemId: String, val createdAt: String)
+internal data class ProgressSnapshotRow(val itemId: String, val position: Double, val duration: Double, val completed: Boolean, val updatedAt: String)
+internal data class PlaylistSnapshotRow(val id: String, val name: String, val createdAt: String)
+internal data class PlaylistItemSnapshotRow(val playlistId: String, val itemId: String, val position: Int)
+internal data class NativeTrackSnapshotRow(val itemId: String, val data: String, val updatedAt: String)
+
+internal data class ProfileSnapshotData(
+    val favorites: List<FavoriteSnapshotRow> = emptyList(),
+    val progress: List<ProgressSnapshotRow> = emptyList(),
+    val playlists: List<PlaylistSnapshotRow> = emptyList(),
+    val playlistItems: List<PlaylistItemSnapshotRow> = emptyList(),
+    val nativeTrackPreferences: List<NativeTrackSnapshotRow> = emptyList(),
+)
+
+internal object ProfileSnapshotCodec {
+    fun encode(data: ProfileSnapshotData): JSONObject {
+        val favs = JSONArray()
+        for (row in data.favorites) favs.put(JSONObject().put("id", row.itemId).put("t", row.createdAt))
+        val prog = JSONArray()
+        for (row in data.progress) {
+            prog.put(
+                JSONObject()
+                    .put("id", row.itemId)
+                    .put("p", row.position)
+                    .put("d", row.duration)
+                    .put("c", if (row.completed) 1 else 0)
+                    .put("u", row.updatedAt)
+            )
+        }
+        val lists = JSONArray()
+        for (row in data.playlists) lists.put(JSONObject().put("id", row.id).put("n", row.name).put("t", row.createdAt))
+        val listItems = JSONArray()
+        for (row in data.playlistItems) listItems.put(JSONObject().put("lid", row.playlistId).put("iid", row.itemId).put("pos", row.position))
+        val nativeTracks = JSONArray()
+        for (row in data.nativeTrackPreferences) {
+            nativeTracks.put(JSONObject().put("id", row.itemId).put("data", row.data).put("u", row.updatedAt))
+        }
+        return JSONObject()
+            .put("favorites", favs)
+            .put("progress", prog)
+            .put("playlists", lists)
+            .put("playlistItems", listItems)
+            .put("nativeTrackPreferences", nativeTracks)
+    }
+
+    fun decode(snap: JSONObject): ProfileSnapshotData {
+        val favs = buildList {
+            snap.optJSONArray("favorites")?.let { arr ->
+                for (i in 0 until arr.length()) arr.optJSONObject(i)?.let {
+                    add(FavoriteSnapshotRow(it.getString("id"), it.getString("t")))
+                }
+            }
+        }
+        val prog = buildList {
+            snap.optJSONArray("progress")?.let { arr ->
+                for (i in 0 until arr.length()) arr.optJSONObject(i)?.let {
+                    add(ProgressSnapshotRow(it.getString("id"), it.getDouble("p"), it.getDouble("d"), it.getInt("c") != 0, it.getString("u")))
+                }
+            }
+        }
+        val lists = buildList {
+            snap.optJSONArray("playlists")?.let { arr ->
+                for (i in 0 until arr.length()) arr.optJSONObject(i)?.let {
+                    add(PlaylistSnapshotRow(it.getString("id"), it.getString("n"), it.getString("t")))
+                }
+            }
+        }
+        val listItems = buildList {
+            snap.optJSONArray("playlistItems")?.let { arr ->
+                for (i in 0 until arr.length()) arr.optJSONObject(i)?.let {
+                    add(PlaylistItemSnapshotRow(it.getString("lid"), it.getString("iid"), it.getInt("pos")))
+                }
+            }
+        }
+        val nativeTracks = buildList {
+            snap.optJSONArray("nativeTrackPreferences")?.let { arr ->
+                for (i in 0 until arr.length()) arr.optJSONObject(i)?.let {
+                    add(NativeTrackSnapshotRow(it.getString("id"), it.getString("data"), it.getString("u")))
+                }
+            }
+        }
+        return ProfileSnapshotData(favs, prog, lists, listItems, nativeTracks)
+    }
+}
 internal fun Double.finiteOrZero(): Double = if (isFinite()) this else 0.0
 internal fun values(vararg pairs: Pair<String, Any?>): ContentValues = ContentValues().apply {
     for ((key, value) in pairs) when(value) {
@@ -49,6 +141,16 @@ internal interface CatalogStore {
     fun replaceAllCatalogsStream(account: String, stream: (onBatch: (List<MediaItem>) -> Unit) -> M3uStreamSummary): M3uStreamSummary
     fun putItems(account: String, items: List<MediaItem>)
     fun items(account: String, where: String = "1", args: List<String> = emptyList(), order: String = "i.added DESC,i.name COLLATE NOCASE,i.id", limit: Int = 60, offset: Int = 0, checkCancelled: () -> Unit = {}): List<MediaItem>
+    fun slimItems(account: String, where: String = "1", args: List<String> = emptyList(), order: String = "i.added DESC,i.name COLLATE NOCASE,i.id", limit: Int = 60, offset: Int = 0, checkCancelled: () -> Unit = {}): List<MediaItem> =
+        items(account, where, args, order, limit, offset, checkCancelled)
+    fun kidsCatalogPage(account: String, kind: MediaKind, where: String, args: List<String>, page: Int, pageSize: Int): CatalogPage {
+        val filtered = items(account, where, args, limit = 20000).filter {
+            it.kind == kind && !AdultContentFilter.isAdult(it.name, it.categoryName)
+        }
+        val from = (page * pageSize).coerceAtMost(filtered.size)
+        val to = ((page + 1) * pageSize).coerceAtMost(filtered.size)
+        return CatalogPage(filtered.subList(from, to), page, filtered.size, to < filtered.size)
+    }
     fun item(account: String, id: String): MediaItem?
     fun count(account: String, where: String, args: List<String>): Int
     fun categories(account: String, kind: MediaKind): List<Category>
@@ -75,13 +177,17 @@ internal interface CatalogStore {
     fun saveSeriesDetail(account: String, updated: MediaItem, episodes: List<MediaItem>, infoJson: String)
     fun exportState(account: String): String
     fun importState(account: String, json: String)
+    fun close() {}
 }
 
-internal class LocalDatabase(context: Context, name: String = "mavie_library.db") : SQLiteOpenHelper(context, name, null, 4), CatalogStore {
+internal class LocalDatabase(context: Context, name: String = "mavie_library.db") : SQLiteOpenHelper(context, name, null, 5), CatalogStore {
     init { setWriteAheadLoggingEnabled(true) }
-    override fun onConfigure(db: SQLiteDatabase) { db.setForeignKeyConstraintsEnabled(true) }
+    override fun onConfigure(db: SQLiteDatabase) {
+        db.setForeignKeyConstraintsEnabled(true)
+        db.rawQuery("PRAGMA busy_timeout = 5000", null).use { it.moveToFirst() }
+    }
     override fun onCreate(db: SQLiteDatabase) {
-        db.execSQL("CREATE TABLE items(account TEXT NOT NULL,id TEXT NOT NULL,kind TEXT NOT NULL,provider_id TEXT NOT NULL,name TEXT NOT NULL,search TEXT NOT NULL,category_id TEXT NOT NULL,added INTEGER NOT NULL,season INTEGER NOT NULL,episode INTEGER NOT NULL,parent_id TEXT,body TEXT NOT NULL,PRIMARY KEY(account,id))")
+        db.execSQL("CREATE TABLE items(account TEXT NOT NULL,id TEXT NOT NULL,kind TEXT NOT NULL,provider_id TEXT NOT NULL,name TEXT NOT NULL,search TEXT NOT NULL,category_id TEXT NOT NULL,added INTEGER NOT NULL,season INTEGER NOT NULL,episode INTEGER NOT NULL,parent_id TEXT,body TEXT NOT NULL,slim_body TEXT,PRIMARY KEY(account,id))")
         db.execSQL("CREATE INDEX items_catalog ON items(account,kind,category_id,added DESC)")
         db.execSQL("CREATE INDEX items_parent ON items(account,parent_id,season,episode)")
         db.execSQL("CREATE INDEX items_recent ON items(account,kind,added DESC,name COLLATE NOCASE,id)")
@@ -99,6 +205,7 @@ internal class LocalDatabase(context: Context, name: String = "mavie_library.db"
         if(oldVersion<2)db.execSQL("CREATE TABLE IF NOT EXISTS native_track_preferences(account TEXT NOT NULL,item_id TEXT NOT NULL,data TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(account,item_id))")
         if(oldVersion<3)db.execSQL("CREATE INDEX IF NOT EXISTS items_recent ON items(account,kind,added DESC,name COLLATE NOCASE,id)")
         if(oldVersion<4)ensureProfileSchema(db)
+        if(oldVersion<5)db.execSQL("ALTER TABLE items ADD COLUMN slim_body TEXT")
     }
 
     private fun ensureProfileSchema(db: SQLiteDatabase) {
@@ -130,13 +237,15 @@ internal class LocalDatabase(context: Context, name: String = "mavie_library.db"
         statement.bindLong(10, item.episode.toLong())
         if (item.parentId == null) statement.bindNull(11) else statement.bindString(11, item.parentId)
         statement.bindString(12, item.toStoredJson().toString())
+        val slim = item.toSlimStoredJson()?.toString()
+        if (slim == null) statement.bindNull(13) else statement.bindString(13, slim)
     }
 
     override fun putItems(account: String, items: List<MediaItem>) = putItems(account, items, writableDatabase)
 
     fun putItems(account: String, items: List<MediaItem>, db: SQLiteDatabase = writableDatabase) {
         if (items.isEmpty()) return
-        val sql = "INSERT OR REPLACE INTO items(account,id,kind,provider_id,name,search,category_id,added,season,episode,parent_id,body) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)"
+        val sql = "INSERT OR REPLACE INTO items(account,id,kind,provider_id,name,search,category_id,added,season,episode,parent_id,body,slim_body) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)"
         db.compileStatement(sql).use { statement ->
             for (item in items) {
                 bindItemStatement(statement, account, item)
@@ -171,7 +280,7 @@ internal class LocalDatabase(context: Context, name: String = "mavie_library.db"
                     writable.delete("items", "account=? AND kind IN ('live','vod','series')", arrayOf(account))
                     writable.delete("categories", "account=? AND kind IN ('live','vod','series')", arrayOf(account))
                     itemStatement = writable.compileStatement(
-                        "INSERT OR REPLACE INTO items(account,id,kind,provider_id,name,search,category_id,added,season,episode,parent_id,body) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)"
+                        "INSERT OR REPLACE INTO items(account,id,kind,provider_id,name,search,category_id,added,season,episode,parent_id,body,slim_body) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)"
                     )
                 }
                 val stmt = itemStatement!!
@@ -181,7 +290,7 @@ internal class LocalDatabase(context: Context, name: String = "mavie_library.db"
                 }
             }
             if (!started || summary.itemCount == 0) {
-                throw IptvException("M3U listesinde geçerli yayın bulunamadı.")
+                throw IptvException("M3U listesinde geçerli yayın bulunamadı.", MavieErrorCode.EMPTY_CATALOG)
             }
             itemStatement?.close()
             itemStatement = null
@@ -207,6 +316,8 @@ internal class LocalDatabase(context: Context, name: String = "mavie_library.db"
     }
 
     private val itemSelect = "SELECT i.body,f.item_id AS favorite_id,p.position AS p_position,p.duration AS p_duration,p.completed AS p_completed,p.updated_at AS p_updated FROM items i LEFT JOIN favorites f ON f.account=i.account AND f.item_id=i.id LEFT JOIN progress p ON p.account=i.account AND p.item_id=i.id"
+    private val slimItemSelect = "SELECT COALESCE(i.slim_body,i.body),f.item_id AS favorite_id,p.position AS p_position,p.duration AS p_duration,p.completed AS p_completed,p.updated_at AS p_updated FROM items i LEFT JOIN favorites f ON f.account=i.account AND f.item_id=i.id LEFT JOIN progress p ON p.account=i.account AND p.item_id=i.id"
+
     override fun items(account: String, where: String, args: List<String>, order: String, limit: Int, offset: Int, checkCancelled: () -> Unit): List<MediaItem> {
         checkCancelled()
         return readableDatabase.rawQuery("$itemSelect WHERE i.account=? AND ($where) ORDER BY $order LIMIT ? OFFSET ?", (listOf(account)+args+listOf(limit.coerceIn(1,20000).toString(),offset.coerceAtLeast(0).toString())).toTypedArray()).use { cursor ->
@@ -215,13 +326,59 @@ internal class LocalDatabase(context: Context, name: String = "mavie_library.db"
                     checkCancelled()
                     if (!cursor.moveToNext()) break
                     checkCancelled()
-                    add(readItem(cursor,account))
+                    add(readItem(cursor, account, includeDetails = true))
                 }
             }
         }
     }
-    private fun readItem(cursor: Cursor, account: String): MediaItem {
-        val item = storedItem(JSONObject(cursor.getString(0)))
+
+    override fun slimItems(account: String, where: String, args: List<String>, order: String, limit: Int, offset: Int, checkCancelled: () -> Unit): List<MediaItem> {
+        checkCancelled()
+        return readableDatabase.rawQuery("$slimItemSelect WHERE i.account=? AND ($where) ORDER BY $order LIMIT ? OFFSET ?", (listOf(account)+args+listOf(limit.coerceIn(1,20000).toString(),offset.coerceAtLeast(0).toString())).toTypedArray()).use { cursor ->
+            buildList {
+                while (true) {
+                    checkCancelled()
+                    if (!cursor.moveToNext()) break
+                    checkCancelled()
+                    add(readItem(cursor, account, includeDetails = false))
+                }
+            }
+        }
+    }
+
+    override fun kidsCatalogPage(account: String, kind: MediaKind, where: String, args: List<String>, page: Int, pageSize: Int): CatalogPage {
+        val startIdx = page * pageSize
+        val endIdx = startIdx + pageSize
+        var kidsTotal = 0
+        val pageIds = ArrayList<String>(pageSize)
+        readableDatabase.rawQuery(
+            "SELECT i.id, i.name, COALESCE(c.name, '') FROM items i LEFT JOIN categories c ON c.account=i.account AND c.id=i.category_id AND c.kind=i.kind LEFT JOIN favorites f ON f.account=i.account AND f.item_id=i.id WHERE i.account=? AND ($where) ORDER BY i.added DESC,i.name COLLATE NOCASE,i.id",
+            (listOf(account) + args).toTypedArray(),
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val id = cursor.getString(0)
+                val name = cursor.getString(1)
+                val categoryName = cursor.getString(2)
+                if (!AdultContentFilter.isAdult(name, categoryName)) {
+                    if (kidsTotal in startIdx until endIdx) {
+                        pageIds.add(id)
+                    }
+                    kidsTotal++
+                }
+            }
+        }
+        val fetched = if (pageIds.isEmpty()) {
+            emptyList()
+        } else {
+            val placeholders = pageIds.joinToString(",") { "?" }
+            val byId = items(account, "i.id IN ($placeholders)", pageIds, limit = pageIds.size).associateBy { it.id }
+            pageIds.mapNotNull { byId[it] }
+        }
+        return CatalogPage(fetched, page, kidsTotal, endIdx < kidsTotal)
+    }
+
+    private fun readItem(cursor: Cursor, account: String, includeDetails: Boolean = true): MediaItem {
+        val item = storedItem(JSONObject(cursor.getString(0)), includeDetails = includeDetails)
         val progress = if(cursor.isNull(2)) null else WatchProgress(item.id,cursor.getDouble(2),cursor.getDouble(3),cursor.getInt(4)!=0,timestamp(cursor.getString(5)))
         return item.copy(isFavorite = !cursor.isNull(1),progress = progress,accountId = account)
     }
@@ -275,9 +432,23 @@ internal class LocalDatabase(context: Context, name: String = "mavie_library.db"
         writableDatabase.insertWithOnConflict("native_track_preferences",null,values("account" to account,"item_id" to itemId,"data" to data.toString(),"updated_at" to nowIso()),SQLiteDatabase.CONFLICT_REPLACE)
     }
     override fun playlists(account: String): List<Playlist> = readableDatabase.rawQuery("SELECT p.id,p.name,COUNT(pi.item_id) FROM playlists p LEFT JOIN playlist_items pi ON pi.account=p.account AND pi.playlist_id=p.id WHERE p.account=? GROUP BY p.id ORDER BY p.created_at",arrayOf(account)).use { c -> buildList { while(c.moveToNext()) { val id=c.getString(0);add(Playlist(id,c.getString(1),c.getInt(2))) } } }
-    override fun playlistItems(account: String, id: String): List<MediaItem> = items(account,"i.id IN (SELECT item_id FROM playlist_items WHERE account=? AND playlist_id=?)",listOf(account,id),order="(SELECT position FROM playlist_items WHERE account=i.account AND playlist_id='${id.replace("'","''")}' AND item_id=i.id)",limit=20000)
+    override fun playlistItems(account: String, id: String): List<MediaItem> = readableDatabase.rawQuery(
+        "SELECT i.body, f.item_id AS favorite_id, p.position AS p_position, p.duration AS p_duration, p.completed AS p_completed, p.updated_at AS p_updated " +
+            "FROM playlist_items pi " +
+            "INNER JOIN items i ON i.account = pi.account AND i.id = pi.item_id " +
+            "LEFT JOIN favorites f ON f.account = i.account AND f.item_id = i.id " +
+            "LEFT JOIN progress p ON p.account = i.account AND p.item_id = i.id " +
+            "WHERE pi.account = ? AND pi.playlist_id = ? " +
+            "ORDER BY pi.position ASC, i.name COLLATE NOCASE, i.id " +
+            "LIMIT 20000",
+        arrayOf(account, id),
+    ).use { cursor ->
+        buildList {
+            while (cursor.moveToNext()) add(readItem(cursor, account, includeDetails = true))
+        }
+    }
     override fun createPlaylist(account: String, name: String): Playlist {
-        val clean=name.trim().take(100);if(clean.isEmpty())throw IptvException("Liste adı boş olamaz.")
+        val clean=name.trim().take(100);if(clean.isEmpty())throw IptvException("Liste adı boş olamaz.", MavieErrorCode.INVALID_INPUT)
         val id=UUID.randomUUID().toString()
         writableDatabase.insertOrThrow("playlists",null,values("account" to account,"id" to id,"name" to clean,"created_at" to nowIso()))
         return Playlist(id,clean,0)
@@ -286,7 +457,7 @@ internal class LocalDatabase(context: Context, name: String = "mavie_library.db"
         putItems(account,listOf(item),db)
         val position=db.rawQuery("SELECT COALESCE(MAX(position),-1)+1 FROM playlist_items WHERE account=? AND playlist_id=?",arrayOf(account,playlistId)).use { it.moveToFirst();it.getInt(0) }
         try { db.insertWithOnConflict("playlist_items",null,values("account" to account,"playlist_id" to playlistId,"item_id" to item.id,"position" to position),SQLiteDatabase.CONFLICT_IGNORE) }
-        catch (_: android.database.sqlite.SQLiteConstraintException) { throw IptvException("Liste bulunamadı.") }
+        catch (_: android.database.sqlite.SQLiteConstraintException) { throw IptvException("Liste bulunamadı.", MavieErrorCode.NOT_FOUND) }
     }
     override fun removeFromPlaylist(account: String, playlistId: String, itemId: String) { writableDatabase.delete("playlist_items","account=? AND playlist_id=? AND item_id=?",arrayOf(account,playlistId,itemId)) }
     override fun deletePlaylist(account: String, playlistId: String) { writableDatabase.delete("playlists","account=? AND id=?",arrayOf(account,playlistId)) }
@@ -307,7 +478,7 @@ internal class LocalDatabase(context: Context, name: String = "mavie_library.db"
 
     override fun createProfile(name: String, avatarColor: String, isKids: Boolean, pin: String): UserProfile {
         val clean = name.trim().take(60)
-        if (clean.isEmpty()) throw IptvException("Profil adı boş olamaz.")
+        if (clean.isEmpty()) throw IptvException("Profil adı boş olamaz.", MavieErrorCode.INVALID_INPUT)
         val color = if (avatarColor.matches(Regex("^#[0-9A-Fa-f]{6}$"))) avatarColor else "#7C3AED"
         val pinHash = ProfilePinHasher.hash(pin)
         val id = "p_" + UUID.randomUUID().toString().replace("-", "").take(12)
@@ -316,24 +487,41 @@ internal class LocalDatabase(context: Context, name: String = "mavie_library.db"
     }
 
     override fun deleteProfile(account: String?, profileId: String) {
-        if (profileId == "default") throw IptvException("Ana profil silinemez.")
-        val current = activeProfile()
-        if (current.id == profileId) switchProfile(account, "default", "")
-        writableDatabase.delete("profiles", "id=?", arrayOf(profileId))
-        writableDatabase.delete("profile_snapshots", "profile_id=?", arrayOf(profileId))
+        if (profileId == "default") throw IptvException("Ana profil silinemez.", MavieErrorCode.INVALID_INPUT)
+        transaction { db ->
+            val currentActive = db.rawQuery("SELECT id FROM profiles WHERE active=1 LIMIT 1", null).use {
+                if (it.moveToFirst()) it.getString(0) else "default"
+            }
+            if (currentActive == profileId) {
+                performProfileSwitchInTransaction(db, account, "default")
+            }
+            db.delete("profiles", "id=?", arrayOf(profileId))
+            db.delete("profile_snapshots", "profile_id=?", arrayOf(profileId))
+        }
     }
 
     override fun switchProfile(account: String?, targetId: String, pin: String): UserProfile {
         val targetRow = readableDatabase.rawQuery("SELECT id,name,avatar_color,is_kids,pin_hash,active FROM profiles WHERE id=?", arrayOf(targetId)).use { c ->
-            if (!c.moveToFirst()) throw IptvException("Profil bulunamadı.")
+            if (!c.moveToFirst()) throw IptvException("Profil bulunamadı.", MavieErrorCode.PROFILE_NOT_FOUND)
             Tuple6(c.getString(0), c.getString(1), c.getString(2), c.getInt(3) != 0, c.getString(4), c.getInt(5) != 0)
         }
         if (targetRow.fifth.isNotEmpty() && !ProfilePinHasher.verify(pin, targetRow.fifth)) {
-            throw IptvException("Profil PIN kodu hatalı.")
+            throw IptvException("Profil PIN kodu hatalı.", MavieErrorCode.PROFILE_PIN_INVALID)
         }
         if (targetRow.sixth) return activeProfile()
         transaction { db ->
-            val prevId = db.rawQuery("SELECT id FROM profiles WHERE active=1 LIMIT 1", null).use { if (it.moveToFirst()) it.getString(0) else "default" }
+            performProfileSwitchInTransaction(db, account, targetId)
+        }
+        return activeProfile()
+    }
+
+    private fun performProfileSwitchInTransaction(db: SQLiteDatabase, account: String?, targetId: String) {
+        val exists = db.rawQuery("SELECT 1 FROM profiles WHERE id=?", arrayOf(targetId)).use { it.moveToFirst() }
+        if (!exists) throw IptvException("Profil bulunamadı.", MavieErrorCode.PROFILE_NOT_FOUND)
+        val prevId = db.rawQuery("SELECT id FROM profiles WHERE active=1 LIMIT 1", null).use {
+            if (it.moveToFirst()) it.getString(0) else "default"
+        }
+        if (prevId != targetId) {
             if (account != null) {
                 db.insertWithOnConflict("profile_snapshots", null, values("account" to account, "profile_id" to prevId, "data" to dumpSnapshot(db, account).toString()), SQLiteDatabase.CONFLICT_REPLACE)
                 for (table in listOf("playlist_items", "playlists", "favorites", "progress", "native_track_preferences")) {
@@ -344,49 +532,55 @@ internal class LocalDatabase(context: Context, name: String = "mavie_library.db"
             }
             db.execSQL("UPDATE profiles SET active = CASE WHEN id = ? THEN 1 ELSE 0 END", arrayOf(targetId))
         }
-        return activeProfile()
     }
 
     private fun dumpSnapshot(db: SQLiteDatabase, account: String): JSONObject {
-        val favs = org.json.JSONArray()
-        db.rawQuery("SELECT item_id,created_at FROM favorites WHERE account=?", arrayOf(account)).use { c ->
-            while (c.moveToNext()) favs.put(JSONObject().put("id", c.getString(0)).put("t", c.getString(1)))
+        val favs = buildList {
+            db.rawQuery("SELECT item_id,created_at FROM favorites WHERE account=?", arrayOf(account)).use { c ->
+                while (c.moveToNext()) add(FavoriteSnapshotRow(c.getString(0), c.getString(1)))
+            }
         }
-        val prog = org.json.JSONArray()
-        db.rawQuery("SELECT item_id,position,duration,completed,updated_at FROM progress WHERE account=?", arrayOf(account)).use { c ->
-            while (c.moveToNext()) prog.put(JSONObject().put("id", c.getString(0)).put("p", c.getDouble(1)).put("d", c.getDouble(2)).put("c", c.getInt(3)).put("u", c.getString(4)))
+        val prog = buildList {
+            db.rawQuery("SELECT item_id,position,duration,completed,updated_at FROM progress WHERE account=?", arrayOf(account)).use { c ->
+                while (c.moveToNext()) add(ProgressSnapshotRow(c.getString(0), c.getDouble(1), c.getDouble(2), c.getInt(3) != 0, c.getString(4)))
+            }
         }
-        val lists = org.json.JSONArray()
-        db.rawQuery("SELECT id,name,created_at FROM playlists WHERE account=?", arrayOf(account)).use { c ->
-            while (c.moveToNext()) lists.put(JSONObject().put("id", c.getString(0)).put("n", c.getString(1)).put("t", c.getString(2)))
+        val lists = buildList {
+            db.rawQuery("SELECT id,name,created_at FROM playlists WHERE account=?", arrayOf(account)).use { c ->
+                while (c.moveToNext()) add(PlaylistSnapshotRow(c.getString(0), c.getString(1), c.getString(2)))
+            }
         }
-        val listItems = org.json.JSONArray()
-        db.rawQuery("SELECT playlist_id,item_id,position FROM playlist_items WHERE account=?", arrayOf(account)).use { c ->
-            while (c.moveToNext()) listItems.put(JSONObject().put("lid", c.getString(0)).put("iid", c.getString(1)).put("pos", c.getInt(2)))
+        val listItems = buildList {
+            db.rawQuery("SELECT playlist_id,item_id,position FROM playlist_items WHERE account=?", arrayOf(account)).use { c ->
+                while (c.moveToNext()) add(PlaylistItemSnapshotRow(c.getString(0), c.getString(1), c.getInt(2)))
+            }
         }
-        return JSONObject().put("favorites", favs).put("progress", prog).put("playlists", lists).put("playlistItems", listItems)
+        val nativeTracks = buildList {
+            db.rawQuery("SELECT item_id,data,updated_at FROM native_track_preferences WHERE account=?", arrayOf(account)).use { c ->
+                while (c.moveToNext()) add(NativeTrackSnapshotRow(c.getString(0), c.getString(1), c.getString(2)))
+            }
+        }
+        return ProfileSnapshotCodec.encode(
+            ProfileSnapshotData(favs, prog, lists, listItems, nativeTracks)
+        )
     }
 
     private fun restoreSnapshot(db: SQLiteDatabase, account: String, snap: JSONObject) {
-        snap.optJSONArray("favorites")?.let { arr ->
-            for (i in 0 until arr.length()) arr.optJSONObject(i)?.let {
-                db.insertWithOnConflict("favorites", null, values("account" to account, "item_id" to it.getString("id"), "created_at" to it.getString("t")), SQLiteDatabase.CONFLICT_IGNORE)
-            }
+        val data = ProfileSnapshotCodec.decode(snap)
+        for (row in data.favorites) {
+            db.insertWithOnConflict("favorites", null, values("account" to account, "item_id" to row.itemId, "created_at" to row.createdAt), SQLiteDatabase.CONFLICT_IGNORE)
         }
-        snap.optJSONArray("progress")?.let { arr ->
-            for (i in 0 until arr.length()) arr.optJSONObject(i)?.let {
-                db.insertWithOnConflict("progress", null, values("account" to account, "item_id" to it.getString("id"), "position" to it.getDouble("p"), "duration" to it.getDouble("d"), "completed" to (it.getInt("c") != 0), "updated_at" to it.getString("u")), SQLiteDatabase.CONFLICT_REPLACE)
-            }
+        for (row in data.progress) {
+            db.insertWithOnConflict("progress", null, values("account" to account, "item_id" to row.itemId, "position" to row.position, "duration" to row.duration, "completed" to row.completed, "updated_at" to row.updatedAt), SQLiteDatabase.CONFLICT_REPLACE)
         }
-        snap.optJSONArray("playlists")?.let { arr ->
-            for (i in 0 until arr.length()) arr.optJSONObject(i)?.let {
-                db.insertWithOnConflict("playlists", null, values("account" to account, "id" to it.getString("id"), "name" to it.getString("n"), "created_at" to it.getString("t")), SQLiteDatabase.CONFLICT_IGNORE)
-            }
+        for (row in data.playlists) {
+            db.insertWithOnConflict("playlists", null, values("account" to account, "id" to row.id, "name" to row.name, "created_at" to row.createdAt), SQLiteDatabase.CONFLICT_IGNORE)
         }
-        snap.optJSONArray("playlistItems")?.let { arr ->
-            for (i in 0 until arr.length()) arr.optJSONObject(i)?.let {
-                db.insertWithOnConflict("playlist_items", null, values("account" to account, "playlist_id" to it.getString("lid"), "item_id" to it.getString("iid"), "position" to it.getInt("pos")), SQLiteDatabase.CONFLICT_IGNORE)
-            }
+        for (row in data.playlistItems) {
+            db.insertWithOnConflict("playlist_items", null, values("account" to account, "playlist_id" to row.playlistId, "item_id" to row.itemId, "position" to row.position), SQLiteDatabase.CONFLICT_IGNORE)
+        }
+        for (row in data.nativeTrackPreferences) {
+            db.insertWithOnConflict("native_track_preferences", null, values("account" to account, "item_id" to row.itemId, "data" to row.data, "updated_at" to row.updatedAt), SQLiteDatabase.CONFLICT_REPLACE)
         }
     }
 
@@ -401,6 +595,10 @@ internal class LocalDatabase(context: Context, name: String = "mavie_library.db"
     override fun exportState(account: String): String = StateBackup.export(this, account)
 
     override fun importState(account: String, json: String) = StateBackup.import(this, account, json)
+
+    override fun close() {
+        super<SQLiteOpenHelper>.close()
+    }
 
     private data class Tuple6(val first: String, val second: String, val third: String, val fourth: Boolean, val fifth: String, val sixth: Boolean)
 }

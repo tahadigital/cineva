@@ -4,7 +4,9 @@ import android.content.Context
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
@@ -111,19 +113,29 @@ internal class DiscoveryFeed internal constructor(
         .retryOnConnectionFailure(true)
         .build()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val refreshMutex = Mutex()
+    private val stateLock = Any()
     private val _updates = MutableStateFlow(0L)
     val updates = _updates.asStateFlow()
-    @Volatile private var data = runCatching { JSONObject(file.readText()) }.getOrDefault(JSONObject())
-    @Volatile private var job: Job? = null
+    private var data = runCatching { JSONObject(file.readText()) }.getOrDefault(JSONObject())
+    private var job: Job? = null
     private var attempt = 0L
 
-    @Synchronized fun snapshot(): JSONObject {
+    fun snapshot(): JSONObject = synchronized(stateLock) {
         val now = System.currentTimeMillis()
-        if (now - data.optDouble("updatedAt", 0.0) * 1000 > 6 * 3600000 && job?.isActive != true && now - attempt > 900000) {
+        if (scope.isActive && now - data.optDouble("updatedAt", 0.0) * 1000 > 6 * 3600000 && job?.isActive != true && now - attempt > 900000) {
             attempt = now
             job = scope.launch { refresh() }
         }
-        return data
+        data
+    }
+
+    fun close() {
+        synchronized(stateLock) {
+            job?.cancel()
+            job = null
+        }
+        scope.cancel()
     }
 
     private suspend fun get(url: String): String = client.newCall(
@@ -146,156 +158,215 @@ internal class DiscoveryFeed internal constructor(
 
     internal suspend fun refreshNow() = refresh()
 
-    private suspend fun refresh() = coroutineScope {
-        val year = LocalDate.now(IstanbulZone).year
-        val specs = listOf("movie", "series").flatMap { kind ->
-            listOf(Triple(kind, "top", ""), Triple(kind, "year", "/genre=$year"), Triple(kind, "year", "/genre=${year - 1}")) +
-                listOf("Comedy", "Drama", "Action", "Crime", "Sci-Fi", "Horror", "Romance", "Animation")
-                    .map { Triple(kind, "top", "/genre=$it") }
-        }
-        val gate = Semaphore(4)
-        val cinemetaBase = cinemetaBaseUrl.trimEnd('/')
-        val netflixBase = netflixBaseUrl.trimEnd('/')
-        val cinemetaResults = specs.map { (kind, catalog, extra) ->
-            async {
-                gate.acquire()
-                try {
-                    try {
-                        Triple(
-                            kind,
-                            catalog == "top" && extra.isEmpty(),
-                            JSONObject(get("$cinemetaBase/catalog/$kind/$catalog$extra.json")).getJSONArray("metas"),
-                        )
-                    } catch (cancel: CancellationException) {
-                        throw cancel
-                    } catch (_: Exception) {
-                        null
-                    }
-                } finally {
-                    gate.release()
-                }
+    private suspend fun refresh() = refreshMutex.withLock {
+        coroutineScope {
+            val previousData = synchronized(stateLock) { data }
+            val year = LocalDate.now(IstanbulZone).year
+            val specs = listOf("movie", "series").flatMap { kind ->
+                listOf(Triple(kind, "top", ""), Triple(kind, "year", "/genre=$year"), Triple(kind, "year", "/genre=${year - 1}")) +
+                    listOf("Comedy", "Drama", "Action", "Crime", "Sci-Fi", "Horror", "Romance", "Animation")
+                        .map { Triple(kind, "top", "/genre=$it") }
             }
-        }.awaitAll().filterNotNull()
-
-        val metas = linkedMapOf<String, JSONObject>()
-        data.optJSONArray("metas")?.let { a ->
-            for (i in 0 until a.length()) a.optJSONObject(i)?.let { metas[it.optString("id")] = it }
-        }
-        for ((kind, top, rows) in cinemetaResults) {
-            for (i in 0 until rows.length()) {
-                val raw = rows.optJSONObject(i) ?: continue
-                val id = raw.optString("id")
-                if (id.isBlank()) continue
-                val m = JSONObject()
-                for (key in listOf("id", "imdb_id", "moviedb_id", "name", "genres", "genre", "year", "releaseInfo", "released", "poster", "background")) {
-                    if (raw.has(key)) m.put(key, raw.opt(key))
-                }
-                m.put("kind", if (kind == "movie") "vod" else "series")
-                m.put("globalRank", if (top) i + 1 else metas[id]?.optInt("globalRank", 999) ?: 999)
-                metas[id] = m
-            }
-        }
-
-        val charts = JSONArray()
-        for (url in listOf("$netflixBase/tudum/top10/turkey", "$netflixBase/tudum/top10/turkey/tv")) {
-            val parsed = try {
-                parseNetflix(get(url))
-            } catch (cancel: CancellationException) {
-                throw cancel
-            } catch (_: Exception) {
-                null
-            }
-            parsed?.let { a ->
-                for (i in 0 until a.length()) charts.put(a.getJSONObject(i))
-            }
-        }
-        val localizedCharts = (0 until charts.length()).map { index ->
-            async {
-                gate.acquire()
-                try {
-                    val entry = charts.getJSONObject(index)
-                    try {
-                        val html = get("$netflixBase/tr/title/${entry.optLong("netflixId")}")
-                        val block = Regex("""<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>""", RegexOption.DOT_MATCHES_ALL)
-                            .find(html)?.groupValues?.get(1)
-                        if (block != null) {
-                            val info = JSONObject(block)
-                            if (info.optString("name").isNotBlank()) {
-                                entry.put("aliases", JSONArray().put(info.optString("name")))
-                            }
-                            if (info.optString("genre").isNotBlank()) {
-                                entry.put("genre", info.optString("genre"))
-                            }
-                        }
-                    } catch (cancel: CancellationException) {
-                        throw cancel
-                    } catch (_: Exception) {
-                        // Best-effort title localization; keep original Netflix entry.
-                    }
-                    entry
-                } finally {
-                    gate.release()
-                }
-            }
-        }.awaitAll()
-
-        val tmdbCharts = mutableListOf<JSONObject>()
-        if (tmdbApiKey.isNotBlank()) {
-            val week = LocalDate.now(IstanbulZone).toString()
-            val tmdbResults = listOf("movie" to "trending/movie/week", "tv" to "trending/tv/week").map { (type, endpoint) ->
+            val gate = Semaphore(4)
+            val cinemetaBase = cinemetaBaseUrl.trimEnd('/')
+            val netflixBase = netflixBaseUrl.trimEnd('/')
+            val cinemetaResults = specs.map { (kind, catalog, extra) ->
                 async {
+                    gate.acquire()
                     try {
-                        val json = JSONObject(get("https://api.themoviedb.org/3/$endpoint?api_key=$tmdbApiKey&language=tr-TR"))
-                        type to json.optJSONArray("results")
-                    } catch (cancel: CancellationException) {
-                        throw cancel
-                    } catch (_: Exception) {
-                        null
+                        try {
+                            Triple(
+                                kind,
+                                catalog == "top" && extra.isEmpty(),
+                                JSONObject(get("$cinemetaBase/catalog/$kind/$catalog$extra.json")).getJSONArray("metas"),
+                            )
+                        } catch (cancel: CancellationException) {
+                            throw cancel
+                        } catch (_: Exception) {
+                            null
+                        }
+                    } finally {
+                        gate.release()
                     }
                 }
             }.awaitAll().filterNotNull()
-            for ((type, rows) in tmdbResults) {
-                if (rows == null) continue
+
+            val metas = linkedMapOf<String, JSONObject>()
+            previousData.optJSONArray("metas")?.let { a ->
+                for (i in 0 until a.length()) a.optJSONObject(i)?.let { metas[it.optString("id")] = it }
+            }
+            for ((kind, top, rows) in cinemetaResults) {
                 for (i in 0 until rows.length()) {
-                    val row = rows.optJSONObject(i) ?: continue
-                    val id = row.optLong("id")
-                    if (id <= 0) continue
-                    val parsed = normalizeTmdbItem(row, type, i + 1, week)
-                    metas[parsed.optString("id")] = parsed
-                    tmdbCharts.add(parsed)
+                    val raw = rows.optJSONObject(i) ?: continue
+                    val id = raw.optString("id")
+                    if (id.isBlank()) continue
+                    val m = JSONObject()
+                    for (key in listOf("id", "imdb_id", "moviedb_id", "name", "genres", "genre", "year", "releaseInfo", "released", "poster", "background")) {
+                        if (raw.has(key)) m.put(key, raw.opt(key))
+                    }
+                    m.put("kind", if (kind == "movie") "vod" else "series")
+                    m.put("globalRank", if (top) i + 1 else metas[id]?.optInt("globalRank", 999) ?: 999)
+                    metas[id] = m
                 }
             }
-        }
 
-        val finalCharts = when {
-            localizedCharts.isNotEmpty() -> JSONArray(localizedCharts)
-            tmdbCharts.isNotEmpty() -> JSONArray(tmdbCharts)
-            else -> data.optJSONArray("charts") ?: JSONArray()
+            val charts = JSONArray()
+            for (url in listOf("$netflixBase/tudum/top10/turkey", "$netflixBase/tudum/top10/turkey/tv")) {
+                val parsed = try {
+                    parseNetflix(get(url))
+                } catch (cancel: CancellationException) {
+                    throw cancel
+                } catch (_: Exception) {
+                    null
+                }
+                parsed?.let { a ->
+                    for (i in 0 until a.length()) charts.put(a.getJSONObject(i))
+                }
+            }
+            val localizedCharts = (0 until charts.length()).map { index ->
+                async {
+                    gate.acquire()
+                    try {
+                        val entry = charts.getJSONObject(index)
+                        try {
+                            val html = get("$netflixBase/tr/title/${entry.optLong("netflixId")}")
+                            val block = Regex("""<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>""", RegexOption.DOT_MATCHES_ALL)
+                                .find(html)?.groupValues?.get(1)
+                            if (block != null) {
+                                val info = JSONObject(block)
+                                if (info.optString("name").isNotBlank()) {
+                                    entry.put("aliases", JSONArray().put(info.optString("name")))
+                                }
+                                if (info.optString("genre").isNotBlank()) {
+                                    entry.put("genre", info.optString("genre"))
+                                }
+                            }
+                        } catch (cancel: CancellationException) {
+                            throw cancel
+                        } catch (_: Exception) {
+                            // Best-effort title localization; keep original Netflix entry.
+                        }
+                        entry
+                    } finally {
+                        gate.release()
+                    }
+                }
+            }.awaitAll()
+
+            val tmdbCharts = mutableListOf<JSONObject>()
+            if (tmdbApiKey.isNotBlank()) {
+                val week = LocalDate.now(IstanbulZone).toString()
+                val tmdbResults = listOf("movie" to "trending/movie/week", "tv" to "trending/tv/week").map { (type, endpoint) ->
+                    async {
+                        try {
+                            val json = JSONObject(get("https://api.themoviedb.org/3/$endpoint?api_key=$tmdbApiKey&language=tr-TR"))
+                            type to json.optJSONArray("results")
+                        } catch (cancel: CancellationException) {
+                            throw cancel
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+                }.awaitAll().filterNotNull()
+                for ((type, rows) in tmdbResults) {
+                    if (rows == null) continue
+                    for (i in 0 until rows.length()) {
+                        val row = rows.optJSONObject(i) ?: continue
+                        val id = row.optLong("id")
+                        if (id <= 0) continue
+                        val parsed = normalizeTmdbItem(row, type, i + 1, week)
+                        metas[parsed.optString("id")] = parsed
+                        tmdbCharts.add(parsed)
+                    }
+                }
+            }
+
+            val finalCharts = when {
+                localizedCharts.isNotEmpty() -> JSONArray(localizedCharts)
+                tmdbCharts.isNotEmpty() -> JSONArray(tmdbCharts)
+                else -> previousData.optJSONArray("charts") ?: JSONArray()
+            }
+            val chartSource = when {
+                localizedCharts.isNotEmpty() -> "netflix"
+                tmdbCharts.isNotEmpty() -> "tmdb"
+                else -> previousData.optString("chartSource", "netflix")
+            }
+            if (cinemetaResults.isEmpty() && localizedCharts.isEmpty() && tmdbCharts.isEmpty()) return@coroutineScope
+            val updated = JSONObject()
+                .put("version", 3)
+                .put("updatedAt", System.currentTimeMillis() / 1000.0)
+                .put("metas", JSONArray(metas.values.toList()))
+                .put("charts", finalCharts)
+                .put("chartSource", chartSource)
+            val temp = File(file.path + ".tmp")
+            temp.writeText(updated.toString())
+            if (!temp.renameTo(file)) return@coroutineScope
+            synchronized(stateLock) {
+                data = updated
+            }
+            _updates.value = System.currentTimeMillis()
         }
-        val chartSource = when {
-            localizedCharts.isNotEmpty() -> "netflix"
-            tmdbCharts.isNotEmpty() -> "tmdb"
-            else -> data.optString("chartSource", "netflix")
-        }
-        if (cinemetaResults.isEmpty() && localizedCharts.isEmpty() && tmdbCharts.isEmpty()) return@coroutineScope
-        val updated = JSONObject()
-            .put("version", 3)
-            .put("updatedAt", System.currentTimeMillis() / 1000.0)
-            .put("metas", JSONArray(metas.values.toList()))
-            .put("charts", finalCharts)
-            .put("chartSource", chartSource)
-        val temp = File(file.path + ".tmp")
-        temp.writeText(updated.toString())
-        if (!temp.renameTo(file)) return@coroutineScope
-        data = updated
-        _updates.value = System.currentTimeMillis()
     }
 }
 
+internal fun decodeJsStringLiteral(raw: String): String {
+    if ('\\' !in raw) return raw
+    val out = StringBuilder(raw.length)
+    var i = 0
+    while (i < raw.length) {
+        val ch = raw[i]
+        if (ch == '\\' && i + 1 < raw.length) {
+            when (val next = raw[i + 1]) {
+                '\\' -> { out.append('\\'); i += 2 }
+                '\'' -> { out.append('\''); i += 2 }
+                '"' -> { out.append('"'); i += 2 }
+                '/' -> { out.append('/'); i += 2 }
+                'n' -> { out.append('\n'); i += 2 }
+                'r' -> { out.append('\r'); i += 2 }
+                't' -> { out.append('\t'); i += 2 }
+                'b' -> { out.append('\b'); i += 2 }
+                'f' -> { out.append('\u000C'); i += 2 }
+                'x' -> {
+                    val code = if (i + 3 < raw.length) raw.substring(i + 2, i + 4).toIntOrNull(16) else null
+                    if (code != null) {
+                        out.append(code.toChar())
+                        i += 4
+                    } else {
+                        out.append('\\')
+                        i++
+                    }
+                }
+                else -> {
+                    out.append(next)
+                    i += 2
+                }
+            }
+        } else {
+            out.append(ch)
+            i++
+        }
+    }
+    return out.toString()
+}
+
+private fun extractNetflixGraphqlArg(html: String): String? {
+    val prefixRegex = Regex("""netflix\.reactContext\.models\.graphql\s*=\s*JSON\.parse\(\s*'""")
+    val match = prefixRegex.find(html) ?: return null
+    val start = match.range.last + 1
+    var i = start
+    while (i < html.length) {
+        when (html[i]) {
+            '\\' -> i += 2
+            '\'' -> return html.substring(start, i)
+            else -> i++
+        }
+    }
+    return null
+}
+
 internal fun parseNetflix(html: String): JSONArray {
-    val raw = Regex("""netflix\.reactContext\.models\.graphql\s*=\s*JSON\.parse\('(.*?)'\);""", RegexOption.DOT_MATCHES_ALL)
-        .find(html)?.groupValues?.get(1) ?: error("Chart format changed")
-    val decoded = raw.replace(Regex("""\\([\\'])""")) { it.groupValues[1] }
+    val raw = extractNetflixGraphqlArg(html) ?: error("Chart format changed")
+    val decoded = decodeJsStringLiteral(raw)
     val data = JSONObject(decoded).getJSONObject("data")
     val result = JSONArray()
     val seen = hashSetOf<Triple<String, String, String>>()
@@ -353,7 +424,7 @@ internal fun buildDiscovery(
     checkCancelled: () -> Unit = {},
 ): DiscoveryResult {
     checkCancelled()
-    val candidates = catalog.filter { it.kind in setOf(MediaKind.VOD, MediaKind.SERIES) }.map { it.copy() }
+    val candidates = catalog.filter { it.kind == MediaKind.VOD || it.kind == MediaKind.SERIES }
     val index = HashMap<Pair<MediaKind, String>, MutableList<MediaItem>>()
     for (item in candidates) {
         checkCancelled()

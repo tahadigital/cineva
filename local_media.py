@@ -83,8 +83,8 @@ def scan_local_folder(raw_dir, max_files=8000, max_depth=6):
             stem = os.path.splitext(fname)[0]
             subtitles = []
             for sub_candidate in sorted(dir_files):
-                sub_ext = os.path.splitext(sub_candidate)[1].lower()
-                if sub_ext in SUBTITLE_EXTS and sub_candidate.startswith(stem):
+                sub_stem, sub_ext = os.path.splitext(sub_candidate)
+                if sub_ext.lower() in SUBTITLE_EXTS and (sub_stem == stem or sub_stem.startswith((stem + '.', stem + '_'))):
                     sub_path = (Path(dirpath) / sub_candidate).resolve()
                     if sub_path.is_relative_to(root) and sub_path.is_file():
                         subtitles.append(str(sub_path))

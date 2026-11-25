@@ -9,6 +9,7 @@ import android.media.AudioManager
 import android.os.Build
 import android.util.Rational
 import android.view.WindowManager
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
@@ -18,6 +19,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
@@ -106,10 +108,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -125,6 +134,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.app.PictureInPictureModeChangedInfo
+import androidx.core.util.Consumer
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -137,8 +148,10 @@ import app.mavie.player.ui.MavieGlassDialogFill
 import app.mavie.player.ui.MavieGlassPillButton
 import app.mavie.player.ui.MavieGlassPillFill
 import app.mavie.player.ui.MavieGradientButton
+import app.mavie.player.ui.MavieMuted
 import app.mavie.player.ui.MaviePurple
 import app.mavie.player.ui.MavieTurquoise
+import app.mavie.player.ui.errorHintFor
 import app.mavie.player.ui.mavieGlassSurface
 import app.mavie.player.ui.playbackTime
 import app.mavie.player.ui.rememberPressScale
@@ -150,6 +163,59 @@ import org.videolan.libvlc.util.VLCVideoLayout
 data class UpNextEpisode(val title: String, val season: Int, val number: Int, val artwork: String)
 
 private const val NEXT_EPISODE_SECONDS = 6
+
+internal enum class PlayerKeyAction {
+    NONE,
+    TOGGLE_PLAY_PAUSE,
+    SEEK_BACK,
+    SEEK_FORWARD,
+    REVEAL_CONTROLS,
+    UNLOCK_HINT,
+    DISMISS_NEXT,
+    EXIT,
+}
+
+internal fun resolvePlayerKeyAction(
+    key: Key,
+    controlsVisible: Boolean,
+    locked: Boolean,
+    isLive: Boolean,
+    seekable: Boolean,
+    ended: Boolean,
+    playing: Boolean,
+    showNext: Boolean,
+    dialogOpen: Boolean,
+): PlayerKeyAction {
+    if (dialogOpen) return PlayerKeyAction.NONE
+    if (locked) {
+        return when (key) {
+            Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.Escape -> PlayerKeyAction.UNLOCK_HINT
+            else -> PlayerKeyAction.NONE
+        }
+    }
+    when (key) {
+        Key.MediaPlayPause, Key.Spacebar -> return PlayerKeyAction.TOGGLE_PLAY_PAUSE
+        Key.MediaPlay -> return if (!playing) PlayerKeyAction.TOGGLE_PLAY_PAUSE else PlayerKeyAction.REVEAL_CONTROLS
+        Key.MediaPause -> return if (playing) PlayerKeyAction.TOGGLE_PLAY_PAUSE else PlayerKeyAction.REVEAL_CONTROLS
+        Key.MediaRewind, Key.MediaStepBackward -> {
+            return if (!isLive && (seekable || ended)) PlayerKeyAction.SEEK_BACK else PlayerKeyAction.REVEAL_CONTROLS
+        }
+        Key.MediaFastForward, Key.MediaStepForward -> {
+            return if (!isLive && seekable) PlayerKeyAction.SEEK_FORWARD else PlayerKeyAction.REVEAL_CONTROLS
+        }
+        Key.Escape -> return if (showNext) PlayerKeyAction.DISMISS_NEXT else PlayerKeyAction.EXIT
+        else -> Unit
+    }
+    if (!controlsVisible) {
+        return when (key) {
+            Key.DirectionLeft -> if (!isLive && (seekable || ended)) PlayerKeyAction.SEEK_BACK else PlayerKeyAction.REVEAL_CONTROLS
+            Key.DirectionRight -> if (!isLive && seekable) PlayerKeyAction.SEEK_FORWARD else PlayerKeyAction.REVEAL_CONTROLS
+            Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.DirectionUp, Key.DirectionDown -> PlayerKeyAction.REVEAL_CONTROLS
+            else -> PlayerKeyAction.NONE
+        }
+    }
+    return PlayerKeyAction.NONE
+}
 
 /**
  * Direct, native Android playback: no localhost, WebView or desktop server is involved.
@@ -229,7 +295,33 @@ fun PlayerScreen(
     var landscape by rememberSaveable(isLive, initialLandscape) { mutableStateOf(initialLandscape) }
     var nextDismissed by remember(sourceUrl) { mutableStateOf(false) }
     var secondsToNext by remember(sourceUrl) { mutableIntStateOf(NEXT_EPISODE_SECONDS) }
-    val inPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && activity?.isInPictureInPictureMode == true
+    var inPip by remember(activity) {
+        mutableStateOf(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && activity?.isInPictureInPictureMode == true)
+    }
+    DisposableEffect(activity) {
+        val componentActivity = activity as? ComponentActivity
+        if (componentActivity == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            onDispose {}
+        } else {
+            val listener = Consumer<PictureInPictureModeChangedInfo> { info ->
+                inPip = info.isInPictureInPictureMode
+            }
+            componentActivity.addOnPictureInPictureModeChangedListener(listener)
+            onDispose { componentActivity.removeOnPictureInPictureModeChangedListener(listener) }
+        }
+    }
+    val initialBrightness = remember(activity) { activity?.window?.attributes?.screenBrightness }
+    LaunchedEffect(inPip) {
+        if (inPip && initialBrightness != null) {
+            activity?.window?.let { win ->
+                val attrs = win.attributes
+                attrs.screenBrightness = initialBrightness
+                win.attributes = attrs
+            }
+        }
+    }
+    val rootFocusRequester = remember { FocusRequester() }
+    val playPauseFocusRequester = remember { FocusRequester() }
     val showNext = !isLive && playback.ended && nextEpisode != null && !nextDismissed && !inPip
     fun advanceEpisode() {
         if (nextDismissed) return
@@ -261,6 +353,7 @@ fun PlayerScreen(
     DisposableEffect(activity, view) {
         val previousOrientation = activity?.requestedOrientation
         val previousKeepAwake = activity?.window?.attributes?.flags?.and(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) != 0
+        val previousBrightness = activity?.window?.attributes?.screenBrightness
         val bars = activity?.window?.let { WindowCompat.getInsetsController(it, view) }
         bars?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         bars?.hide(WindowInsetsCompat.Type.systemBars())
@@ -268,6 +361,13 @@ fun PlayerScreen(
         onDispose {
             bars?.show(WindowInsetsCompat.Type.systemBars())
             if (!previousKeepAwake) activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            if (previousBrightness != null) {
+                activity?.window?.let { win ->
+                    val attrs = win.attributes
+                    attrs.screenBrightness = previousBrightness
+                    win.attributes = attrs
+                }
+            }
             if (previousOrientation != null) activity?.requestedOrientation = previousOrientation
         }
     }
@@ -311,6 +411,15 @@ fun PlayerScreen(
             controlsVisible = false
         }
     }
+    LaunchedEffect(controlsVisible, locked, inPip, trackDialog, episodeDrawerOpen, optionsMenuOpen, playback.error, showBuffering, showNext) {
+        if (trackDialog == null && !episodeDrawerOpen && !optionsMenuOpen && !inPip) {
+            if (!controlsVisible || locked) {
+                runCatching { rootFocusRequester.requestFocus() }
+            } else if (playback.error == null && !showBuffering && !showNext) {
+                runCatching { playPauseFocusRequester.requestFocus() }
+            }
+        }
+    }
     LaunchedEffect(showNext, lifecycleState, trackDialog) {
         if (showNext && lifecycleState.isAtLeast(Lifecycle.State.RESUMED) && trackDialog == null) {
             while (secondsToNext > 0) {
@@ -339,6 +448,61 @@ fun PlayerScreen(
     var volumeAccum by remember { mutableFloatStateOf(-1f) }
     Box(
         Modifier.fillMaxSize().background(Color.Black)
+            .focusRequester(rootFocusRequester)
+            .focusable()
+            .onPreviewKeyEvent { keyEvent ->
+                if (keyEvent.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                val action = resolvePlayerKeyAction(
+                    key = keyEvent.key,
+                    controlsVisible = controlsVisible,
+                    locked = locked,
+                    isLive = isLive,
+                    seekable = playback.seekable,
+                    ended = playback.ended,
+                    playing = playback.playing,
+                    showNext = showNext,
+                    dialogOpen = trackDialog != null || episodeDrawerOpen || optionsMenuOpen,
+                )
+                when (action) {
+                    PlayerKeyAction.NONE -> false
+                    PlayerKeyAction.TOGGLE_PLAY_PAUSE -> {
+                        controller.togglePlaying()
+                        controlsVisible = true
+                        interactionVersion++
+                        true
+                    }
+                    PlayerKeyAction.SEEK_BACK -> {
+                        controller.skipBy(-10_000L)
+                        gestureFeedback = "« 10 sn"
+                        interactionVersion++
+                        true
+                    }
+                    PlayerKeyAction.SEEK_FORWARD -> {
+                        controller.skipBy(10_000L)
+                        gestureFeedback = "10 sn »"
+                        interactionVersion++
+                        true
+                    }
+                    PlayerKeyAction.REVEAL_CONTROLS -> {
+                        controlsVisible = true
+                        interactionVersion++
+                        true
+                    }
+                    PlayerKeyAction.UNLOCK_HINT -> {
+                        unlockHintVisible = true
+                        true
+                    }
+                    PlayerKeyAction.DISMISS_NEXT -> {
+                        nextDismissed = true
+                        true
+                    }
+                    PlayerKeyAction.EXIT -> {
+                        controller.persistProgress()
+                        onBack()
+                        true
+                    }
+                }
+            }
             .pointerInput(locked, isLive, playback.seekable, playback.ended) {
                 detectTapGestures(
                     onTap = {
@@ -392,6 +556,7 @@ fun PlayerScreen(
             )
         }
         if (showBuffering && playback.error == null) {
+            val pct = playback.bufferingPercent.toInt().coerceIn(0, 100)
             Column(
                 Modifier.align(Alignment.Center)
                     .mavieGlassSurface(RoundedCornerShape(22.dp))
@@ -401,7 +566,11 @@ fun PlayerScreen(
             ) {
                 CircularProgressIndicator(color = MavieTurquoise, strokeWidth = 3.dp, modifier = Modifier.size(34.dp))
                 Text(if (isLive) "Canlı yayın hazırlanıyor…" else "Yayın açılıyor…", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                Text("Ses ve altyazı parçaları senkronize ediliyor", color = Color.White.copy(alpha = .68f), fontSize = 11.sp)
+                Text(
+                    if (pct in 1..99) "Önbellek dolduruluyor · %$pct" else "Ses ve altyazı parçaları senkronize ediliyor",
+                    color = Color.White.copy(alpha = .68f),
+                    fontSize = 11.sp,
+                )
             }
         }
         gestureFeedback?.let { label ->
@@ -512,6 +681,7 @@ fun PlayerScreen(
                             size = 80,
                             prominent = true,
                             iconSize = 42,
+                            modifier = Modifier.focusRequester(playPauseFocusRequester),
                         ) { controller.togglePlaying(); controlsVisible = true; interactionVersion++ }
                         Spacer(Modifier.width(24.dp))
                         if (!isLive) {
@@ -697,6 +867,7 @@ fun PlayerScreen(
             }
         }
         playback.error?.let { message ->
+            val hint = errorHintFor(playback.errorCode)
             Column(
                 Modifier.align(Alignment.Center).padding(24.dp)
                     .mavieGlassSurface(
@@ -708,7 +879,20 @@ fun PlayerScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text("Yayına bağlanamadık", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
-                Text(message, color = Color(0xFFB9BDC6), fontSize = 13.sp, modifier = Modifier.padding(vertical = 14.dp))
+                Text(
+                    message,
+                    color = Color(0xFFB9BDC6),
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(top = 14.dp, bottom = if (hint != null) 6.dp else 14.dp),
+                )
+                if (hint != null) {
+                    Text(
+                        hint,
+                        color = MavieMuted,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(bottom = 14.dp),
+                    )
+                }
                 MavieGradientButton(
                     onClick = controller::retry,
                     modifier = Modifier.heightIn(min = 48.dp),
@@ -822,6 +1006,7 @@ private fun PlayerControl(
     size: Int = 48,
     prominent: Boolean = false,
     iconSize: Int = 24,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -836,7 +1021,7 @@ private fun PlayerControl(
             onClick = onClick,
             enabled = enabled,
             interactionSource = interactionSource,
-            modifier = Modifier
+            modifier = modifier
                 .graphicsLayer { scaleX = scale; scaleY = scale }
                 .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                 .size(size.dp)

@@ -1,17 +1,21 @@
 import fs from 'node:fs';
 import vm from 'node:vm';
 const source = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8')
-  .replace(/init\(\);\s*$/, 'globalThis.playbackTest={state,empty,confirmDialog,section,renderFavorites,renderPlaylists,resumeCard,playItem,stopPlayer,bindPlayer,seekTo,requestSeek,skipPlayback,pingPlayback};');
+  .replace(/init\(\);\s*$/, 'globalThis.playbackTest={state,empty,confirmDialog,section,renderFavorites,renderPlaylists,resumeCard,playItem,stopPlayer,bindPlayer,seekTo,requestSeek,skipPlayback,pingPlayback,epgTime,api,openDialog,closeDialog,renderMultiView,clearMultiView,playLocalFile,playbackFailed,updateTransport};');
 
-export function harness({hls = true, responses = [], ffmpeg = true, tracks = false, documentSetup} = {}) {
-  const elements = new Map(), requests = [], instances = [], timers = new Map();
+export function harness({hls = true, responses = [], ffmpeg = true, tracks = false, documentSetup, fetchHandler} = {}) {
+  const elements = new Map(), requests = [], instances = [], timers = new Map(), intervals = new Map();
   function element(selector) {
     if (elements.has(selector)) return elements.get(selector);
     const events = new Map(), classes = new Set();
     const el = {
       hidden: false, open: false, currentTime: 0, duration: NaN, error: null, paused: false, readyState: 0,
       volume: 1, muted: false, dataset: {}, style: {}, textContent: '', src: '', attributes: {},
+      isConnected: true,
       setAttribute(name, value) { this.attributes[name] = value; },
+      focus() { context.document.activeElement = el; },
+      querySelector() { return null; },
+      querySelectorAll() { return []; },
       classList: {
         add: value => classes.add(value), remove: value => classes.delete(value),
         contains: value => classes.has(value),
@@ -22,7 +26,7 @@ export function harness({hls = true, responses = [], ffmpeg = true, tracks = fal
       play: () => Promise.resolve(), pause() {}, load() {},
       removeAttribute(name) { if (name === 'src') { this.src = ''; this.currentTime = 0; this.error = null; } },
       canPlayType: () => hls ? '' : 'probably',
-      showModal() { this.open = true; }, close() { this.open = false; },
+      showModal() { this.open = true; }, close() { this.open = false; this.emit('close'); },
     };
     elements.set(selector, el);
     return el;
@@ -46,21 +50,27 @@ export function harness({hls = true, responses = [], ffmpeg = true, tracks = fal
   class FakeDate extends Date { static now() { return now; } }
   const context = vm.createContext({
     URLSearchParams, Intl, Date: FakeDate, Math, Map, Number, String, Array, Object,
+    AbortController, URL,
     Hls: FakeHls, HTMLImageElement: class {},
     window: {Hls: FakeHls, addEventListener() {}},
     document: {
-      activeElement: null, documentElement: element('html'),
+      activeElement: null, documentElement: element('html'), pictureInPictureEnabled: true, pictureInPictureElement: null,
       addEventListener: (name, callback) => element('document').addEventListener(name, callback),
       querySelector: element, getElementById:id=>element('#'+id),
       querySelectorAll: selector => selector === '[data-mode]' ? modes : [],
     },
     location: {hash: '#vod'}, navigator: {},
-    setInterval: () => ++sequence, clearInterval() {},
+    setInterval(callback, delay) { const id = ++sequence; intervals.set(id, {callback, delay}); return id; },
+    clearInterval(id) { intervals.delete(id); },
     setTimeout(callback, delay) {const id=++sequence;timers.set(id,{callback,delay});return id;},
     clearTimeout(id) {timers.delete(id);},
     async fetch(url, options = {}) {
       const body = options.body ? JSON.parse(options.body) : undefined;
-      requests.push({url, method: options.method || 'GET', body});
+      requests.push({url, method: options.method || 'GET', body, signal: options.signal});
+      if (fetchHandler) {
+        const custom = await fetchHandler(url, options);
+        if (custom) return custom;
+      }
       let response = {sessionId: `session-${++sequence}`, type: 'hls', url: '/media/current/index.m3u8', startOffset: body?.start || 0, duration: 3000};
       let status = 200;
       if (url === '/api/play') {
@@ -84,6 +94,6 @@ export function harness({hls = true, responses = [], ffmpeg = true, tracks = fal
   const settle = () => new Promise(resolve => setImmediate(resolve));
   const runTimers=async(maxDelay=Infinity)=>{for(const [id,timer] of [...timers]){if(timer.delay>maxDelay||!timers.has(id))continue;timers.delete(id);await timer.callback();}await settle();};
   const advance=async(milliseconds)=>{now+=milliseconds;await runTimers(milliseconds);};
-  return {...api, tracks:context.window.MavieTracks, element, modes, requests, instances, plays, settle,runTimers,timers,advance};
+  return {...api, tracks:context.window.MavieTracks, element, modes, requests, instances, plays, settle,runTimers,timers,intervals,advance,context};
 }
 

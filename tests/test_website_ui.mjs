@@ -200,3 +200,16 @@ test("portal.js triggers direct download for every platform card button without 
     );
   }
 });
+
+test("L1: website includes skip-link accessibility, main tabindex=-1, zero legacy colors, and no @netlify/database dependency", () => {
+  const html = readWeb("index.html");
+  const css = readWeb("styles.css");
+  const pkg = JSON.parse(readWeb("package.json"));
+
+  assert.match(html, /class="skip-link"\s+href="#top"/);
+  assert.match(html, /<main\s+id="top"\s+tabindex="-1">/);
+  assert.match(css, /\.skip-link\s*\{/);
+  assert.match(css, /\.skip-link:focus\s*\{/);
+  assert.doesNotMatch(css, /#e50914|#ff4b45|#ed1520/i);
+  assert.equal(pkg.dependencies?.["@netlify/database"], undefined);
+});

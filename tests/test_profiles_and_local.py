@@ -1,6 +1,7 @@
 """Tests for Stage 1 features: local media scanner/Range streaming, profiles with PIN/Kid mode, and surprise picker."""
 from __future__ import annotations
 
+import contextlib
 import http.client
 import http.server
 import json
@@ -188,7 +189,7 @@ class ProfilesAndLocalHTTPTests(unittest.TestCase):
         self.assertTrue(created['profile']['isKids'])
 
         # PIN must be PBKDF2-hashed (salt_hex:digest_hex) in SQLite, never stored in plaintext.
-        with sqlite3.connect(self.data / 'state.sqlite3') as db:
+        with contextlib.closing(sqlite3.connect(self.data / 'state.sqlite3')) as db:
             pin_hash = db.execute('SELECT pin_hash FROM profiles WHERE id=?', (kid_id,)).fetchone()[0]
         self.assertRegex(pin_hash, r'^[0-9a-f]{32}:[0-9a-f]{64}$')
         self.assertNotIn('1234', pin_hash)
@@ -304,6 +305,120 @@ class ProfilesAndLocalHTTPTests(unittest.TestCase):
 
         c_cloud, _, _ = self.req('GET', '/api/cloud/status')
         self.assertEqual(c_cloud, 404)
+
+    def test_6_source_change_and_demo_clear_profile_snapshots_and_unknown_delete_404(self):
+        from tests.e2e.runner import LocalMediaServerProcess
+        srv = LocalMediaServerProcess().start()
+        self.addCleanup(srv.stop)
+        c = srv.paired_client()
+
+        # Delete unknown profile returns 404
+        r_missing = c.delete('/api/profiles/nonexistent_id')
+        self.assertEqual(r_missing.status, 404)
+        self.assertEqual((r_missing.json or {}).get('error_code'), 'not_found')
+
+        p2_res = c.post('/api/profiles', {'name': 'Profil 2', 'isKids': False})
+        self.assertEqual(p2_res.status, 201)
+        p2_id = p2_res.json['profile']['id']
+
+        c.post('/api/demo', {})
+        demo_id = c.get('/api/catalog?kind=vod').json['items'][0]['id']
+
+        self.assertEqual(c.post('/api/profiles/switch', {'id': p2_id, 'pin': ''}).status, 200)
+        self.assertEqual(c.post('/api/favorites', {'id': demo_id, 'favorite': True}).status, 200)
+        self.assertEqual(c.post('/api/profiles/switch', {'id': 'default', 'pin': ''}).status, 200)
+
+        # Trigger /api/demo -> wipes active tables AND profile_snapshots
+        self.assertEqual(c.post('/api/demo', {}).status, 200)
+        self.assertEqual(c.post('/api/profiles/switch', {'id': p2_id, 'pin': ''}).status, 200)
+        self.assertEqual(c.get('/api/favorites').json['items'], [])
+
+        # Add favorite again, switch to default, change source via /api/settings -> snapshots cleared
+        self.assertEqual(c.post('/api/favorites', {'id': demo_id, 'favorite': True}).status, 200)
+        self.assertEqual(c.post('/api/profiles/switch', {'id': 'default', 'pin': ''}).status, 200)
+        self.assertEqual(c.post('/api/settings', {'type': 'local', 'name': 'Diskim', 'localDir': str(self.media)}).status, 200)
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            if len(c.get('/api/catalog?kind=vod').json.get('items', [])) >= 2:
+                break
+            time.sleep(0.05)
+        self.assertEqual(c.post('/api/profiles/switch', {'id': p2_id, 'pin': ''}).status, 200)
+        self.assertEqual(c.get('/api/favorites').json['items'], [])
+
+    def test_7_pin_verify_does_not_block_media_streaming_lock(self):
+        import server
+        orig_data, orig_db, orig_cfg = server.DATA, server.DB, server.CONFIG_FILE
+        with tempfile.TemporaryDirectory(prefix='mavie-pin-lock-') as tmp:
+            server.DATA = Path(tmp)
+            server.DB = server.DATA / 'state.sqlite3'
+            server.CONFIG_FILE = server.DATA / 'config.json'
+            server.initialize()
+            pin_hash = server._hash_pin('1234')
+            with server.connect() as c:
+                c.execute('INSERT INTO profiles VALUES(?,?,?,?,?,?)', ('p_lock', 'Locked', '#7C3AED', 0, pin_hash, server.stamp()))
+            entered = threading.Event()
+            release = threading.Event()
+            orig_verify = server._verify_pin
+
+            def slow_verify(pin, stored):
+                entered.set()
+                release.wait(2.0)
+                return orig_verify(pin, stored)
+
+            old_verify = server._verify_pin
+            server._verify_pin = slow_verify
+            try:
+                t = threading.Thread(target=lambda: server.switch_profile('p_lock', '1234'), daemon=True)
+                t.start()
+                self.assertTrue(entered.wait(2.0))
+                acquired = server.resource_lock.acquire(blocking=False)
+                try:
+                    self.assertTrue(acquired, 'resource_lock must not be held during PBKDF2 PIN verify')
+                finally:
+                    if acquired:
+                        server.resource_lock.release()
+                release.set()
+                t.join(timeout=3.0)
+            finally:
+                server._verify_pin = old_verify
+                server.DATA, server.DB, server.CONFIG_FILE = orig_data, orig_db, orig_cfg
+
+    def test_8_ass_ssa_sidecar_subtitles_and_strict_stem_matching(self):
+        with tempfile.TemporaryDirectory(prefix='mavie-ass-') as tmp:
+            media_dir = Path(tmp) / 'media'
+            media_dir.mkdir(parents=True)
+            (media_dir / 'Movie.2025.mp4').write_bytes(b'MP4DATA')
+            (media_dir / 'Movie.2025.tr.ass').write_text(
+                '[Script Info]\nTitle: Test\n\n[Events]\n'
+                'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n'
+                'Dialogue: 0,0:00:01.25,0:00:03.50,Default,,0,0,0,,{\\i1}Merhaba\\NDünya{\\i0}\n',
+                encoding='utf-8',
+            )
+            (media_dir / 'Movie.2025.2.srt').write_text('1\n00:00:00,000 --> 00:00:01,000\nWrong film\n', encoding='utf-8')
+            (media_dir / 'Movie.2025 2.srt').write_text('1\n00:00:00,000 --> 00:00:01,000\nSequel sub\n', encoding='utf-8')
+
+            scanned = local_media.scan_local_folder(str(media_dir))
+            subs = scanned['items'][0]['subtitles']
+            self.assertEqual([Path(s).name for s in subs], ['Movie.2025.2.srt', 'Movie.2025.tr.ass'])
+
+            self.assertEqual(self.req('POST', '/api/settings', {'type': 'local', 'name': 'ASS', 'localDir': str(media_dir)})[0], 200)
+            deadline = time.monotonic() + 10
+            items = []
+            while time.monotonic() < deadline:
+                items = self.req('GET', '/api/catalog?kind=vod')[2].get('items', [])
+                if items and items[0]['name'] == 'Movie':
+                    break
+                time.sleep(0.05)
+            iid = items[0]['id']
+            tracks = self.req('GET', f'/api/tracks/{iid}')[2]
+            ass_sub = next(s for s in tracks['externalSubtitles'] if s['title'].endswith('.tr.ass'))
+            code, _, body = self.req('GET', ass_sub['url'], raw=True)
+            self.assertEqual(code, 200)
+            txt = body.decode('utf-8')
+            self.assertTrue(txt.startswith('WEBVTT'))
+            self.assertIn('00:00:01.250 --> 00:00:03.500', txt)
+            self.assertIn('Merhaba\nDünya', txt)
+            self.assertNotIn('{\\i1}', txt)
 
 
 if __name__ == '__main__':

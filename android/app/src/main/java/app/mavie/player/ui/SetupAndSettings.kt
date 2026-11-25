@@ -30,6 +30,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.mavie.player.data.MavieErrorCode
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.util.Locale
 
@@ -88,15 +89,17 @@ fun MavieSetupScreen(
     onM3uSubmit: (String, String, String) -> Unit = { _, _, _ -> },
     onDemo: () -> Unit = {},
     onOpenLocalFile: () -> Unit = {},
+    errorCode: MavieErrorCode? = null,
 ) {
     var mode by rememberSaveable { mutableStateOf("m3u") }
     var name by rememberSaveable { mutableStateOf("Kişisel Liste") }
-    var m3uUrl by rememberSaveable { mutableStateOf("") }
+    // Credential-bearing URLs stay out of Android's instance-state bundle.
+    var m3uUrl by remember { mutableStateOf("") }
     var host by rememberSaveable { mutableStateOf("") }
     var username by rememberSaveable { mutableStateOf("") }
     // Password is deliberately not saveable in Android's instance-state bundle.
     var password by remember { mutableStateOf("") }
-    var epgUrl by rememberSaveable { mutableStateOf("") }
+    var epgUrl by remember { mutableStateOf("") }
     var reveal by remember { mutableStateOf(false) }
     var localError by remember { mutableStateOf<String?>(null) }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -299,7 +302,58 @@ fun MavieSetupScreen(
                         keyboardActions = KeyboardActions(onDone = { submit() }),
                     )
                     val message = localError ?: error
-                    if (message != null) Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    val activeCode = if (localError != null) null else errorCode
+                    if (message != null) {
+                        val hint = errorHintFor(activeCode)
+                        val activeSourceInput = if (mode == "m3u") m3uUrl.trim() else host.trim()
+                        val showHttpRetry = activeCode == MavieErrorCode.TLS_FAILED &&
+                            activeSourceInput.startsWith("https://", ignoreCase = true)
+                        val showDemoRecovery = activeCode in setOf(MavieErrorCode.OFFLINE, MavieErrorCode.KEYSTORE_ERROR)
+                        Column(
+                            modifier = Modifier.fillMaxWidth()
+                                .mavieGlassSurface(RoundedCornerShape(14.dp), topColor = Color(0x552E1525), bottomColor = Color(0x441B1020))
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                            if (!hint.isNullOrBlank()) {
+                                Text(hint, color = MavieMuted, style = MaterialTheme.typography.bodySmall)
+                            }
+                            if (showHttpRetry || showDemoRecovery) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    if (showHttpRetry) {
+                                        MavieGlassPillButton(
+                                            onClick = {
+                                                if (mode == "m3u") {
+                                                    m3uUrl = "http://" + m3uUrl.trim().substring(8)
+                                                } else {
+                                                    host = "http://" + host.trim().substring(8)
+                                                }
+                                                localError = null
+                                                submit()
+                                            },
+                                            modifier = Modifier.heightIn(min = 48.dp),
+                                            shape = RoundedCornerShape(12.dp),
+                                        ) {
+                                            Text("HTTP ile Dene", color = Color.White, fontSize = 12.sp)
+                                        }
+                                    }
+                                    if (showDemoRecovery) {
+                                        OutlinedButton(
+                                            onClick = { if (!loading) onDemo() },
+                                            enabled = !loading,
+                                            modifier = Modifier.heightIn(min = 48.dp),
+                                            shape = RoundedCornerShape(12.dp),
+                                            border = BorderStroke(1.dp, MavieSpecularBorderBrush),
+                                            colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0x73182038), contentColor = Color.White),
+                                        ) {
+                                            Text("Açık Sinema Demosu", fontSize = 12.sp)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     MavieGradientButton(
                         onClick = { submit() },
                         enabled = !loading,
@@ -339,10 +393,14 @@ fun MavieSettingsScreen(
     onSync: () -> Unit,
     onLogout: () -> Unit,
     versionName: String = "2.2.0",
+    errorCode: MavieErrorCode? = null,
+    epgUrl: String = "",
+    onSaveEpgUrl: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     var confirmLogout by remember { mutableStateOf(false) }
     var showLicenses by remember { mutableStateOf(false) }
+    var showEpgDialog by remember { mutableStateOf(false) }
     val noticeText = remember {
         runCatching { context.assets.open("NOTICE.txt").bufferedReader().use { it.readText() } }
             .getOrDefault("Mavie · Apache 2.0 / LibVLC (LGPL-2.1+)")
@@ -374,7 +432,31 @@ fun MavieSettingsScreen(
                         else Icon(Icons.Outlined.Refresh, null, Modifier.size(19.dp), tint = Color.White)
                         Spacer(Modifier.width(8.dp)); Text(if (refreshing) "Yenileniyor…" else "Kütüphaneyi yenile", color = Color.White)
                     }
-                    if (error != null) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        if (epgUrl.isNotBlank()) "XMLTV EPG: Bağlı" else "XMLTV EPG: Eklenmedi",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MavieMuted,
+                    )
+                    OutlinedButton(
+                        onClick = { showEpgDialog = true },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, MavieSpecularBorderBrush),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0x73182038), contentColor = Color.White),
+                    ) {
+                        Icon(Icons.Outlined.Tv, null, Modifier.size(19.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("XMLTV EPG Düzenle")
+                    }
+                    if (error != null) {
+                        val hint = errorHintFor(errorCode)
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                            if (!hint.isNullOrBlank()) {
+                                Text(hint, color = MavieMuted, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
                 }
                 SettingsCard("Kütüphanen seninle", "Favorilerini, listelerini ve izleme kayıtlarını taşı.") {
                     OutlinedButton(
@@ -441,6 +523,72 @@ fun MavieSettingsScreen(
         text = { Text(noticeText, modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()), fontSize = 12.sp, lineHeight = 18.sp) },
         confirmButton = { TextButton(onClick = { showLicenses = false }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Kapat") } },
     )
+    if (showEpgDialog) {
+        var epgInput by remember(epgUrl) { mutableStateOf(epgUrl) }
+        var epgLocalError by remember { mutableStateOf<String?>(null) }
+        AlertDialog(
+            onDismissRequest = { showEpgDialog = false },
+            containerColor = MavieGlassDialogFill,
+            shape = RoundedCornerShape(24.dp),
+            title = { Text("XMLTV EPG Adresi") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "Spor ve canlı yayın rehberi için isteğe bağlı XMLTV EPG bağlantısı ekleyebilir veya silebilirsin.",
+                        color = MavieMuted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedTextField(
+                        value = epgInput,
+                        onValueChange = { epgInput = it; epgLocalError = null },
+                        label = { Text("XMLTV EPG adresi") },
+                        placeholder = { Text("https://example.com/guide.xml", fontSize = 13.sp) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (epgLocalError != null) {
+                        Text(epgLocalError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (epgInput.isNotBlank()) {
+                        TextButton(
+                            onClick = {
+                                showEpgDialog = false
+                                onSaveEpgUrl("")
+                            },
+                            modifier = Modifier.heightIn(min = 48.dp),
+                        ) {
+                            Text("Temizle", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val trimmed = epgInput.trim()
+                        if (trimmed.isEmpty()) {
+                            showEpgDialog = false
+                            onSaveEpgUrl("")
+                        } else {
+                            val normalized = normalizeSetupUrl(trimmed)
+                            val uri = runCatching { Uri.parse(normalized) }.getOrNull()
+                            if (uri?.scheme !in listOf("http", "https") || uri?.host.isNullOrBlank()) {
+                                epgLocalError = "EPG adresi http:// veya https:// ile başlamalı."
+                            } else {
+                                showEpgDialog = false
+                                onSaveEpgUrl(normalized)
+                            }
+                        }
+                    },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text("Kaydet") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEpgDialog = false }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Vazgeç") }
+            },
+        )
+    }
     if (confirmLogout) AlertDialog(
         onDismissRequest = { confirmLogout = false },
         containerColor = MavieGlassDialogFill,

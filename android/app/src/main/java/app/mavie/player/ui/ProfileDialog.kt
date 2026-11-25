@@ -48,6 +48,21 @@ fun ProfilePickerDialog(
     var newName by remember { mutableStateOf("") }
     var newPin by remember { mutableStateOf("") }
     var newIsKids by remember { mutableStateOf(false) }
+    var awaitingCreate by remember { mutableStateOf(false) }
+    var previousCount by remember { mutableIntStateOf(profiles.size) }
+    LaunchedEffect(profiles.size, error) {
+        if (awaitingCreate) {
+            if (error != null) {
+                awaitingCreate = false
+            } else if (profiles.size > previousCount) {
+                awaitingCreate = false
+                newName = ""
+                newPin = ""
+                newIsKids = false
+            }
+        }
+        previousCount = profiles.size
+    }
     val colorOptions = remember {
         listOf(
             "#7C3AED" to "Mavie Moru",
@@ -199,9 +214,9 @@ fun ProfilePickerDialog(
                 MavieGradientButton(
                     onClick = {
                         if (newName.isNotBlank()) {
+                            awaitingCreate = true
+                            previousCount = profiles.size
                             onCreate(newName.trim(), selectedColor, newIsKids, newPin)
-                            newName = ""
-                            newPin = ""
                         }
                     },
                     enabled = newName.isNotBlank(),

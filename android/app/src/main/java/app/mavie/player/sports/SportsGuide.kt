@@ -1,15 +1,24 @@
 package app.mavie.player.sports
 
+import app.mavie.player.data.HttpStatusException
+import app.mavie.player.data.IptvException
 import app.mavie.player.data.MavieBaseHttpClient
+import app.mavie.player.data.MavieErrorCode
+import app.mavie.player.data.UrlSecurity
+import app.mavie.player.data.classifyHttpError
+import app.mavie.player.data.classifyIoException
 import app.mavie.player.data.readCancellable
 import app.mavie.player.readBounded
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import org.json.JSONObject
 import org.json.JSONTokener
 import org.w3c.dom.Element
+import org.xml.sax.EntityResolver
 import org.xml.sax.InputSource
 import java.io.ByteArrayInputStream
 import java.io.IOException
@@ -25,6 +34,7 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPInputStream
+import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
 
 internal val Istanbul: ZoneId = ZoneId.of("Europe/Istanbul")
@@ -78,6 +88,12 @@ internal object SportsChannels {
     }
 }
 
+internal class SportsGuideException(
+    message: String,
+    val code: MavieErrorCode,
+    cause: Throwable? = null,
+) : IOException(message, cause)
+
 internal object SportsGuide {
     private data class Cached(val fetchedAt: Long, val events: List<SportBroadcast>)
     private val cache = ConcurrentHashMap<String, Cached>()
@@ -85,8 +101,8 @@ internal object SportsGuide {
         .connectTimeout(12, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
         .callTimeout(30, TimeUnit.SECONDS)
-        .followRedirects(true)
-        .followSslRedirects(true)
+        .followRedirects(false)
+        .followSslRedirects(false)
         .retryOnConnectionFailure(true)
         .build()
     private val spaces = Regex("\\s+")
@@ -105,12 +121,12 @@ internal object SportsGuide {
      * Supports both current (`common.eventRows` + `common.eventChannels`) and legacy (`common.events`). */
     internal fun parseSporekrani(page: String, day: LocalDate): List<SportBroadcast> {
         val markerAt = page.indexOf(SporEkraniMarker)
-        if (markerAt == -1) throw IOException("Spor yayın rehberi okunamadı.")
+        if (markerAt == -1) throw SportsGuideException("Spor yayın rehberi okunamadı.", MavieErrorCode.INVALID_RESPONSE)
         val raw = page.substring(markerAt + SporEkraniMarker.length).substringBefore("</script>")
-        val root = JSONTokener(raw).nextValue() as? JSONObject ?: throw IOException("Spor yayın rehberi okunamadı.")
-        val common = root.optJSONObject("common") ?: throw IOException("Spor yayın rehberi okunamadı.")
+        val root = JSONTokener(raw).nextValue() as? JSONObject ?: throw SportsGuideException("Spor yayın rehberi okunamadı.", MavieErrorCode.INVALID_RESPONSE)
+        val common = root.optJSONObject("common") ?: throw SportsGuideException("Spor yayın rehberi okunamadı.", MavieErrorCode.INVALID_RESPONSE)
         val rows = common.optJSONArray("eventRows") ?: common.optJSONArray("events")
-            ?: throw IOException("Spor yayın rehberi okunamadı.")
+            ?: throw SportsGuideException("Spor yayın rehberi okunamadı.", MavieErrorCode.INVALID_RESPONSE)
         val channelMap = common.optJSONObject("eventChannels")
         val prefix = "$day "
         var dateMatches = rows.length() == 0
@@ -156,7 +172,7 @@ internal object SportsGuide {
                 )
             }
         }
-        if (!dateMatches) throw IOException("Yayın akışı seçilen gün için doğrulanamadı.")
+        if (!dateMatches) throw SportsGuideException("Yayın akışı seçilen gün için doğrulanamadı.", MavieErrorCode.INVALID_RESPONSE)
         return events.sortedWith(compareBy(SportBroadcast::time, SportBroadcast::id))
     }
 
@@ -182,23 +198,33 @@ internal object SportsGuide {
     }
 
     internal fun parseXmltv(xmlText: String, day: LocalDate, zone: ZoneId = Istanbul): List<SportBroadcast> {
-        val prefix = xmlText.take(4096).uppercase(Locale.ROOT)
-        if ("<!ENTITY" in prefix || "<!DOCTYPE" in prefix) {
-            throw IOException("Güvenlik nedeniyle XMLTV DTD bildirimlerine izin verilmiyor.")
+        if (xmlText.contains("<!ENTITY", ignoreCase = true) || xmlText.contains("<!DOCTYPE", ignoreCase = true)) {
+            throw SportsGuideException("Güvenlik nedeniyle XMLTV DTD bildirimlerine izin verilmiyor.", MavieErrorCode.UNSAFE_URL)
         }
         val factory = DocumentBuilderFactory.newInstance().apply {
             isNamespaceAware = false
             isExpandEntityReferences = false
+            isXIncludeAware = false
+            runCatching { setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true) }
             runCatching { setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
+            runCatching { setFeature("http://xml.org/sax/features/external-general-entities", false) }
+            runCatching { setFeature("http://xml.org/sax/features/external-parameter-entities", false) }
+            runCatching { setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false) }
         }
         val doc = try {
-            factory.newDocumentBuilder().parse(InputSource(StringReader(xmlText)))
+            val builder = factory.newDocumentBuilder()
+            builder.setEntityResolver(EntityResolver { _, _ ->
+                throw SportsGuideException("Güvenlik nedeniyle harici XML varlıklarına izin verilmiyor.", MavieErrorCode.UNSAFE_URL)
+            })
+            builder.parse(InputSource(StringReader(xmlText)))
+        } catch (err: SportsGuideException) {
+            throw err
         } catch (err: Exception) {
-            throw IOException("XMLTV yayın rehberi okunamadı.", err)
+            throw SportsGuideException("XMLTV yayın rehberi okunamadı.", MavieErrorCode.INVALID_RESPONSE, err)
         }
         val root = doc.documentElement
         if (!root.tagName.equals("tv", ignoreCase = true)) {
-            throw IOException("Geçerli bir XMLTV dosyası değil.")
+            throw SportsGuideException("Geçerli bir XMLTV dosyası değil.", MavieErrorCode.INVALID_RESPONSE)
         }
 
         val channelNames = mutableMapOf<String, List<String>>()
@@ -251,6 +277,43 @@ internal object SportsGuide {
         return events.sortedWith(compareBy(SportBroadcast::time, SportBroadcast::id))
     }
 
+    private suspend fun fetchGuideBytes(initialUrl: HttpUrl, userAgent: String, maxBytes: Int): ByteArray {
+        var currentUrl = initialUrl
+        val initialWasPublic = !UrlSecurity.isPrivateOrLoopback(initialUrl.host)
+        for (hop in 0..5) {
+            val request = Request.Builder().url(currentUrl).header("User-Agent", userAgent).build()
+            val nextOrBytes = client.newCall(request).readCancellable { response ->
+                if (response.code in setOf(301, 302, 303, 307, 308)) {
+                    val location = response.header("Location")
+                        ?: throw SportsGuideException("Yönlendirme adresi geçersiz.", MavieErrorCode.UNSAFE_URL)
+                    val resolved = currentUrl.resolve(location)
+                        ?: throw SportsGuideException("Yönlendirme adresi güvenli değil.", MavieErrorCode.UNSAFE_URL)
+                    if (UrlSecurity.hasUrlCredentials(currentUrl)) {
+                        if (!resolved.host.equals(currentUrl.host, ignoreCase = true)) {
+                            throw SportsGuideException("Kimlik bilgisi içeren farklı sunucuya yönlendirme engellendi.", MavieErrorCode.UNSAFE_URL)
+                        }
+                        if (currentUrl.scheme == "https" && resolved.scheme == "http") {
+                            throw SportsGuideException("HTTPS bağlantısından güvensiz HTTP yönlendirmesi engellendi.", MavieErrorCode.TLS_FAILED)
+                        }
+                    }
+                    if (UrlSecurity.isCloudMetadataOrLinkLocal(resolved.host) ||
+                        (initialWasPublic && UrlSecurity.isPrivateOrLoopback(resolved.host))
+                    ) {
+                        throw SportsGuideException("Güvenli olmayan yönlendirme engellendi.", MavieErrorCode.UNSAFE_URL)
+                    }
+                    return@readCancellable resolved to null
+                }
+                if (!response.isSuccessful) throw HttpStatusException(response.code)
+                val body = response.body ?: throw SportsGuideException("Boş rehber yanıtı.", MavieErrorCode.INVALID_RESPONSE)
+                null to body.byteStream().readBounded(maxBytes)
+            }
+            val bytes = nextOrBytes.second
+            if (bytes != null) return bytes
+            currentUrl = nextOrBytes.first ?: break
+        }
+        throw SportsGuideException("Çok fazla yönlendirme.", MavieErrorCode.HTTP_ERROR)
+    }
+
     suspend fun load(
         day: LocalDate,
         force: Boolean = false,
@@ -265,6 +328,11 @@ internal object SportsGuide {
         val targetUrl = if (useXmltv) url else SporEkraniSource + day
         val sourceType = if (useXmltv) "xmltv" else "sporekrani"
         val freshMs = if (useXmltv) FreshMs else SporEkraniFreshMs
+        val parsedUrl = targetUrl.toHttpUrlOrNull()
+            ?: throw SportsGuideException("Geçersiz yayın rehberi adresi.", MavieErrorCode.UNSAFE_URL)
+        if (UrlSecurity.isCloudMetadataOrLinkLocal(parsedUrl.host)) {
+            throw SportsGuideException("Güvenli olmayan yayın rehberi adresi engellendi.", MavieErrorCode.UNSAFE_URL)
+        }
         val key = "$targetUrl|$day"
         val now = System.currentTimeMillis()
         val cached = cache[key]
@@ -274,28 +342,32 @@ internal object SportsGuide {
         try {
             val ua = if (useXmltv) "Mavie/2.2 (XMLTV EPG)" else "Mavie/2.2 (sports schedule)"
             val maxBytes = if (useXmltv) MaxPageBytes else MaxSporEkraniBytes
-            val request = Request.Builder().url(targetUrl).header("User-Agent", ua).build()
-            val bytes = client.newCall(request).readCancellable { response ->
-                if (!response.isSuccessful) throw IOException("Guide HTTP ${response.code}")
-                val body = response.body ?: throw IOException("Empty guide response")
-                body.byteStream().readBounded(maxBytes)
-            }
+            val bytes = fetchGuideBytes(parsedUrl, ua, maxBytes)
             val events = if (useXmltv) parseXmltv(bytes, day) else parseSporekrani(bytes.toString(Charsets.UTF_8), day)
             cache[key] = Cached(System.currentTimeMillis(), events)
             cache.entries.removeIf { now - it.value.fetchedAt > MaxStaleMs }
             SportsListings(events, stale = false, configured = true, sourceType = sourceType)
         } catch (cancel: CancellationException) {
             throw cancel
-        } catch (_: Exception) {
-            if (cached != null && now - cached.fetchedAt <= MaxStaleMs) {
+        } catch (error: Exception) {
+            val code = when (error) {
+                is SportsGuideException -> error.code
+                is IptvException -> error.code
+                is HttpStatusException -> classifyHttpError(error.code, useXmltv).code
+                is IOException -> classifyIoException(error).code
+                else -> MavieErrorCode.OFFLINE
+            }
+            if (code !in setOf(MavieErrorCode.UNSAFE_URL, MavieErrorCode.TLS_FAILED) && cached != null && now - cached.fetchedAt <= MaxStaleMs) {
                 SportsListings(cached.events, stale = true, configured = true, sourceType = sourceType)
+            } else if (error is SportsGuideException) {
+                throw error
             } else {
                 val msg = if (useXmltv) {
                     "XMLTV yayın rehberine ulaşılamadı. Bağlantını kontrol edip yeniden dene."
                 } else {
                     "Spor yayın rehberine ulaşılamadı. Biraz sonra tekrar dene."
                 }
-                throw IOException(msg)
+                throw SportsGuideException(msg, code, error)
             }
         }
     }

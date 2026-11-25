@@ -29,6 +29,7 @@ data class PlayingItem(
     val nextEpisode: MediaItem? = null,
     val episodes: List<Pair<String, String>> = emptyList(),
     val isLocalUri: Boolean = false,
+    val profileId: String = "default",
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -40,6 +41,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     var player by mutableStateOf<PlayingItem?>(null); private set
     var setupLoading by mutableStateOf(false); private set
     var setupError by mutableStateOf<String?>(null); private set
+    var setupErrorCode by mutableStateOf<MavieErrorCode?>(null); private set
+    var splashCompleted by mutableStateOf(false)
+    var syncLoading by mutableStateOf(false); private set
+    var syncError by mutableStateOf<String?>(null)
+    var syncSuccess by mutableStateOf(false)
     var notice by mutableStateOf<String?>(null)
     var collections by mutableStateOf<List<UiCollection>>(emptyList()); private set
     var collectionTarget by mutableStateOf<UiMedia?>(null)
@@ -55,10 +61,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var playJob: Job? = null
     private var playGeneration = 0L
     private val progressWrites = Mutex()
-    private val knownItems = mutableMapOf<String, MediaItem>()
+    private val knownItems = BoundedLruMap<String, MediaItem>(2_000)
 
     init {
         refreshProfiles()
+        viewModelScope.launch {
+            repository.credentialError.collect { err ->
+                if (err != null && account.value == null) {
+                    setupError = err.message ?: "Kayıtlı oturum anahtarı okunamadı."
+                    setupErrorCode = err.code
+                }
+            }
+        }
         viewModelScope.launch { repository.discoveryUpdates.collect { if(it>0 && account.value!=null && library.tab==LibraryTab.HOME)loadLibrary() } }
         viewModelScope.launch {
             var firstEmission = true
@@ -71,6 +85,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     knownItems.clear(); detail = null; settings = false; player = null
                     previous = current?.id
                     if (current != null) {
+                        setupError = null
+                        setupErrorCode = null
                         library = LibraryUiState(loading = true)
                         loadLibrary()
                     } else {
@@ -84,36 +100,52 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         is IptvException -> error.message ?: "İşlem tamamlanamadı."
         else -> "İşlem tamamlanamadı. Yeniden deneyebilirsin."
     }
+    private fun errorCode(error: Exception): MavieErrorCode =
+        (error as? IptvException)?.code ?: MavieErrorCode.UNKNOWN
     private fun remember(items: List<MediaItem>): List<UiMedia> { items.forEach { knownItems[it.id]=it };return items.map(::present) }
     private fun present(item: MediaItem) = UiMedia(item.id,item.name,item.kind.key,item.poster,item.backdrop,item.year,item.categoryName,item.rating,item.plot,
         ((item.progress?.positionSeconds?:0.0)*1000).toLong(),((item.progress?.durationSeconds?:item.durationSeconds)*1000).toLong(),item.isFavorite,item.episode)
-    private suspend fun resolve(item: UiMedia): MediaItem = repository.item(item.id) ?: knownItems[item.id] ?: throw IptvException("İçerik bulunamadı. Kütüphaneyi yenile.")
+    private suspend fun resolve(item: UiMedia): MediaItem = repository.item(item.id) ?: knownItems[item.id] ?: throw IptvException("İçerik bulunamadı. Kütüphaneyi yenile.", MavieErrorCode.NOT_FOUND)
     fun loginDemo() {
         if (setupLoading) return
-        setupLoading = true; setupError = null
+        setupLoading = true; setupError = null; setupErrorCode = null
         viewModelScope.launch {
             try { repository.loginDemo() }
-            catch (error: Exception) { if (error is CancellationException) throw error; setupError = message(error) }
+            catch (error: Exception) {
+                if (error is CancellationException) throw error
+                setupError = message(error)
+                setupErrorCode = errorCode(error)
+            }
             finally { setupLoading = false }
         }
     }
     fun loginM3u(name: String, m3uUrl: String, epgUrl: String = "") {
         if (setupLoading) return
-        setupLoading = true; setupError = null
+        setupLoading = true; setupError = null; setupErrorCode = null
         viewModelScope.launch {
             try { repository.loginM3u(name, m3uUrl, epgUrl) }
-            catch (error: Exception) { if (error is CancellationException) throw error; setupError = message(error) }
+            catch (error: Exception) {
+                if (error is CancellationException) throw error
+                setupError = message(error)
+                setupErrorCode = errorCode(error)
+            }
             finally { setupLoading = false }
         }
     }
     fun login(host: String, username: String, password: String, epgUrl: String = "") {
         if(setupLoading)return
-        setupLoading=true;setupError=null
-        viewModelScope.launch { try { repository.login(ConnectionSettings(host,username,password,SourceMode.XTREAM,epgUrl=epgUrl)) }
-            catch(error: Exception) { if(error is CancellationException)throw error;setupError=message(error) }
-            finally { setupLoading=false } }
+        setupLoading=true;setupError=null;setupErrorCode=null
+        viewModelScope.launch {
+            try { repository.login(ConnectionSettings(host,username,password,SourceMode.XTREAM,epgUrl=epgUrl)) }
+            catch(error: Exception) {
+                if(error is CancellationException)throw error
+                setupError=message(error)
+                setupErrorCode=errorCode(error)
+            }
+            finally { setupLoading=false }
+        }
     }
-    fun changeTab(tab: LibraryTab) { currentCollection=null;library=library.copy(tab=tab,query="",selectedCategoryId="",title="",items=emptyList(),hasMore=false);loadLibrary() }
+    fun changeTab(tab: LibraryTab) { currentCollection=null;library=library.copy(tab=tab,query="",selectedCategoryId="",title="",items=emptyList(),hasMore=false,error=null,errorCode=null);loadLibrary() }
     fun search(value: String) { library=library.copy(query=value);loadLibrary(debounce=true) }
     fun category(id: String) { library=library.copy(selectedCategoryId=id);loadLibrary() }
     fun loadMore() { if(!library.loading && library.hasMore)loadLibrary(append=true) }
@@ -124,7 +156,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         loadJob=viewModelScope.launch {
             if(debounce)delay(300)
             progressWrites.withLock {}
-            library=library.copy(loading=true,error=null)
+            library=library.copy(loading=true,error=null,errorCode=null)
             try {
                 val lists=repository.playlists(includeItems=false)
                 collections=lists.map { UiCollection(it.id,it.name,it.count) }
@@ -151,15 +183,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val rows=remember(pages.flatMap { it.items })
                     library=library.copy(items=if(append)(library.items+rows).distinctBy { it.id } else rows,categories=cats,collections=collections,loading=false,hasMore=pages.any { it.hasMore },totalCount=pages.sumOf { it.total })
                 }
-            } catch(error: Exception) { if(error is CancellationException)throw error;library=library.copy(loading=false,error=message(error)) }
+            } catch(error: Exception) {
+                if(error is CancellationException)throw error
+                library=library.copy(loading=false,error=message(error),errorCode=errorCode(error))
+            }
         }
     }
     fun refresh() {
         if(library.refreshing)return
         viewModelScope.launch {
-            library=library.copy(refreshing=true,error=null)
+            library=library.copy(refreshing=true,error=null,errorCode=null)
             try { repository.refreshCatalog();loadLibrary();notice="Kütüphanen güncellendi." }
-            catch(error: Exception) { if(error is CancellationException)throw error;library=library.copy(error=message(error)) }
+            catch(error: Exception) {
+                if(error is CancellationException)throw error
+                library=library.copy(error=message(error),errorCode=errorCode(error))
+            }
             finally { library=library.copy(refreshing=false) }
         }
     }
@@ -172,7 +210,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val seasons=result.seasons.map { UiSeason(it.number.toString(),it.name,remember(it.episodes)) }
                 val fresh=remember(listOf(result.item)).first()
                 detail=DetailUiState(fresh,result.item.plot,result.genres,result.cast,result.director,(result.item.durationSeconds*1000).toLong(),seasons,seasons.firstOrNull()?.id.orEmpty())
-            } catch(error: Exception) { if(error is CancellationException)throw error;detail=detail?.copy(loading=false,error=message(error)) }
+            } catch(error: Exception) {
+                if(error is CancellationException)throw error
+                detail=detail?.copy(loading=false,error=message(error),errorCode=errorCode(error))
+            }
         }
     }
     fun closeDetail() { detailJob?.cancel();detail=null }
@@ -218,7 +259,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun watchSportsChannel(id: String) = startPlayback {
         repository.item(id)?.takeIf { it.kind == MediaKind.LIVE }
-            ?: throw IptvException("Bu kanal IPTV listende bulunamadı.")
+            ?: throw IptvException("Bu kanal IPTV listende bulunamadı.", MavieErrorCode.NOT_FOUND)
     }
 
     private fun startPlayback(resolveItem: suspend () -> MediaItem) {
@@ -235,6 +276,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     item, repository.streamUrl(item),
                     if (progress?.completed == true) 0 else ((progress?.positionSeconds ?: 0.0) * 1000).toLong(),
                     preference, accountId, generation,
+                    profileId = activeProfile.id,
                 )
                 player = playing
                 if (item.kind == MediaKind.EPISODE) {
@@ -259,13 +301,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     fun closePlayer() { playJob?.cancel();playGeneration++;player=null;if(account.value!=null){loadLibrary();detail?.media?.let { openDetail(it) }} }
-    fun saveProgress(accountId: String, item: MediaItem, position: Long, duration: Long) {
+    fun saveProgress(accountId: String, item: MediaItem, position: Long, duration: Long, expectedProfileId: String = activeProfile.id) {
         if (player?.isLocalUri == true || accountId == "_local") return
         viewModelScope.launch {
             progressWrites.withLock {
-                if (account.value?.id == accountId) {
+                if (account.value?.id == accountId && activeProfile.id == expectedProfileId) {
                     try {
-                        repository.saveProgress(item, position / 1000.0, duration / 1000.0)
+                        repository.saveProgress(item, position / 1000.0, duration / 1000.0, expectedProfileId = expectedProfileId)
                     } catch (error: CancellationException) {
                         throw error
                     } catch (_: Exception) {
@@ -275,7 +317,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
-    fun saveTracks(accountId: String,itemId: String,audio: Int?,subtitle: Int?) { viewModelScope.launch { if(account.value?.id==accountId)runCatching { repository.saveTrackPreference(itemId,TrackPreference(audio,subtitle,subtitle==null||subtitle<0)) } } }
+    fun saveTracks(accountId: String, itemId: String, audio: Int?, subtitle: Int?, expectedProfileId: String = activeProfile.id) {
+        if (player?.isLocalUri == true || accountId == "_local") return
+        viewModelScope.launch {
+            progressWrites.withLock {
+                if (account.value?.id == accountId && activeProfile.id == expectedProfileId) {
+                    runCatching {
+                        repository.saveTrackPreference(
+                            itemId,
+                            TrackPreference(audio, subtitle, subtitle == null || subtitle < 0),
+                            expectedProfileId = expectedProfileId,
+                        )
+                    }
+                }
+            }
+        }
+    }
     fun openCollection(collection: UiCollection) { currentCollection=collection.id;library=library.copy(tab=LibraryTab.PLAYLISTS,query="",title=collection.title);loadLibrary() }
     fun closeCollection() { currentCollection=null;library=library.copy(tab=LibraryTab.PLAYLISTS,query="",title="",items=emptyList());loadLibrary() }
     fun deleteCollection(collection: UiCollection) {
@@ -291,7 +348,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun clearProgress(media: UiMedia) {
         viewModelScope.launch {
             try {
-                repository.clearProgress(media.id)
+                progressWrites.withLock { repository.clearProgress(media.id) }
                 detail?.takeIf { it.media.id==media.id }?.let { old -> detail=old.copy(media=old.media.copy(progressPositionMs=0,progressDurationMs=0)) }
                 notice="İzleme kaydı sıfırlandı."
                 loadLibrary()
@@ -308,9 +365,38 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun createCollection(name: String) {
         viewModelScope.launch { try { val list=repository.createPlaylist(name);val item=collectionTarget;if(item!=null)repository.addToPlaylist(list.id,resolve(item));showCollectionPicker=false;notice="Listen hazır.";loadLibrary() } catch(error: Exception) { if(error is CancellationException)throw error;notice=message(error) } }
     }
-    fun exportTo(uri: Uri) { viewModelScope.launch { try { val json=repository.exportState();withContext(Dispatchers.IO) { getApplication<Application>().contentResolver.openOutputStream(uri,"wt")?.use { it.write(json.toByteArray()) }?:throw IptvException("Yedek dosyası yazılamadı.") };notice="Yedek kaydedildi." } catch(error: Exception) { if(error is CancellationException)throw error;notice=message(error) } } }
-    fun importFrom(uri: Uri) { viewModelScope.launch { try { val json=withContext(Dispatchers.IO) { getApplication<Application>().contentResolver.openInputStream(uri)?.use { stream -> val bytes=stream.readBounded();if(bytes.size>25*1024*1024)throw IptvException("Dosya çok büyük.");bytes.toString(Charsets.UTF_8) }?:throw IptvException("Dosya okunamadı.") };repository.importState(json);notice="Yedek birleştirildi.";loadLibrary() } catch(error: Exception) { if(error is CancellationException)throw error;notice=message(error) } } }
-    fun syncMac(address: String, code: String) { viewModelScope.launch { try { withContext(Dispatchers.IO) { MacSync.merge(repository,address,code) };notice="Mac ve telefondaki izleme kayıtları, favoriler ve listeler birleştirildi.";loadLibrary() } catch(error: Exception) { if(error is CancellationException)throw error;notice=message(error) } } }
+    fun exportTo(uri: Uri) { viewModelScope.launch { try { val json=repository.exportState();withContext(Dispatchers.IO) { getApplication<Application>().contentResolver.openOutputStream(uri,"wt")?.use { it.write(json.toByteArray()) }?:throw IptvException("Yedek dosyası yazılamadı.", MavieErrorCode.STORAGE_ERROR) };notice="Yedek kaydedildi." } catch(error: Exception) { if(error is CancellationException)throw error;notice=message(error) } } }
+    fun importFrom(uri: Uri) { viewModelScope.launch { try { val json=withContext(Dispatchers.IO) { getApplication<Application>().contentResolver.openInputStream(uri)?.use { stream -> val bytes=stream.readBounded();if(bytes.size>25*1024*1024)throw IptvException("Dosya çok büyük.", MavieErrorCode.PAYLOAD_TOO_LARGE);bytes.toString(Charsets.UTF_8) }?:throw IptvException("Dosya okunamadı.", MavieErrorCode.STORAGE_ERROR) };repository.importState(json);notice="Yedek birleştirildi.";loadLibrary() } catch(error: Exception) { if(error is CancellationException)throw error;notice=message(error) } } }
+    fun syncMac(address: String, code: String) {
+        if (syncLoading) return
+        syncLoading = true
+        syncError = null
+        syncSuccess = false
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) { MacSync.merge(repository, address, code) }
+                syncSuccess = true
+                notice = "Mac ve telefondaki izleme kayıtları, favoriler ve listeler birleştirildi."
+                loadLibrary()
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                syncError = message(error)
+            } finally {
+                syncLoading = false
+            }
+        }
+    }
+    fun updateEpgUrl(epgUrl: String) {
+        viewModelScope.launch {
+            try {
+                repository.updateEpgUrl(epgUrl)
+                notice = if (epgUrl.isBlank()) "XMLTV EPG adresi temizlendi." else "XMLTV EPG adresi kaydedildi."
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                notice = message(error)
+            }
+        }
+    }
     fun refreshProfiles() {
         viewModelScope.launch {
             runCatching { repository.profiles() to repository.activeProfile() }.onSuccess { (list, current) ->
@@ -335,7 +421,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         profileError = null
         viewModelScope.launch {
             try {
-                activeProfile = repository.switchProfile(id, pin)
+                progressWrites.withLock {
+                    activeProfile = repository.switchProfile(id, pin)
+                }
                 refreshProfiles()
                 showProfilePicker = false
                 detail = null
@@ -351,7 +439,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         profileError = null
         viewModelScope.launch {
             try {
-                repository.deleteProfile(id)
+                progressWrites.withLock {
+                    repository.deleteProfile(id)
+                }
                 refreshProfiles()
                 if (account.value != null) loadLibrary()
             } catch (error: Exception) {
@@ -361,7 +451,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     fun playEpisodeById(episodeId: String) {
-        startPlayback { repository.item(episodeId) ?: throw IptvException("Bölüm bulunamadı.") }
+        startPlayback { repository.item(episodeId) ?: throw IptvException("Bölüm bulunamadı.", MavieErrorCode.NOT_FOUND) }
     }
     fun playLocalUri(uri: Uri) {
         playJob?.cancel()
@@ -389,5 +479,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
-    fun logout() { viewModelScope.launch { repository.logout();knownItems.clear() } }
+    fun logout() {
+        viewModelScope.launch {
+            progressWrites.withLock {
+                repository.logout()
+                knownItems.clear()
+            }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        knownItems.clear()
+        repository.close()
+    }
 }

@@ -25,8 +25,12 @@ public final class ServerProcessManager: ObservableObject {
     @Published public private(set) var lanURLs: [String] = []
 
     private var process: Process?
+    private var terminatingProcess: Process?
     private var logHandle: FileHandle?
     private var pollTask: Task<Void, Never>?
+    private var startTask: Task<Void, Never>?
+    private var terminationTask: Task<Void, Never>?
+    private var generation: UInt64 = 0
     private var shuttingDown = false
     private var startupRetryCount = 0
     private var triedPorts: Set<Int> = []
@@ -56,14 +60,34 @@ public final class ServerProcessManager: ObservableObject {
     }
 
     public func start() {
+        startTask?.cancel()
+        pollTask?.cancel()
+        pollTask = nil
+        generation &+= 1
+        let expectedGeneration = generation
+        shuttingDown = false
         startupRetryCount = 0
         triedPorts = []
-        startInternal(excluding: [])
+        status = .starting
+        healthDetails = "Yerel medya motoru başlatılıyor..."
+        startTask = Task { [weak self] in
+            await self?.startInternal(excluding: [], expectedGeneration: expectedGeneration)
+        }
     }
 
-    private func startInternal(excluding: Set<Int>) {
-        stop()
-        shuttingDown = false
+    private func startInternal(excluding: Set<Int>, expectedGeneration: UInt64) async {
+        await terminationTask?.value
+        guard !Task.isCancelled, !shuttingDown, generation == expectedGeneration else { return }
+
+        let oldChild = process
+        let oldHandle = logHandle
+        process = nil
+        logHandle = nil
+        if oldChild != nil || oldHandle != nil {
+            await terminateDetachedProcess(oldChild, logHandle: oldHandle)
+        }
+        guard !Task.isCancelled, !shuttingDown, generation == expectedGeneration else { return }
+
         status = .starting
         healthDetails = "Yerel medya motoru başlatılıyor..."
 
@@ -83,7 +107,6 @@ public final class ServerProcessManager: ObservableObject {
             }
             let handle = try FileHandle(forWritingTo: logFile)
             try handle.seekToEnd()
-            logHandle = handle
 
             let selectedPort = Self.choosePort(excluding: excluding)
             triedPorts.insert(selectedPort)
@@ -92,6 +115,13 @@ public final class ServerProcessManager: ObservableObject {
 
             let launch = try resolveLaunchCommand(port: selectedPort)
             executableDescription = launch.description
+
+            guard !Task.isCancelled, !shuttingDown, generation == expectedGeneration else {
+                try? handle.close()
+                return
+            }
+
+            logHandle = handle
 
             let child = Process()
             child.executableURL = launch.executableURL
@@ -106,20 +136,27 @@ public final class ServerProcessManager: ObservableObject {
             env["PYTHONUNBUFFERED"] = "1"
             child.environment = env
 
+            let launchGen = expectedGeneration
             child.terminationHandler = { [weak self] proc in
+                let exitCode = proc.terminationStatus
                 Task { @MainActor [weak self] in
-                    guard let self, !self.shuttingDown else { return }
+                    guard let self, self.generation == launchGen, !self.shuttingDown else { return }
                     if case .ready = self.status {
-                        self.status = .failed("Yerel medya sunucusu beklenmedik şekilde durdu (kod \(proc.terminationStatus)).")
-                        self.healthDetails = "Durdu (kod \(proc.terminationStatus))"
+                        self.status = .failed("Yerel medya sunucusu beklenmedik şekilde durdu (kod \(exitCode)).")
+                        self.healthDetails = "Durdu (kod \(exitCode))"
                     }
                 }
             }
 
-            process = child
             try child.run()
-            beginHealthPolling(port: selectedPort)
+            process = child
+            beginHealthPolling(port: selectedPort, generation: expectedGeneration)
         } catch {
+            if process == nil {
+                try? logHandle?.close()
+                logHandle = nil
+            }
+            guard !Task.isCancelled, !shuttingDown, generation == expectedGeneration else { return }
             let msg = "Yerel medya sunucusu başlatılamadı: \(error.localizedDescription)"
             status = .failed(msg)
             healthDetails = msg
@@ -130,27 +167,94 @@ public final class ServerProcessManager: ObservableObject {
         start()
     }
 
-    public func stop() {
+    public func stopAsync() async {
         shuttingDown = true
+        generation &+= 1
+        startTask?.cancel()
+        startTask = nil
         pollTask?.cancel()
         pollTask = nil
 
-        if let child = process {
-            if child.isRunning {
-                child.terminate()
-                let deadline = Date().addingTimeInterval(3.5)
-                while child.isRunning && Date() < deadline {
-                    Thread.sleep(forTimeInterval: 0.05)
-                }
-                if child.isRunning {
-                    kill(child.processIdentifier, SIGKILL)
-                }
+        if let existingTask = terminationTask {
+            await existingTask.value
+        }
+
+        let child = process
+        let handle = logHandle
+        process = nil
+        logHandle = nil
+
+        let task: Task<Void, Never> = Task { @MainActor [weak self] in
+            guard let self else {
+                try? handle?.close()
+                return
             }
-            process = nil
+            await self.terminateDetachedProcess(child, logHandle: handle)
+        }
+        terminationTask = task
+        await task.value
+        terminationTask = nil
+    }
+
+    public func stopSynchronouslyForTermination() {
+        shuttingDown = true
+        generation &+= 1
+        startTask?.cancel()
+        startTask = nil
+        pollTask?.cancel()
+        pollTask = nil
+        terminationTask?.cancel()
+        terminationTask = nil
+
+        var children: [Process] = []
+        if let child = process {
+            children.append(child)
+        }
+        if let terminating = terminatingProcess, !children.contains(where: { $0 === terminating }) {
+            children.append(terminating)
+        }
+        process = nil
+        terminatingProcess = nil
+
+        for child in children where child.isRunning {
+            child.terminate()
+            let deadline = Date().addingTimeInterval(2.5)
+            while child.isRunning && Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+            if child.isRunning {
+                kill(child.processIdentifier, SIGKILL)
+            }
         }
 
         try? logHandle?.close()
         logHandle = nil
+    }
+
+    private func terminateDetachedProcess(_ child: Process?, logHandle: FileHandle?) async {
+        if let child {
+            terminatingProcess = child
+            defer {
+                if terminatingProcess === child {
+                    terminatingProcess = nil
+                }
+            }
+            if child.isRunning {
+                child.terminate()
+                for _ in 0..<70 {
+                    if !child.isRunning { break }
+                    try? await Task.sleep(nanoseconds: 50_000_000)
+                }
+                if child.isRunning {
+                    kill(child.processIdentifier, SIGKILL)
+                    for _ in 0..<6 {
+                        if !child.isRunning { break }
+                        try? await Task.sleep(nanoseconds: 50_000_000)
+                    }
+                }
+            }
+        }
+        try? logHandle?.close()
     }
 
     public func openDataDirectory() {
@@ -177,7 +281,7 @@ public final class ServerProcessManager: ObservableObject {
                     req.timeoutInterval = 3
                     let (_, resp) = try await MavieHTTPClient.loopbackSession.data(for: req)
                     let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-                    stop()
+                    await stopAsync()
                     if code == 200 {
                         print("Mavie macOS smoke test OK on port \(port)")
                         return 0
@@ -187,36 +291,38 @@ public final class ServerProcessManager: ObservableObject {
                     }
                 } catch {
                     fputs("Smoke test failed requesting /: \(error.localizedDescription)\n", stderr)
-                    stop()
+                    await stopAsync()
                     return 1
                 }
             }
             if case .failed(let msg) = status {
                 fputs("Smoke test failed: \(msg)\n", stderr)
-                stop()
+                await stopAsync()
                 return 1
             }
             try? await Task.sleep(nanoseconds: 150_000_000)
         }
         fputs("Smoke test timed out waiting for /api/health\n", stderr)
-        stop()
+        await stopAsync()
         return 1
     }
 
     // MARK: - Private
 
-    private func beginHealthPolling(port: Int) {
+    private func beginHealthPolling(port: Int, generation expectedGeneration: UInt64) {
         pollTask?.cancel()
         pollTask = Task { [weak self] in
             guard let self else { return }
             let healthURL = URL(string: "http://127.0.0.1:\(port)/api/health")!
             for attempt in 1...120 {
-                if Task.isCancelled || self.shuttingDown { return }
+                if Task.isCancelled || self.shuttingDown || self.generation != expectedGeneration { return }
                 if let child = self.process, !child.isRunning {
                     let forcedPort = ProcessInfo.processInfo.environment["MAVIE_PORT"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                     if forcedPort.isEmpty && self.startupRetryCount < 2 {
                         self.startupRetryCount += 1
-                        self.startInternal(excluding: self.triedPorts)
+                        self.generation &+= 1
+                        let nextGen = self.generation
+                        await self.startInternal(excluding: self.triedPorts, expectedGeneration: nextGen)
                         return
                     }
                     let tail = self.readLastLogError()
@@ -226,15 +332,18 @@ public final class ServerProcessManager: ObservableObject {
                     return
                 }
                 if await Self.probeHealth(url: healthURL) {
+                    guard !Task.isCancelled, !self.shuttingDown, self.generation == expectedGeneration else { return }
                     self.status = .ready
                     self.healthDetails = "Çalışıyor · 127.0.0.1:\(port)"
                     return
                 }
+                guard !Task.isCancelled, !self.shuttingDown, self.generation == expectedGeneration else { return }
                 if attempt % 8 == 0 {
                     self.healthDetails = "Hazırlanıyor (\(attempt / 4) sn)..."
                 }
                 try? await Task.sleep(nanoseconds: 250_000_000)
             }
+            guard !Task.isCancelled, !self.shuttingDown, self.generation == expectedGeneration else { return }
             self.status = .failed("Mavie sunucusu zamanında yanıt vermedi. Başka bir örneğin portu kullanmadığından emin olun.")
             self.healthDetails = "Zaman aşımı"
         }

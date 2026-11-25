@@ -274,6 +274,7 @@ public struct MediaPosterCard: View {
                     .frame(maxWidth: .infinity)
                     .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .accessibilityHidden(true)
 
                 Button(action: onToggleFavorite) {
                     Image(systemName: isFavorite ? "heart.fill" : "heart")
@@ -319,6 +320,7 @@ public struct MediaPosterCard: View {
         }
         .padding(10)
         .mavieCard(cornerRadius: 16)
+        .accessibilityElement(children: .contain)
     }
 
     @ViewBuilder

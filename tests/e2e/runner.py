@@ -146,9 +146,12 @@ class HttpClient:
                 resp_headers = {k.lower(): v for k, v in resp.headers.items()}
                 return self._build_response(int(resp.status), resp_headers, raw)
         except urllib.error.HTTPError as exc:
-            raw = exc.read() if exc.fp else b""
-            resp_headers = {k.lower(): v for k, v in (exc.headers.items() if exc.headers else [])}
-            return self._build_response(int(exc.code), resp_headers, raw)
+            try:
+                raw = exc.read() if exc.fp else b""
+                resp_headers = {k.lower(): v for k, v in (exc.headers.items() if exc.headers else [])}
+                return self._build_response(int(exc.code), resp_headers, raw)
+            finally:
+                exc.close()
 
     @staticmethod
     def _build_response(status: int, headers: Dict[str, str], raw: bytes) -> HttpResponse:

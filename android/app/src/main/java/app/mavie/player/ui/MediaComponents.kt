@@ -170,17 +170,49 @@ internal fun SectionTitle(title: String, subtitle: String? = null, onAll: (() ->
 }
 
 @Composable
-internal fun MessagePanel(title: String, message: String, modifier: Modifier = Modifier,
-                          action: String? = null, onAction: (() -> Unit)? = null) {
+internal fun MessagePanel(
+    title: String,
+    message: String,
+    modifier: Modifier = Modifier,
+    action: String? = null,
+    onAction: (() -> Unit)? = null,
+    hint: String? = null,
+    secondaryAction: String? = null,
+    onSecondaryAction: (() -> Unit)? = null,
+) {
     Column(modifier.fillMaxWidth().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Icon(Icons.Outlined.Movie, null, tint = MaviePurple, modifier = Modifier.size(32.dp))
         Spacer(Modifier.height(15.dp))
         Text(title, style = MaterialTheme.typography.titleMedium)
         Text(message, Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MavieMuted)
-        if (action != null && onAction != null) {
+        if (!hint.isNullOrBlank()) {
+            Text(hint, Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodySmall, color = MavieMuted.copy(alpha = 0.85f))
+        }
+        val hasPrimary = action != null && onAction != null
+        val hasSecondary = secondaryAction != null && onSecondaryAction != null
+        if (hasPrimary || hasSecondary) {
             Spacer(Modifier.height(16.dp))
-            MavieGlassPillButton(onClick = onAction, shape = RoundedCornerShape(16.dp)) {
-                Text(action, color = Color.White)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (hasPrimary) {
+                    MavieGlassPillButton(
+                        onClick = onAction!!,
+                        modifier = Modifier.heightIn(min = 48.dp),
+                        shape = RoundedCornerShape(16.dp),
+                    ) {
+                        Text(action!!, color = Color.White)
+                    }
+                }
+                if (hasSecondary) {
+                    OutlinedButton(
+                        onClick = onSecondaryAction!!,
+                        modifier = Modifier.heightIn(min = 48.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, MavieSpecularBorderBrush),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0x73182038), contentColor = Color.White),
+                    ) {
+                        Text(secondaryAction!!)
+                    }
+                }
             }
         }
     }

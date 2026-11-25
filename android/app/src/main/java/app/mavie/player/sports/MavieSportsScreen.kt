@@ -24,6 +24,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.mavie.player.data.IptvException
+import app.mavie.player.data.MavieErrorCode
+import app.mavie.player.data.classifyIoException
 import app.mavie.player.ui.MavieCyanDot
 import app.mavie.player.ui.MavieGradientButton
 import app.mavie.player.ui.MavieMuted
@@ -31,8 +34,11 @@ import app.mavie.player.ui.MaviePurple
 import app.mavie.player.ui.MavieSpecularBorderBrush
 import app.mavie.player.ui.MavieTooltipIconButton
 import app.mavie.player.ui.MavieTurquoise
+import app.mavie.player.ui.MessagePanel
+import app.mavie.player.ui.errorHintFor
 import app.mavie.player.ui.mavieGlassSurface
 import kotlinx.coroutines.CancellationException
+import java.io.IOException
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -56,6 +62,7 @@ fun MavieSportsScreen(
     var result by remember { mutableStateOf<SportsListings?>(null) }
     var channels by remember { mutableStateOf<Map<String, String>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var errorCode by remember { mutableStateOf<MavieErrorCode?>(null) }
     var search by rememberSaveable { mutableStateOf("") }
     var category by rememberSaveable { mutableStateOf("") }
     var sourceModeName by rememberSaveable { mutableStateOf(SportsSourceMode.AUTO.name) }
@@ -65,6 +72,7 @@ fun MavieSportsScreen(
         result = null
         channels = null
         error = null
+        errorCode = null
         try {
             result = SportsGuide.load(day, force = refresh != 0, epgUrl = epgUrl, sourceMode = sourceMode)
             val labels = result?.events.orEmpty().flatMap { it.channels }.distinct()
@@ -79,6 +87,12 @@ fun MavieSportsScreen(
             throw cancel
         } catch (failure: Exception) {
             error = failure.message ?: "Yayın akışı yüklenemedi."
+            errorCode = when (failure) {
+                is SportsGuideException -> failure.code
+                is IptvException -> failure.code
+                is IOException -> classifyIoException(failure).code
+                else -> MavieErrorCode.UNKNOWN
+            }
         }
     }
 
@@ -157,8 +171,24 @@ fun MavieSportsScreen(
                         CircularProgressIndicator(Modifier.size(27.dp), strokeWidth = 2.dp)
                         Text("Yayın akışı yükleniyor…", Modifier.padding(top = 12.dp), color = MavieMuted)
                     } else {
-                        Text(error.orEmpty(), color = MavieMuted)
-                        TextButton(onClick = { refresh++ }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Tekrar dene") }
+                        val useSporekraniFallback = sourceMode == SportsSourceMode.XMLTV ||
+                            (epgUrl.isNotBlank() && sourceMode != SportsSourceMode.SPOREKRANI)
+                        Box(Modifier.fillMaxWidth().mavieGlassSurface(RoundedCornerShape(18.dp))) {
+                            MessagePanel(
+                                title = "Yayın akışı yüklenemedi",
+                                message = error.orEmpty(),
+                                action = "Tekrar dene",
+                                onAction = { refresh++ },
+                                hint = errorHintFor(errorCode),
+                                secondaryAction = if (useSporekraniFallback) "Spor Ekranına Geç" else null,
+                                onSecondaryAction = if (useSporekraniFallback) {
+                                    {
+                                        category = ""
+                                        sourceModeName = SportsSourceMode.SPOREKRANI.name
+                                    }
+                                } else null,
+                            )
+                        }
                     }
                 }
             }
@@ -231,7 +261,7 @@ fun MavieSportsScreen(
                 Column(Modifier.padding(horizontal = 16.dp)) {
                     HorizontalDivider(color = Color(0xFF282D3B))
                     Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(event.time, Modifier.width(48.dp), fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
+                        Text(event.time, Modifier.widthIn(min = 48.dp), fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, maxLines = 1, softWrap = false)
                         Column(Modifier.weight(1f)) {
                             Text(listOf(event.sport, event.league).filter(String::isNotBlank).joinToString(" · "),
                                 color = MavieMuted, fontSize = 11.sp)

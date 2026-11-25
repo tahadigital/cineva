@@ -27,7 +27,7 @@ object ProfilePinHasher {
         val clean = pin.trim()
         if (clean.isEmpty()) return ""
         if (!clean.matches(Regex("^\\d{4,8}$"))) {
-            throw IptvException("Profil PIN kodu 4-8 rakamdan oluşmalıdır.")
+            throw IptvException("Profil PIN kodu 4-8 rakamdan oluşmalıdır.", MavieErrorCode.INVALID_INPUT)
         }
         val salt = ByteArray(16).also(rng::nextBytes)
         val digest = pbkdf2(clean, salt)

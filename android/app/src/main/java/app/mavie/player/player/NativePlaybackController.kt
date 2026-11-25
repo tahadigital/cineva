@@ -4,11 +4,14 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
+import app.mavie.player.data.MavieErrorCode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,7 +22,14 @@ import org.videolan.libvlc.MediaPlayer
 import org.videolan.libvlc.interfaces.IMedia
 import org.videolan.libvlc.util.VLCVideoLayout
 import java.util.Locale
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.abs
 
 /** IDs are the provider's native elementary-stream IDs, never list positions. */
@@ -43,6 +53,7 @@ data class PlaybackSnapshot(
     val playbackRate: Float = 1.0f,
     val fillScreen: Boolean = false,
     val subtitleDelayMs: Long = 0L,
+    val errorCode: MavieErrorCode? = null,
 )
 
 /**
@@ -76,36 +87,44 @@ internal class NativePlaybackController(
         )
     )
     val state: StateFlow<PlaybackSnapshot> = mutableState.asStateFlow()
-    @Volatile private var released = false
+    private val nativeQueue: ExecutorService = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "mavie-native-player-${controllerIds.incrementAndGet()}").apply { isDaemon = true }
+    }
+    private val released = AtomicBoolean(false)
     @Volatile private var foreground = true
     private var libVlc: LibVLC? = null
-    private var player: MediaPlayer? = null
+    @Volatile private var player: MediaPlayer? = null
     private var layout: VLCVideoLayout? = null
     private var openPfd: ParcelFileDescriptor? = null
-    private var viewsAttached = false
-    private var initialized = false
+    @Volatile private var viewsAttached = false
+    @Volatile private var initialized = false
     private var sourceOpened = false
-    private var userWantsPlayback = true
-    private var focusInterruptedPlayback = false
+    @Volatile private var userWantsPlayback = true
+    @Volatile private var focusInterruptedPlayback = false
     private var resumePosition = if (isLive) 0 else startPositionMs.coerceAtLeast(0)
-    private var pendingSeek: Long? = resumePosition.takeIf { it > 0 }
-    private var expectedSeek: Long? = pendingSeek
+    private data class PendingSeek(val generation: Int, val seekGen: Int, val positionMs: Long)
+    private val requestGeneration = AtomicInteger(0)
+    private val seekGeneration = AtomicInteger(0)
+    private val pendingSeek = AtomicReference<PendingSeek?>(
+        resumePosition.takeIf { it > 0 }?.let { PendingSeek(0, 0, it) }
+    )
+    private var expectedSeek: Long? = resumePosition.takeIf { it > 0 }
     private var seekDeadline = 0L
-    private var defaultAudioId: Int? = null
+    private val defaultAudioId = AtomicReference<Int?>(null)
     private var audioPreference = initialAudioTrack
     private var subtitlePreference = initialSubtitleTrack
     // LibVLC can retain the previous track ID after stop(), even though the
     // freshly opened decoder has not restored that subtitle renderer yet.
     // Keep the user's choice and explicitly send it once its tracks reappear.
-    @Volatile private var subtitleNeedsReapply = initialSubtitleTrack != null
+    private val subtitleNeedsReapply = AtomicBoolean(initialSubtitleTrack != null)
     private var lastPersistedPosition = -1L
     private var errorRetries = 0
     private var stableSincePosition = resumePosition
     private var lastProgressWallTime = SystemClock.elapsedRealtime()
-    private var outputClock = PlaybackOutputClock()
-    @Volatile private var requestGeneration = 0
-    private var seekGeneration = 0
-    private var muted = false
+    private val outputClock = AtomicReference(PlaybackOutputClock())
+    @Volatile private var muted = false
+    private var clockRunnable: Runnable? = null
+    private var stallRunnable: Runnable? = null
 
     private val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
         .setAudioAttributes(
@@ -113,41 +132,52 @@ internal class NativePlaybackController(
                 .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE).build()
         )
         .setOnAudioFocusChangeListener({ change ->
-            when (change) {
-                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-                    outputClock = PlaybackOutputClock()
-                    focusInterruptedPlayback = state.value.playing
-                    command { player?.pause() }
-                }
-                AudioManager.AUDIOFOCUS_GAIN -> {
-                    if (focusInterruptedPlayback && foreground && userWantsPlayback) command { player?.play() }
-                    focusInterruptedPlayback = false
-                }
-                AudioManager.AUDIOFOCUS_LOSS -> {
-                    outputClock = PlaybackOutputClock()
-                    focusInterruptedPlayback = false
-                    userWantsPlayback = false
-                    command { player?.pause() }
-                }
-                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> command { player?.volume = 30 }
+            val decision = resolveAudioFocusChange(
+                change = change,
+                focusInterruptedPlayback = focusInterruptedPlayback,
+                foreground = foreground,
+                userWantsPlayback = userWantsPlayback,
+            )
+            if (decision.resetClock) outputClock.set(PlaybackOutputClock())
+            if (decision.setInterruptedFromPlaying) focusInterruptedPlayback = state.value.playing
+            if (decision.clearInterrupted) focusInterruptedPlayback = false
+            if (decision.clearUserWantsPlayback) userWantsPlayback = false
+            if (decision.pause) {
+                stopClockObserver()
+                stopStallWatchdog()
+                command { player?.pause() }
             }
-            if (change == AudioManager.AUDIOFOCUS_GAIN) command { player?.volume = if (muted) 0 else 100 }
+            if (decision.resumeIfInterrupted) {
+                val generation = requestGeneration.get()
+                command(generation) { player?.play() }
+            }
+            decision.volumePercent?.let { vol ->
+                command { player?.volume = if (vol == 100 && muted) 0 else vol }
+            }
         }, main)
         .build()
 
-    private fun isValidSource(url: String): Boolean {
-        val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return false
-        val scheme = uri.scheme?.lowercase(Locale.ROOT) ?: return false
-        return when (scheme) {
-            "http", "https" -> !uri.host.isNullOrBlank()
-            "content", "file" -> url.length > scheme.length + 3
-            else -> false
-        }
+    private fun isValidSource(url: String): Boolean = isValidPlaybackSource(url)
+
+    private fun requestAudioFocusForPlayback(): Boolean {
+        val result = runCatching { audioManager.requestAudioFocus(focusRequest) }.getOrDefault(AudioManager.AUDIOFOCUS_REQUEST_FAILED)
+        val decision = resolveAudioFocusRequest(result)
+        focusInterruptedPlayback = decision.focusInterruptedPlayback
+        if (!decision.userWantsPlayback) userWantsPlayback = false
+        return decision.shouldStartPlayback
     }
 
+    private fun isNetworkAvailable(): Boolean = runCatching {
+        val cm = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return true
+        val network = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(network) ?: return false
+        caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }.getOrDefault(true)
+
     fun attach(view: VLCVideoLayout) {
+        if (released.get()) return
         if (!isValidSource(sourceUrl)) {
-            fail("Yayın adresi geçersiz. Hesap bağlantısını kontrol edin.")
+            fail("Yayın adresi geçersiz. Hesap bağlantısını kontrol edin.", MavieErrorCode.PLAYBACK_INVALID_SOURCE)
             return
         }
         layout = view
@@ -159,19 +189,19 @@ internal class NativePlaybackController(
                     player = MediaPlayer(requireNotNull(libVlc))
                     initialized = true
                 } catch (_: Exception) {
-                    fail("Oynatıcı başlatılamadı. Uygulamayı yeniden açıp tekrar deneyin.")
+                    main.post { fail("Oynatıcı başlatılamadı. Uygulamayı yeniden açıp tekrar deneyin.", MavieErrorCode.PLAYBACK_INIT_FAILED) }
                     return@command
                 }
             }
             main.post {
-                if (released || layout !== view) return@post
+                if (released.get() || layout !== view) return@post
                 try {
                     player?.attachViews(view, null, true, false)
                     player?.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT)
                     viewsAttached = true
                     if (foreground) open(resumePosition)
                 } catch (_: Exception) {
-                    fail("Görüntü ekranı hazırlanamadı. Tekrar deneyin.")
+                    fail("Görüntü ekranı hazırlanamadı. Tekrar deneyin.", MavieErrorCode.PLAYBACK_INIT_FAILED)
                 }
             }
         }
@@ -187,22 +217,27 @@ internal class NativePlaybackController(
         progress: (Long, Long) -> Unit,
         trackSelection: (Int?, Int?) -> Unit,
     ) {
-        if (released) return
+        if (released.get()) return
         if (sourceUrl == url) {
             onProgress = progress
             onTrackSelection = trackSelection
             return
         }
         persistProgress()
-        requestGeneration++
-        outputClock = PlaybackOutputClock()
+        stopClockObserver()
+        stopStallWatchdog()
+        requestGeneration.incrementAndGet()
+        outputClock.set(PlaybackOutputClock())
         sourceUrl = url
         onProgress = progress
         onTrackSelection = trackSelection
         resumePosition = if (isLive) 0 else startPositionMs.coerceAtLeast(0)
-        defaultAudioId = null
+        pendingSeek.set(null)
+        expectedSeek = null
+        defaultAudioId.set(null)
         audioPreference = audioTrack
         subtitlePreference = subtitleTrack
+        subtitleNeedsReapply.set(subtitleTrack != null)
         lastPersistedPosition = -1
         errorRetries = 0
         stableSincePosition = resumePosition
@@ -214,37 +249,69 @@ internal class NativePlaybackController(
             audioPreference = audioTrack,
             subtitlePreference = subtitleTrack,
         )
+        if (!isValidSource(url)) {
+            fail("Yayın adresi geçersiz. Hesap bağlantısını kontrol edin.", MavieErrorCode.PLAYBACK_INVALID_SOURCE)
+            return
+        }
         if (foreground && initialized && viewsAttached) open(resumePosition)
     }
 
-    private fun command(action: () -> Unit) {
-        nativeQueue.execute { if (!released) runCatching(action).onFailure { fail("Yayın oynatılamadı. Bağlantını kontrol edip tekrar deneyin.") } }
+    private fun command(generation: Int? = null, action: () -> Unit) {
+        if (released.get() || nativeQueue.isShutdown) return
+        try {
+            nativeQueue.execute {
+                if (released.get()) return@execute
+                if (generation != null && generation != requestGeneration.get()) return@execute
+                runCatching(action).onFailure {
+                    if (!released.get()) {
+                        val code = if (sourceOpened) MavieErrorCode.PLAYBACK_NETWORK_LOST else MavieErrorCode.PLAYBACK_INIT_FAILED
+                        main.post { fail("Yayın oynatılamadı. Bağlantını kontrol edip tekrar deneyin.", code) }
+                    }
+                }
+            }
+        } catch (_: RejectedExecutionException) {
+            // Controller is closing.
+        }
     }
 
     private fun open(position: Long) {
-        val generation = ++requestGeneration
+        val generation = requestGeneration.incrementAndGet()
+        val currentSeekGen = seekGeneration.get()
         val url = sourceUrl
+        if (!isValidSource(url)) {
+            fail("Yayın adresi geçersiz. Hesap bağlantısını kontrol edin.", MavieErrorCode.PLAYBACK_INVALID_SOURCE)
+            return
+        }
+        stopClockObserver()
+        stopStallWatchdog()
         resumePosition = position
-        pendingSeek = if (isLive) null else position.takeIf { it > 0 }
-        expectedSeek = pendingSeek
+        val targetSeek = if (isLive) null else position.takeIf { it > 0 }
+        pendingSeek.set(targetSeek?.let { PendingSeek(generation, currentSeekGen, it) })
+        expectedSeek = targetSeek
         seekDeadline = SystemClock.elapsedRealtime() + 15_000
         lastProgressWallTime = SystemClock.elapsedRealtime()
-        outputClock = PlaybackOutputClock()
-        subtitleNeedsReapply = subtitlePreference != null
-        mutableState.update { it.copy(positionMs = position, buffering = true, error = null, ended = false) }
-        watchForStall(generation)
-        if (!isLive) observeClock(generation)
-        command {
-            if (!foreground || !viewsAttached || generation != requestGeneration) return@command
+        outputClock.set(PlaybackOutputClock())
+        subtitleNeedsReapply.set(subtitlePreference != null)
+        mutableState.update { it.copy(positionMs = position, buffering = true, error = null, errorCode = null, ended = false) }
+        val focusGranted = if (userWantsPlayback) requestAudioFocusForPlayback() else false
+        scheduleStallWatchdog(generation)
+        command(generation) {
+            if (!foreground || !viewsAttached || generation != requestGeneration.get()) return@command
             val mp = player ?: return@command
             mp.setEventListener(null)
             if (sourceOpened) mp.stop()
             runCatching { openPfd?.close() }; openPfd = null
-            if (released || !foreground || generation != requestGeneration) return@command
+            if (released.get() || !foreground || generation != requestGeneration.get()) return@command
             val parsedUri = Uri.parse(url)
             val media = if (parsedUri.scheme.equals("content", ignoreCase = true)) {
-                val pfd = appContext.contentResolver.openFileDescriptor(parsedUri, "r")
-                    ?: run { fail("Yerel video dosyası açılamadı."); return@command }
+                val pfd = try {
+                    appContext.contentResolver.openFileDescriptor(parsedUri, "r")
+                } catch (_: Exception) {
+                    null
+                } ?: run {
+                    main.post { fail("Yerel video dosyası açılamadı.", MavieErrorCode.PLAYBACK_INVALID_SOURCE) }
+                    return@command
+                }
                 openPfd = pfd
                 Media(requireNotNull(libVlc), pfd.fileDescriptor)
             } else {
@@ -262,53 +329,69 @@ internal class NativePlaybackController(
             }
             mp.setEventListener { event ->
                 main.post {
-                    if (!released && generation == requestGeneration) handleEvent(event)
+                    if (!released.get() && generation == requestGeneration.get()) handleEvent(event, generation)
                 }
             }
             sourceOpened = true
-            main.post {
-                if (!released && foreground && generation == requestGeneration && userWantsPlayback) audioManager.requestAudioFocus(focusRequest)
+            if (!released.get() && focusGranted && foreground && userWantsPlayback && !focusInterruptedPlayback) {
+                mp.play()
+            } else {
+                main.post {
+                    if (!released.get() && generation == requestGeneration.get()) {
+                        mutableState.update { it.copy(playing = false, buffering = false) }
+                        stopStallWatchdog()
+                    }
+                }
             }
-            mp.play()
         }
     }
 
-    private fun handleEvent(event: MediaPlayer.Event) {
-        if (released) return
+    private fun handleEvent(event: MediaPlayer.Event, generation: Int) {
+        if (released.get() || generation != requestGeneration.get()) return
         when (event.type) {
             MediaPlayer.Event.Opening -> {
-                outputClock = PlaybackOutputClock()
-                mutableState.update { it.copy(buffering = true, error = null) }
+                outputClock.set(PlaybackOutputClock())
+                mutableState.update { it.copy(buffering = true, error = null, errorCode = null) }
             }
             MediaPlayer.Event.Buffering -> {
                 val wasBuffering = state.value.buffering
-                val enteringBuffer = !state.value.buffering && event.buffering < 99.5f
+                val enteringBuffer = !wasBuffering && event.buffering < 99.5f
                 mutableState.update { it.copy(buffering = event.buffering < 99.5f, bufferingPercent = event.buffering.coerceIn(0f, 100f)) }
                 if (enteringBuffer) {
-                    outputClock = PlaybackOutputClock()
-                    watchForStall(requestGeneration)
-                } else if (wasBuffering && !state.value.buffering && state.value.playing) outputClock = PlaybackOutputClock()
+                    outputClock.set(PlaybackOutputClock())
+                    lastProgressWallTime = SystemClock.elapsedRealtime()
+                    scheduleStallWatchdog(generation)
+                } else if (wasBuffering && !state.value.buffering && state.value.playing) {
+                    outputClock.set(PlaybackOutputClock())
+                    stopStallWatchdog()
+                }
             }
             MediaPlayer.Event.Playing -> {
-                mutableState.update { it.copy(playing = true, buffering = false, error = null, ended = false) }
-                outputClock = PlaybackOutputClock()
-                command {
-                    refreshTracks()
+                mutableState.update { it.copy(playing = true, buffering = false, error = null, errorCode = null, ended = false) }
+                outputClock.set(PlaybackOutputClock())
+                stopStallWatchdog()
+                if (!isLive) scheduleClockObserver(generation)
+                val seekGen = seekGeneration.get()
+                command(generation) {
+                    refreshTracks(generation)
                     applyPreferences()
-                    applyPendingSeek()
-                    player?.rate = state.value.playbackRate
-                    player?.setVideoScale(if (state.value.fillScreen) MediaPlayer.ScaleType.SURFACE_FILL else MediaPlayer.ScaleType.SURFACE_BEST_FIT)
-                    if (state.value.subtitleDelayMs != 0L) player?.setSpuDelay(state.value.subtitleDelayMs * 1000L)
-                    if (!userWantsPlayback || !foreground) player?.pause()
+                    applyPendingSeek(generation, seekGen)
+                    val snapshot = state.value
+                    player?.rate = snapshot.playbackRate
+                    player?.setVideoScale(if (snapshot.fillScreen) MediaPlayer.ScaleType.SURFACE_FILL else MediaPlayer.ScaleType.SURFACE_BEST_FIT)
+                    if (snapshot.subtitleDelayMs != 0L) player?.setSpuDelay(snapshot.subtitleDelayMs * 1000L)
+                    if (!userWantsPlayback || !foreground || focusInterruptedPlayback) player?.pause()
                 }
             }
             MediaPlayer.Event.Paused -> {
-                outputClock = PlaybackOutputClock()
+                outputClock.set(PlaybackOutputClock())
+                stopClockObserver()
                 mutableState.update { it.copy(playing = false, buffering = false) }
                 persistProgress()
             }
             MediaPlayer.Event.Stopped -> {
-                outputClock = PlaybackOutputClock()
+                outputClock.set(PlaybackOutputClock())
+                stopClockObserver()
                 mutableState.update { it.copy(playing = false, buffering = false) }
             }
             MediaPlayer.Event.TimeChanged -> updatePosition(event.timeChanged)
@@ -320,30 +403,35 @@ internal class NativePlaybackController(
                 // A resume seek can recreate the elementary streams. Reapply a
                 // chosen subtitle after that seek instead of trusting LibVLC's
                 // stale selected-track getter.
-                command {
-                    applyPendingSeek()
-                    refreshTracks()
+                val seekGen = seekGeneration.get()
+                command(generation) {
+                    applyPendingSeek(generation, seekGen)
+                    refreshTracks(generation)
                     applyPreferences()
                 }
             }
-            MediaPlayer.Event.ESAdded, MediaPlayer.Event.ESDeleted, MediaPlayer.Event.ESSelected -> command {
-                refreshTracks()
+            MediaPlayer.Event.ESAdded, MediaPlayer.Event.ESDeleted, MediaPlayer.Event.ESSelected -> command(generation) {
+                refreshTracks(generation)
                 applyPreferences()
             }
-            MediaPlayer.Event.EndReached -> resolveContentEnd()
-            MediaPlayer.Event.EncounteredError -> retryAutomatically()
+            MediaPlayer.Event.EndReached -> {
+                stopClockObserver()
+                stopStallWatchdog()
+                resolveContentEnd()
+            }
+            MediaPlayer.Event.EncounteredError -> retryAutomatically(PlaybackFailureReason.GENERIC)
         }
     }
 
     private fun resolveContentEnd() {
-        if (isLive) { retryAutomatically(); return }
-        val generation = requestGeneration
-        val seek = seekGeneration
+        if (isLive) { retryAutomatically(PlaybackFailureReason.GENERIC); return }
+        val generation = requestGeneration.get()
+        val seek = seekGeneration.get()
         val snapshot = state.value
-        val clockAtEnd = outputClock
+        val clockAtEnd = outputClock.get()
         val endedAt = SystemClock.elapsedRealtime()
-        command {
-            if (!foreground || generation != requestGeneration) return@command
+        command(generation) {
+            if (!foreground || generation != requestGeneration.get()) return@command
             val mp = player ?: return@command
             val duration = mp.length.takeIf { it > 0 } ?: snapshot.durationMs
             val position = nativePlaybackPosition(mp.time, mp.position, duration)
@@ -355,9 +443,9 @@ internal class NativePlaybackController(
             val playbackClock = maxOf(clockAtEnd.positionMs ?: 0, finalOutputClock ?: 0)
             main.post {
                 // A different source, seek or lifecycle owner may have taken over while sampling.
-                if (released || !foreground || generation != requestGeneration || seek != seekGeneration || state.value.ended) return@post
+                if (released.get() || !foreground || generation != requestGeneration.get() || seek != seekGeneration.get() || state.value.ended) return@post
                 val finalPosition = maxOf(position, playbackClock)
-                if (!reachedContentEnd(finalPosition, duration)) retryAutomatically()
+                if (!reachedContentEnd(finalPosition, duration)) retryAutomatically(PlaybackFailureReason.GENERIC)
                 else {
                     mutableState.update {
                         it.copy(positionMs = duration.takeIf { value -> value > 0 } ?: finalPosition,
@@ -385,32 +473,52 @@ internal class NativePlaybackController(
         if (lastPersistedPosition < 0 || abs(position - lastPersistedPosition) >= 5_000) persistProgress()
     }
 
+    private fun stopClockObserver() {
+        clockRunnable?.let(main::removeCallbacks)
+        clockRunnable = null
+    }
+
     // Some streams give sparse TimeChanged callbacks. Sample the native clock for the same timeline.
-    private fun observeClock(generation: Int) {
-        main.postDelayed({
-            if (released || !foreground || generation != requestGeneration || state.value.ended || state.value.error != null) return@postDelayed
-            if (state.value.playing) {
-                val seek = seekGeneration
-                command {
-                    if (!foreground || generation != requestGeneration) return@command
-                    val mp = player ?: return@command
-                    val duration = mp.length
-                    val position = nativePlaybackPosition(mp.time, mp.position, duration)
-                    val counters = outputCounters(mp)
-                    val sampledAt = SystemClock.elapsedRealtime()
-                    main.post {
-                        if (released || !foreground || generation != requestGeneration || seek != seekGeneration || !state.value.playing) return@post
-                        if (duration > 0) mutableState.update { it.copy(durationMs = duration) }
-                        val nativeSeekConfirmed = expectedSeek?.let { abs(position - it) <= 4_000 } ?: true
-                        if (!state.value.buffering && state.value.error == null && nativeSeekConfirmed && counters != null) {
-                            outputClock = outputClock.observe(position, sampledAt, counters.first, counters.second)
-                        } else outputClock = PlaybackOutputClock()
-                        updatePosition(position)
+    private fun scheduleClockObserver(generation: Int) {
+        stopClockObserver()
+        if (!shouldObservePlaybackClock(released.get(), foreground, isLive, state.value)) return
+        val runnable = Runnable {
+            clockRunnable = null
+            if (!shouldObservePlaybackClock(released.get(), foreground, isLive, state.value) ||
+                generation != requestGeneration.get()
+            ) {
+                return@Runnable
+            }
+            val seek = seekGeneration.get()
+            command(generation) {
+                if (!foreground || generation != requestGeneration.get()) return@command
+                val mp = player ?: return@command
+                val duration = mp.length
+                val position = nativePlaybackPosition(mp.time, mp.position, duration)
+                val counters = outputCounters(mp)
+                val sampledAt = SystemClock.elapsedRealtime()
+                main.post {
+                    if (released.get() || !foreground || generation != requestGeneration.get() ||
+                        seek != seekGeneration.get() || !state.value.playing
+                    ) {
+                        return@post
+                    }
+                    if (duration > 0) mutableState.update { it.copy(durationMs = duration) }
+                    val nativeSeekConfirmed = expectedSeek?.let { abs(position - it) <= 4_000 } ?: true
+                    if (!state.value.buffering && state.value.error == null && nativeSeekConfirmed && counters != null) {
+                        outputClock.set(outputClock.get().observe(position, sampledAt, counters.first, counters.second))
+                    } else {
+                        outputClock.set(PlaybackOutputClock())
+                    }
+                    updatePosition(position)
+                    if (shouldObservePlaybackClock(released.get(), foreground, isLive, state.value)) {
+                        scheduleClockObserver(generation)
                     }
                 }
             }
-            observeClock(generation)
-        }, 400)
+        }
+        clockRunnable = runnable
+        main.postDelayed(runnable, 400)
     }
 
     private fun outputCounters(mp: MediaPlayer): Pair<Int, Int>? = runCatching {
@@ -420,15 +528,18 @@ internal class NativePlaybackController(
         }
     }.getOrNull()
 
-    private fun applyPendingSeek() {
-        val target = pendingSeek ?: return
+    private fun applyPendingSeek(generation: Int, seekGen: Int) {
+        val target = pendingSeek.get() ?: return
+        if (target.generation != generation || target.seekGen != seekGen) return
         val mp = player ?: return
         if (!mp.isSeekable) return
-        if (abs(mp.time - target) > 1500) mp.setTime(target, false)
-        pendingSeek = null
+        if (pendingSeek.compareAndSet(target, null)) {
+            if (abs(mp.time - target.positionMs) > 1500) mp.setTime(target.positionMs, false)
+        }
     }
 
-    private fun refreshTracks() {
+    private fun refreshTracks(generation: Int) {
+        if (released.get() || generation != requestGeneration.get()) return
         val mp = player ?: return
         val metadata = mutableMapOf<Int, IMedia.Track>()
         mp.media?.let { media ->
@@ -449,10 +560,14 @@ internal class NativePlaybackController(
         }
         val audio = mp.audioTracks.orEmpty().filter { it.id >= 0 }.map(::track)
         val subtitles = mp.spuTracks.orEmpty().filter { it.id >= 0 }.map(::track)
-        if (defaultAudioId == null && mp.audioTrack >= 0) defaultAudioId = mp.audioTrack
+        val currentAudio = mp.audioTrack
+        if (currentAudio >= 0 && generation == requestGeneration.get()) {
+            defaultAudioId.compareAndSet(null, currentAudio)
+        }
+        if (generation != requestGeneration.get()) return
         mutableState.update {
             it.copy(audioTracks = audio, subtitleTracks = subtitles,
-                audioTrackId = mp.audioTrack.takeIf { id -> id >= 0 }, subtitleTrackId = mp.spuTrack,
+                audioTrackId = currentAudio.takeIf { id -> id >= 0 }, subtitleTrackId = mp.spuTrack,
                 durationMs = mp.length.takeIf { length -> length > 0 } ?: it.durationMs)
         }
     }
@@ -460,40 +575,42 @@ internal class NativePlaybackController(
     private fun applyPreferences() {
         val mp = player ?: return
         val snapshot = state.value
-        audioPreference?.takeIf { id -> snapshot.audioTracks.any { it.id == id } }?.let { id ->
+        snapshot.audioPreference?.takeIf { id -> snapshot.audioTracks.any { it.id == id } }?.let { id ->
             if (mp.audioTrack != id) mp.setAudioTrack(id)
         }
-        subtitlePreference?.let { id ->
+        snapshot.subtitlePreference?.let { id ->
             val available = id == -1 || snapshot.subtitleTracks.any { it.id == id }
-            if (available && (subtitleNeedsReapply || mp.spuTrack != id)) {
+            if (available && (subtitleNeedsReapply.get() || mp.spuTrack != id)) {
                 // setSpuTrack is deliberately called even if getSpuTrack()
                 // still says the old ID: after resume the getter may be stale
                 // while the new decoder has no active subtitle renderer.
                 mp.setSpuTrack(id)
-                subtitleNeedsReapply = false
+                subtitleNeedsReapply.set(false)
             }
         }
     }
 
     fun selectAudio(id: Int?) {
-        outputClock = PlaybackOutputClock()
+        outputClock.set(PlaybackOutputClock())
         audioPreference = id
         mutableState.update { it.copy(audioPreference = id) }
-        command {
-            val chosen = id ?: defaultAudioId
+        val generation = requestGeneration.get()
+        command(generation) {
+            val chosen = id ?: defaultAudioId.get()
             if (chosen != null && state.value.audioTracks.any { it.id == chosen }) player?.setAudioTrack(chosen)
-            refreshTracks()
+            refreshTracks(generation)
         }
         onTrackSelection(id, subtitlePreference)
     }
 
     fun selectSubtitle(id: Int?) {
         subtitlePreference = id
-        subtitleNeedsReapply = false
+        subtitleNeedsReapply.set(false)
         mutableState.update { it.copy(subtitlePreference = id) }
-        command {
+        val generation = requestGeneration.get()
+        command(generation) {
             if (id != null) player?.setSpuTrack(id)
-            refreshTracks()
+            refreshTracks(generation)
         }
         onTrackSelection(audioPreference, id)
     }
@@ -502,8 +619,8 @@ internal class NativePlaybackController(
         val snapshot = state.value
         if (isLive || (!snapshot.seekable && !snapshot.ended)) return
         val target = positionMs.coerceAtLeast(0).let { if (snapshot.durationMs > 0) it.coerceAtMost(snapshot.durationMs) else it }
-        seekGeneration++
-        outputClock = PlaybackOutputClock()
+        seekGeneration.incrementAndGet()
+        outputClock.set(PlaybackOutputClock())
         if (snapshot.ended) {
             if (target >= snapshot.durationMs && snapshot.durationMs > 0) return
             userWantsPlayback = true
@@ -511,11 +628,12 @@ internal class NativePlaybackController(
             return
         }
         resumePosition = target
-        pendingSeek = null
+        pendingSeek.set(null)
         expectedSeek = target
         seekDeadline = SystemClock.elapsedRealtime() + 15_000
         mutableState.update { it.copy(positionMs = target, ended = false) }
-        command { player?.setTime(target, false) }
+        val generation = requestGeneration.get()
+        command(generation) { player?.setTime(target, false) }
         persistProgress()
     }
 
@@ -523,11 +641,25 @@ internal class NativePlaybackController(
 
     fun togglePlaying() {
         if (state.value.error != null || state.value.ended) { retry(); return }
-        userWantsPlayback = !state.value.playing
-        if (!userWantsPlayback) outputClock = PlaybackOutputClock()
-        if (userWantsPlayback) audioManager.requestAudioFocus(focusRequest)
-        command { if (userWantsPlayback) player?.play() else player?.pause() }
-        if (!userWantsPlayback) audioManager.abandonAudioFocusRequest(focusRequest)
+        val wantsPlay = !state.value.playing
+        userWantsPlayback = wantsPlay
+        if (!wantsPlay) {
+            outputClock.set(PlaybackOutputClock())
+            stopClockObserver()
+            stopStallWatchdog()
+            command { player?.pause() }
+            audioManager.abandonAudioFocusRequest(focusRequest)
+        } else {
+            val granted = requestAudioFocusForPlayback()
+            if (granted) {
+                val generation = requestGeneration.get()
+                command(generation) { player?.play() }
+            } else {
+                mutableState.update { it.copy(playing = false, buffering = false) }
+                stopClockObserver()
+                stopStallWatchdog()
+            }
+        }
     }
 
     fun toggleMute(): Boolean {
@@ -555,47 +687,81 @@ internal class NativePlaybackController(
 
     fun pausePlayback() {
         userWantsPlayback = false
-        outputClock = PlaybackOutputClock()
+        outputClock.set(PlaybackOutputClock())
+        stopClockObserver()
+        stopStallWatchdog()
         command { player?.pause() }
         audioManager.abandonAudioFocusRequest(focusRequest)
     }
 
     fun retry() {
-        if (released || !foreground) return
+        if (released.get() || !foreground) return
         errorRetries = 0
         userWantsPlayback = true
         stableSincePosition = resumePosition
         open(if (isLive || state.value.ended) 0 else resumePosition)
     }
 
-    private fun retryAutomatically() {
-        if (released || !foreground) return
-        outputClock = PlaybackOutputClock()
+    private fun retryAutomatically(reason: PlaybackFailureReason) {
+        if (released.get() || !foreground) return
+        outputClock.set(PlaybackOutputClock())
+        stopClockObserver()
+        stopStallWatchdog()
         persistProgress()
-        if (errorRetries >= 2) {
-            fail("Yayın bağlantısı kesildi. İnternetini kontrol edip yeniden deneyin.")
+        val decision = nextRetryOrFailure(errorRetries, reason, isNetworkAvailable())
+        if (!decision.shouldRetry) {
+            fail(
+                decision.errorMessage ?: "Yayın bağlantısı kesildi. İnternetini kontrol edip yeniden deneyin.",
+                decision.errorCode ?: MavieErrorCode.PLAYBACK_NETWORK_LOST,
+            )
             return
         }
-        errorRetries++
-        mutableState.update { it.copy(buffering = true, playing = false, error = null) }
-        val generation = requestGeneration
-        main.postDelayed({ if (!released && foreground && generation == requestGeneration) open(if (isLive) 0 else resumePosition) }, 800L * errorRetries)
+        errorRetries = decision.nextRetryCount
+        mutableState.update { it.copy(buffering = true, playing = false, error = null, errorCode = null) }
+        val generation = requestGeneration.get()
+        main.postDelayed({
+            if (!released.get() && foreground && generation == requestGeneration.get()) {
+                open(if (isLive) 0 else resumePosition)
+            }
+        }, decision.delayMs)
     }
 
-    private fun watchForStall(generation: Int) {
-        main.postDelayed({
-            if (!released && foreground && generation == requestGeneration && state.value.buffering &&
-                state.value.error == null && SystemClock.elapsedRealtime() - lastProgressWallTime >= 25_000) {
-                retryAutomatically()
+    private fun stopStallWatchdog() {
+        stallRunnable?.let(main::removeCallbacks)
+        stallRunnable = null
+    }
+
+    private fun scheduleStallWatchdog(generation: Int, delayMs: Long = 5_000L) {
+        stopStallWatchdog()
+        val runnable = Runnable {
+            stallRunnable = null
+            if (generation != requestGeneration.get()) return@Runnable
+            when (
+                evaluateStallWatchdog(
+                    released = released.get(),
+                    foreground = foreground,
+                    userWantsPlayback = userWantsPlayback,
+                    snapshot = state.value,
+                    lastProgressWallMs = lastProgressWallTime,
+                    nowWallMs = SystemClock.elapsedRealtime(),
+                )
+            ) {
+                StallAction.STOP -> Unit
+                StallAction.RESCHEDULE -> scheduleStallWatchdog(generation, 5_000L)
+                StallAction.RETRY -> retryAutomatically(PlaybackFailureReason.STALL)
             }
-        }, 30_000)
+        }
+        stallRunnable = runnable
+        main.postDelayed(runnable, delayMs)
     }
 
     fun suspendPlayback() {
-        if (released || !foreground) return
+        if (released.get() || !foreground) return
         foreground = false
-        outputClock = PlaybackOutputClock()
-        requestGeneration++
+        outputClock.set(PlaybackOutputClock())
+        stopClockObserver()
+        stopStallWatchdog()
+        requestGeneration.incrementAndGet()
         persistProgress()
         mutableState.update { it.copy(playing = false, buffering = false) }
         audioManager.abandonAudioFocusRequest(focusRequest)
@@ -603,7 +769,7 @@ internal class NativePlaybackController(
     }
 
     fun resumePlayback() {
-        if (released || foreground) return
+        if (released.get() || foreground) return
         foreground = true
         if (initialized && viewsAttached && !state.value.ended) open(resumePosition)
     }
@@ -615,37 +781,61 @@ internal class NativePlaybackController(
         onProgress(snapshot.positionMs.coerceAtLeast(0), snapshot.durationMs.coerceAtLeast(0))
     }
 
-    private fun fail(message: String) {
-        outputClock = PlaybackOutputClock()
-        if (!released) mutableState.update { it.copy(error = message, playing = false, buffering = false) }
-    }
-
-    fun close() {
-        if (released) return
-        persistProgress()
-        outputClock = PlaybackOutputClock()
-        released = true
-        foreground = false
-        requestGeneration++
-        main.removeCallbacksAndMessages(null)
-        audioManager.abandonAudioFocusRequest(focusRequest)
-        layout?.keepScreenOn = false
-        if (viewsAttached) runCatching { player?.detachViews() }
-        viewsAttached = false
-        layout = null
-        // Queue directly: normal commands intentionally skip work after release.
-        nativeQueue.execute {
-            runCatching { player?.setEventListener(null); player?.stop() }
-            runCatching { openPfd?.close() }; openPfd = null
-            runCatching { player?.release() }
-            runCatching { libVlc?.release() }
-            player = null
-            libVlc = null
+    private fun fail(message: String, code: MavieErrorCode = MavieErrorCode.PLAYBACK_NETWORK_LOST) {
+        outputClock.set(PlaybackOutputClock())
+        stopClockObserver()
+        stopStallWatchdog()
+        if (!released.get()) {
+            mutableState.update { it.copy(error = message, errorCode = code, playing = false, buffering = false) }
         }
     }
 
+    fun close() {
+        if (!released.compareAndSet(false, true)) return
+        foreground = false
+        requestGeneration.incrementAndGet()
+        outputClock.set(PlaybackOutputClock())
+        val cleanupMain = {
+            persistProgress()
+            stopClockObserver()
+            stopStallWatchdog()
+            main.removeCallbacksAndMessages(null)
+            audioManager.abandonAudioFocusRequest(focusRequest)
+            layout?.keepScreenOn = false
+            if (viewsAttached) runCatching { player?.detachViews() }
+            viewsAttached = false
+            layout = null
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            cleanupMain()
+        } else {
+            val latch = CountDownLatch(1)
+            main.post {
+                try {
+                    cleanupMain()
+                } finally {
+                    latch.countDown()
+                }
+            }
+            runCatching { latch.await(300, TimeUnit.MILLISECONDS) }
+        }
+        // Submit native teardown onto this controller's own executor, then shut it down.
+        runCatching {
+            nativeQueue.execute {
+                runCatching { player?.setEventListener(null) }
+                runCatching { player?.stop() }
+                runCatching { openPfd?.close() }; openPfd = null
+                runCatching { player?.release() }
+                runCatching { libVlc?.release() }
+                player = null
+                libVlc = null
+            }
+        }
+        nativeQueue.shutdown()
+    }
+
     private companion object {
-        val nativeQueue = Executors.newSingleThreadExecutor { task -> Thread(task, "mavie-native-player").apply { isDaemon = true } }
+        val controllerIds = AtomicInteger(0)
     }
 
 }

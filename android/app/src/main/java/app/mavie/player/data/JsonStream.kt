@@ -13,7 +13,7 @@ internal fun readProviderJson(input: InputStream, byteLimit: Long=100*1024*1024L
     val bounded=object : InputStream() {
         var consumed=0L
         private fun counted(count: Int): Int {
-            if(count>0){consumed+=count;if(consumed>byteLimit)throw IptvException("Sağlayıcının listesi bu cihaz için çok büyük.")}
+            if(count>0){consumed+=count;if(consumed>byteLimit)throw IptvException("Sağlayıcının listesi bu cihaz için çok büyük.", MavieErrorCode.PAYLOAD_TOO_LARGE)}
             return count
         }
         override fun read(): Int = input.read().also { if(it>=0)counted(1) }
@@ -26,7 +26,7 @@ internal fun readProviderJson(input: InputStream, byteLimit: Long=100*1024*1024L
     return JsonReader(characters).use { reader ->
         var values=0
         fun value(depth: Int): Any {
-            if(depth>64||++values>10_000_000)throw IptvException("Sağlayıcının yanıtı işlenemedi.")
+            if(depth>64||++values>10_000_000)throw IptvException("Sağlayıcının yanıtı işlenemedi.", MavieErrorCode.INVALID_RESPONSE)
             return when(reader.peek()) {
                 JsonToken.BEGIN_OBJECT -> {
                     val objectValue=JSONObject();reader.beginObject()
@@ -41,16 +41,16 @@ internal fun readProviderJson(input: InputStream, byteLimit: Long=100*1024*1024L
                 JsonToken.STRING -> reader.nextString()
                 JsonToken.NUMBER -> {
                     val number=reader.nextString()
-                    number.toLongOrNull()?:number.toDoubleOrNull()?.takeIf { it.isFinite() }?:throw IptvException("Sağlayıcının yanıtı geçersiz sayılar içeriyor.")
+                    number.toLongOrNull()?:number.toDoubleOrNull()?.takeIf { it.isFinite() }?:throw IptvException("Sağlayıcının yanıtı geçersiz sayılar içeriyor.", MavieErrorCode.INVALID_RESPONSE)
                 }
                 JsonToken.BOOLEAN -> reader.nextBoolean()
                 JsonToken.NULL -> {reader.nextNull();JSONObject.NULL}
-                else -> throw IptvException("Sağlayıcı geçerli bir kütüphane göndermedi.")
+                else -> throw IptvException("Sağlayıcı geçerli bir kütüphane göndermedi.", MavieErrorCode.INVALID_RESPONSE)
             }
         }
         value(0).also {
-            if(it !is JSONObject&&it !is JSONArray)throw IptvException("Sağlayıcı geçerli bir kütüphane göndermedi.")
-            if(reader.peek()!=JsonToken.END_DOCUMENT)throw IptvException("Sağlayıcı geçerli bir yanıt göndermedi.")
+            if(it !is JSONObject&&it !is JSONArray)throw IptvException("Sağlayıcı geçerli bir kütüphane göndermedi.", MavieErrorCode.INVALID_RESPONSE)
+            if(reader.peek()!=JsonToken.END_DOCUMENT)throw IptvException("Sağlayıcı geçerli bir yanıt göndermedi.", MavieErrorCode.INVALID_RESPONSE)
         }
     }
 }
