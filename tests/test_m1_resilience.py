@@ -492,17 +492,19 @@ class ServerM3uPlusAndNetworkTests(unittest.TestCase):
     def test_launch_sync_concurrent_deduplication_and_start_failure_cleanup(self):
         entered = threading.Event()
         release = threading.Event()
+        finished = threading.Event()
 
         def slow_sync(_acquired=False):
             if not _acquired and not server.sync_lock.acquire(blocking=False):
                 return
             try:
                 entered.set()
-                release.wait(2.0)
+                release.wait(5.0)
             finally:
                 with server.sync_state_lock:
                     server.sync_state['syncing'] = False
                 server.sync_lock.release()
+                finished.set()
 
         barrier = threading.Barrier(8)
         results = []
@@ -518,10 +520,12 @@ class ServerM3uPlusAndNetworkTests(unittest.TestCase):
             threads = [threading.Thread(target=worker) for _ in range(8)]
             for t in threads:
                 t.start()
+            # Wait for all 8 callers to finish while the first sync still holds sync_lock.
+            for t in threads:
+                t.join(timeout=5.0)
             self.assertTrue(entered.wait(2.0))
             release.set()
-            for t in threads:
-                t.join(timeout=3.0)
+            self.assertTrue(finished.wait(2.0))
         self.assertEqual(results.count(True), 1)
         self.assertEqual(results.count(False), 7)
         self.assertFalse(server.sync_state['syncing'])

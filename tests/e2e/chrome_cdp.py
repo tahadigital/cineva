@@ -191,11 +191,14 @@ class ChromeCdpSession:
             "--no-first-run",
             "--no-default-browser-check",
             "--disable-background-networking",
+            "--disable-dev-shm-usage",
             "--remote-debugging-port=0",
             f"--user-data-dir={profile_dir}",
             f"--window-size={self.width},{self.height}",
-            "about:blank",
         ]
+        if os.name == "posix" and os.uname().sysname == "Linux":
+            cmd.append("--no-sandbox")
+        cmd.append("about:blank")
         self._proc = subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
