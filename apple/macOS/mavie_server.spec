@@ -13,6 +13,7 @@ a = Analysis(
     binaries=[],
     datas=[
         (os.path.join(ROOT, 'public'), 'public'),
+        (os.path.join(ROOT, 'tv', 'src'), os.path.join('tv', 'src')),
         (os.path.join(ROOT, 'legal'), 'legal'),
         *collect_data_files('imageio_ffmpeg'),
         *collect_data_files('tzdata'),

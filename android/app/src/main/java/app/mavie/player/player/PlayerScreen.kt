@@ -18,7 +18,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -108,6 +107,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
@@ -134,6 +134,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.zIndex
 import androidx.core.app.PictureInPictureModeChangedInfo
 import androidx.core.util.Consumer
 import androidx.core.view.WindowCompat
@@ -142,6 +143,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import app.mavie.player.ui.LocalIsTv
 import app.mavie.player.ui.MavieBrandDiagonalGradient
 import app.mavie.player.ui.MavieCyanDot
 import app.mavie.player.ui.MavieGlassDialogFill
@@ -151,8 +153,10 @@ import app.mavie.player.ui.MavieGradientButton
 import app.mavie.player.ui.MavieMuted
 import app.mavie.player.ui.MaviePurple
 import app.mavie.player.ui.MavieTurquoise
+import app.mavie.player.ui.MavieTvFocusBrush
 import app.mavie.player.ui.errorHintFor
 import app.mavie.player.ui.mavieGlassSurface
+import app.mavie.player.ui.mavieTvFocusable
 import app.mavie.player.ui.playbackTime
 import app.mavie.player.ui.rememberPressScale
 import app.mavie.player.ui.rememberReducedMotion
@@ -243,7 +247,9 @@ fun PlayerScreen(
 ) {
     val context = LocalContext.current
     val view = LocalView.current
+    val isTv = LocalIsTv.current
     val isTablet = LocalConfiguration.current.smallestScreenWidthDp >= 600
+    val skipOrientationLock = isTablet || isTv
     val lifecycleOwner = LocalLifecycleOwner.current
     val activity = remember(context) { context.findActivity() }
     val audioManager = remember(context) { context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
@@ -371,8 +377,8 @@ fun PlayerScreen(
             if (previousOrientation != null) activity?.requestedOrientation = previousOrientation
         }
     }
-    LaunchedEffect(landscape, isTablet) {
-        if (isTablet) return@LaunchedEffect
+    LaunchedEffect(landscape, skipOrientationLock) {
+        if (skipOrientationLock) return@LaunchedEffect
         if (landscape) activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         else if (activity?.requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE) {
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
@@ -635,9 +641,12 @@ fun PlayerScreen(
                                     )
                                 }
                             },
-                            modifier = Modifier.heightIn(min = 48.dp).semantics {
-                                contentDescription = "Resim içinde resim (PiP)"
-                            },
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .mavieTvFocusable(shape = CircleShape, addFocusable = false)
+                                .semantics {
+                                    contentDescription = "Resim içinde resim (PiP)"
+                                },
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                         ) {
                             Icon(Icons.Rounded.PictureInPictureAlt, null, tint = Color.White, modifier = Modifier.size(18.dp))
@@ -647,9 +656,12 @@ fun PlayerScreen(
                     }
                     TextButton(
                         onClick = { locked = true; controlsVisible = false; unlockHintVisible = true },
-                        modifier = Modifier.heightIn(min = 48.dp).semantics {
-                            contentDescription = "Ekranı kilitle"
-                        },
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .mavieTvFocusable(shape = CircleShape, addFocusable = false)
+                            .semantics {
+                                contentDescription = "Ekranı kilitle"
+                            },
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                     ) {
                         Icon(Icons.Rounded.Lock, null, tint = Color.White, modifier = Modifier.size(18.dp))
@@ -736,7 +748,7 @@ fun PlayerScreen(
                     ) {
                         TextButton(
                             onClick = { trackDialog = "audio"; controlsVisible = true; interactionVersion++ },
-                            modifier = Modifier.heightIn(min = 48.dp),
+                            modifier = Modifier.heightIn(min = 48.dp).mavieTvFocusable(shape = CircleShape, addFocusable = false),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                         ) {
                             Icon(Icons.Rounded.Audiotrack, null, tint = Color.White, modifier = Modifier.size(18.dp))
@@ -746,7 +758,7 @@ fun PlayerScreen(
                         }
                         TextButton(
                             onClick = { trackDialog = "subtitle"; controlsVisible = true; interactionVersion++ },
-                            modifier = Modifier.heightIn(min = 48.dp),
+                            modifier = Modifier.heightIn(min = 48.dp).mavieTvFocusable(shape = CircleShape, addFocusable = false),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                         ) {
                             Icon(Icons.Rounded.Subtitles, null, tint = Color.White, modifier = Modifier.size(18.dp))
@@ -764,7 +776,9 @@ fun PlayerScreen(
                                 ) {
                                     IconButton(
                                         onClick = { optionsMenuOpen = true; controlsVisible = true; interactionVersion++ },
-                                        modifier = Modifier.defaultMinSize(48.dp, 48.dp)
+                                        modifier = Modifier
+                                            .defaultMinSize(48.dp, 48.dp)
+                                            .mavieTvFocusable(shape = CircleShape, addFocusable = false)
                                             .semantics {
                                                 contentDescription = "Seçenekler"
                                                 role = Role.Button
@@ -814,20 +828,20 @@ fun PlayerScreen(
                                 if (!isLive) {
                                     TextButton(
                                         onClick = ::cyclePlaybackRate,
-                                        modifier = Modifier.heightIn(min = 48.dp),
+                                        modifier = Modifier.heightIn(min = 48.dp).mavieTvFocusable(shape = CircleShape, addFocusable = false),
                                     ) {
                                         Text("${playback.playbackRate}x", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
                                 TextButton(
                                     onClick = ::toggleFillScreen,
-                                    modifier = Modifier.heightIn(min = 48.dp),
+                                    modifier = Modifier.heightIn(min = 48.dp).mavieTvFocusable(shape = CircleShape, addFocusable = false),
                                 ) {
                                     Text(if (playback.fillScreen) "Doldur" else "Sığdır", color = Color.White.copy(alpha = .85f), fontSize = 11.sp)
                                 }
                                 TextButton(
                                     onClick = ::cycleSleepTimer,
-                                    modifier = Modifier.heightIn(min = 48.dp),
+                                    modifier = Modifier.heightIn(min = 48.dp).mavieTvFocusable(shape = CircleShape, addFocusable = false),
                                 ) {
                                     Text(
                                         if (sleepMinutes > 0) "${sleepMinutes}dk" else "Uyku",
@@ -839,18 +853,21 @@ fun PlayerScreen(
                                 if (episodes.isNotEmpty()) {
                                     TextButton(
                                         onClick = { episodeDrawerOpen = true; controlsVisible = true; interactionVersion++ },
-                                        modifier = Modifier.heightIn(min = 48.dp),
+                                        modifier = Modifier.heightIn(min = 48.dp).mavieTvFocusable(shape = CircleShape, addFocusable = false),
                                     ) {
                                         Text("Bölümler", color = Color.White, fontSize = 12.sp)
                                     }
                                 } else if (nextEpisode != null && !playback.ended) {
-                                    TextButton(onClick = ::advanceEpisode, modifier = Modifier.heightIn(min = 48.dp)) {
+                                    TextButton(
+                                        onClick = ::advanceEpisode,
+                                        modifier = Modifier.heightIn(min = 48.dp).mavieTvFocusable(shape = CircleShape, addFocusable = false),
+                                    ) {
                                         Text("Sonraki bölüm", color = Color.White, fontSize = 12.sp)
                                     }
                                 }
                             }
                         }
-                        if (!isTablet) {
+                        if (!skipOrientationLock) {
                             PlayerControl(
                                 icon = if (landscape) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
                                 label = if (landscape) "Dikey ekrana geç" else "Yatay tam ekran",
@@ -932,12 +949,14 @@ fun PlayerScreen(
                         Row(
                             Modifier.fillMaxWidth()
                                 .heightIn(min = 48.dp)
-                                .clip(RoundedCornerShape(12.dp))
+                                .mavieTvFocusable(
+                                    shape = RoundedCornerShape(12.dp),
+                                    onClick = { episodeDrawerOpen = false; if (!active) onSelectEpisode(epId) },
+                                )
                                 .background(if (active) MaviePurple.copy(alpha = .28f) else Color.Transparent)
                                 .let { mod ->
                                     if (active) mod.border(1.dp, MavieTurquoise.copy(alpha = 0.5f), RoundedCornerShape(12.dp)) else mod
                                 }
-                                .clickable { episodeDrawerOpen = false; if (!active) onSelectEpisode(epId) }
                                 .padding(horizontal = 10.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -953,7 +972,10 @@ fun PlayerScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { episodeDrawerOpen = false }, modifier = Modifier.heightIn(min = 48.dp)) {
+                TextButton(
+                    onClick = { episodeDrawerOpen = false },
+                    modifier = Modifier.heightIn(min = 48.dp).mavieTvFocusable(shape = RoundedCornerShape(12.dp), addFocusable = false),
+                ) {
                     Text("Kapat", color = MavieTurquoise)
                 }
             },
@@ -984,7 +1006,10 @@ private fun NextEpisodeCard(next: UpNextEpisode, seconds: Int, onPlay: () -> Uni
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) { Text("Şimdi değil", color = Color.White) }
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.heightIn(min = 48.dp).mavieTvFocusable(shape = RoundedCornerShape(12.dp), addFocusable = false),
+            ) { Text("Şimdi değil", color = Color.White) }
             Spacer(Modifier.width(8.dp))
             MavieGradientButton(
                 onClick = onPlay,
@@ -1022,14 +1047,28 @@ private fun PlayerControl(
             enabled = enabled,
             interactionSource = interactionSource,
             modifier = modifier
+                .zIndex(if (focused) 1f else 0f)
                 .graphicsLayer { scaleX = scale; scaleY = scale }
                 .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                 .size(size.dp)
+                .then(
+                    if (focused) {
+                        Modifier.shadow(
+                            elevation = 14.dp,
+                            shape = CircleShape,
+                            clip = false,
+                            ambientColor = MaviePurple.copy(alpha = 0.55f),
+                            spotColor = MavieTurquoise.copy(alpha = 0.65f),
+                        )
+                    } else {
+                        Modifier
+                    }
+                )
                 .clip(CircleShape)
-                .background(if (prominent) MavieGlassPillFill else Color.Transparent)
+                .background(if (prominent || focused) MavieGlassPillFill else Color.Transparent)
                 .let { mod ->
                     when {
-                        focused -> mod.border(2.dp, MavieCyanDot, CircleShape)
+                        focused -> mod.border(2.5.dp, MavieTvFocusBrush, CircleShape)
                         prominent -> mod.border(1.5.dp, MavieBrandDiagonalGradient, CircleShape)
                         else -> mod
                     }
@@ -1077,15 +1116,27 @@ private fun TrackChoiceDialog(
                     HorizontalDivider(Modifier.padding(vertical = 10.dp), color = Color.White.copy(alpha = .12f))
                     Text("Altyazı senkronu: ${"%.1f".format(subtitleDelayMs / 1000.0)} sn", color = Color(0xFFD0D4DC), fontSize = 12.sp)
                     Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = { onAdjustDelay(-500L) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("-0.5 sn", color = Color.White) }
-                        TextButton(onClick = onResetDelay, modifier = Modifier.heightIn(min = 48.dp)) { Text("Sıfırla", color = MavieTurquoise) }
-                        TextButton(onClick = { onAdjustDelay(500L) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("+0.5 sn", color = Color.White) }
+                        TextButton(
+                            onClick = { onAdjustDelay(-500L) },
+                            modifier = Modifier.heightIn(min = 48.dp).mavieTvFocusable(shape = RoundedCornerShape(12.dp), addFocusable = false),
+                        ) { Text("-0.5 sn", color = Color.White) }
+                        TextButton(
+                            onClick = onResetDelay,
+                            modifier = Modifier.heightIn(min = 48.dp).mavieTvFocusable(shape = RoundedCornerShape(12.dp), addFocusable = false),
+                        ) { Text("Sıfırla", color = MavieTurquoise) }
+                        TextButton(
+                            onClick = { onAdjustDelay(500L) },
+                            modifier = Modifier.heightIn(min = 48.dp).mavieTvFocusable(shape = RoundedCornerShape(12.dp), addFocusable = false),
+                        ) { Text("+0.5 sn", color = Color.White) }
                     }
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.heightIn(min = 48.dp).mavieTvFocusable(shape = RoundedCornerShape(12.dp), addFocusable = false),
+            ) {
                 Text("Kapat", color = MavieTurquoise)
             }
         },
@@ -1095,10 +1146,15 @@ private fun TrackChoiceDialog(
 @Composable
 private fun TrackChoiceRow(label: String, selected: Boolean, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(onClick = onClick).padding(vertical = 3.dp),
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .mavieTvFocusable(shape = RoundedCornerShape(12.dp), role = Role.RadioButton, onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RadioButton(selected = selected, onClick = onClick, colors = RadioButtonDefaults.colors(selectedColor = MavieTurquoise, unselectedColor = Color(0xFF646B78)))
+        RadioButton(selected = selected, onClick = null, colors = RadioButtonDefaults.colors(selectedColor = MavieTurquoise, unselectedColor = Color(0xFF646B78)))
+        Spacer(Modifier.width(8.dp))
         Text(label, color = Color.White, fontSize = 13.sp, modifier = Modifier.weight(1f).padding(end = 6.dp))
     }
 }

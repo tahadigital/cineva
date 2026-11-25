@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
@@ -17,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
@@ -28,15 +28,16 @@ import app.mavie.player.data.IptvException
 import app.mavie.player.data.MavieErrorCode
 import app.mavie.player.data.classifyIoException
 import app.mavie.player.ui.MavieCyanDot
+import app.mavie.player.ui.MavieFilterChip
 import app.mavie.player.ui.MavieGradientButton
 import app.mavie.player.ui.MavieMuted
-import app.mavie.player.ui.MaviePurple
 import app.mavie.player.ui.MavieSpecularBorderBrush
 import app.mavie.player.ui.MavieTooltipIconButton
 import app.mavie.player.ui.MavieTurquoise
 import app.mavie.player.ui.MessagePanel
 import app.mavie.player.ui.errorHintFor
 import app.mavie.player.ui.mavieGlassSurface
+import app.mavie.player.ui.mavieTvFocusable
 import kotlinx.coroutines.CancellationException
 import java.io.IOException
 import java.time.LocalDate
@@ -197,12 +198,15 @@ fun MavieSportsScreen(
                 Text("Son alınan yayın akışı gösteriliyor.", Modifier.padding(horizontal = 16.dp), color = MavieMuted)
             }
             if (spotlight != null) item("spotlight") {
+                var spotlightFocused by remember { mutableStateOf(false) }
                 Column(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 9.dp)
+                        .onFocusChanged { spotlightFocused = it.hasFocus }
                         .mavieGlassSurface(
                             RoundedCornerShape(22.dp),
                             topColor = Color(0xCC221B48),
                             bottomColor = Color(0xB811253E),
+                            focused = spotlightFocused,
                         )
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(5.dp),
@@ -258,16 +262,36 @@ fun MavieSportsScreen(
                 )
             }
             items(filtered, key = { "event-${it.id}" }) { event ->
-                Column(Modifier.padding(horizontal = 16.dp)) {
-                    HorizontalDivider(color = Color(0xFF282D3B))
-                    Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(event.time, Modifier.widthIn(min = 48.dp), fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, maxLines = 1, softWrap = false)
-                        Column(Modifier.weight(1f)) {
-                            Text(listOf(event.sport, event.league).filter(String::isNotBlank).joinToString(" · "),
-                                color = MavieMuted, fontSize = 11.sp)
-                            Text(event.title, style = MaterialTheme.typography.titleMedium)
-                            ChannelButtons(event, channels, onWatch)
-                        }
+                val hasWatchableChannel = event.channels.any { channels?.get(it) != null }
+                var cardFocused by remember { mutableStateOf(false) }
+                val cardModifier = if (hasWatchableChannel) {
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 5.dp)
+                        .onFocusChanged { cardFocused = it.hasFocus }
+                        .mavieGlassSurface(Card, focused = cardFocused)
+                } else {
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 5.dp)
+                        .mavieTvFocusable(
+                            shape = Card,
+                            showFocusBorder = false,
+                            onFocusChange = { cardFocused = it },
+                            onClick = null,
+                        )
+                        .mavieGlassSurface(Card, focused = cardFocused)
+                }
+                Row(
+                    modifier = cardModifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(event.time, Modifier.widthIn(min = 48.dp), fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, maxLines = 1, softWrap = false)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(listOf(event.sport, event.league).filter(String::isNotBlank).joinToString(" · "),
+                            color = MavieMuted, fontSize = 11.sp)
+                        Text(event.title, style = MaterialTheme.typography.titleMedium)
+                        ChannelButtons(event, channels, onWatch)
                     }
                 }
             }
@@ -286,23 +310,10 @@ fun MavieSportsScreen(
 
 @Composable
 private fun SportsChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    FilterChip(
+    MavieFilterChip(
         selected = selected,
         onClick = onClick,
         label = { Text(label, maxLines = 1) },
-        shape = CircleShape,
-        colors = FilterChipDefaults.filterChipColors(
-            containerColor = Color(0x88161E35),
-            labelColor = MavieMuted,
-            selectedContainerColor = MaviePurple.copy(alpha = 0.90f),
-            selectedLabelColor = Color.White,
-        ),
-        border = FilterChipDefaults.filterChipBorder(
-            enabled = true,
-            selected = selected,
-            borderColor = Color.White.copy(alpha = 0.14f),
-            selectedBorderColor = MavieCyanDot.copy(alpha = 0.7f),
-        ),
     )
 }
 

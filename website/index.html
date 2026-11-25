@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>Mavie — Kişisel Medya Merkezi</title>
-  <meta name="description" content="Mavie: Windows, macOS, Android ve iOS için tamamen ücretsiz, hesap gerektirmeyen sade kişisel medya merkezi.">
+  <meta name="description" content="Mavie: Windows, macOS, Android, iOS ve Akıllı TV'ler (Samsung Tizen, LG webOS, Android TV) için tamamen ücretsiz, hesap gerektirmeyen sade kişisel medya merkezi ve kurulum kılavuzu.">
   <meta name="theme-color" content="#000000">
   <link rel="icon" type="image/svg+xml" href="/icon.svg">
   <link rel="stylesheet" href="/styles.css">
@@ -16,30 +16,43 @@
   <header class="topbar">
     <div class="container topbar-inner">
       <a class="brand" href="#top" aria-label="Mavie Ana Sayfa">
-        <img src="/mavie-mark.svg" alt="" width="24" height="24">
+        <img src="/mavie-mark.svg" alt="" width="28" height="28">
         <span>Mavie<span class="brand-dot">.</span></span>
       </a>
       <nav class="nav-links" aria-label="Ana Menü">
         <a href="#downloads">İndir</a>
+        <a href="#tv-downloads">Akıllı TV</a>
+        <a href="#guides">Kurulum Kılavuzu</a>
         <a href="#features">Özellikler</a>
         <a href="#free-forever">Tamamen Ücretsiz</a>
         <a href="/privacy.html">Gizlilik</a>
       </nav>
-      <a class="btn small" href="#downloads">İndir</a>
+      <div class="topbar-actions">
+        <a class="topbar-guide-mobile" href="#guides">Kılavuz</a>
+        <a class="btn small" href="#downloads">İndir</a>
+      </div>
     </div>
   </header>
 
   <main id="top" tabindex="-1">
     <section class="hero">
       <div class="container">
-        <span class="hero-kicker">%100 ÜCRETSİZ · HESAPSIZ · 4 PLATFORM</span>
+        <div class="hero-emblem" aria-hidden="true">
+          <img src="/icon.svg" alt="" width="84" height="84">
+        </div>
+        <span class="hero-kicker">%100 ÜCRETSİZ · HESAPSIZ · 4 PLATFORM + AKILLI TV'LER</span>
         <h1 class="hero-brand-display">Mavie<span class="hero-brand-dot">.</span></h1>
-        <p class="hero-slogan">Sinema kalitesinde kişisel medya merkezi. Filmler, diziler, canlı Spor Ekranı ve kendi arşivin — hesap açmadan, tek sahnede.</p>
+        <p class="hero-slogan">Sinema kalitesinde kişisel medya merkezi. Filmler, diziler, canlı Spor Ekranı ve kendi arşivin — masaüstü, mobil ve Akıllı TV'lerde tek sahnede.</p>
         <div class="hero-actions">
           <a class="btn" id="primaryDownloadBtn" href="#downloads">Ücretsiz İndir</a>
           <a class="btn secondary" id="secondaryDownloadBtn" href="#downloads">Diğer Platformlar</a>
         </div>
-        <p class="hero-hint" id="platformHint">Windows, macOS, Android ve iOS için hazır · v2.2.0</p>
+        <p class="hero-hint" id="platformHint">Windows, macOS, Android, iOS ve Akıllı TV'ler için hazır · v2.2.0</p>
+        <div class="hero-sublinks">
+          <a class="hero-guide-link" href="#tv-downloads">Akıllı TV Paketleri (.wgt / .ipk / TV) <span aria-hidden="true">›</span></a>
+          <span class="hero-sublink-sep" aria-hidden="true">·</span>
+          <a class="hero-guide-link" href="#guides" data-guide-tab="auto">Kurulum &amp; Yayın Kılavuzu <span aria-hidden="true">›</span></a>
+        </div>
 
         <div class="stage-wrap">
           <div class="stage-frame" aria-label="Mavie uygulama önizlemesi">
@@ -51,7 +64,10 @@
                 <span>Canlı TV</span>
                 <span>Çoklu Ekran</span>
               </div>
-              <span class="stage-meta">Mavie · Yerel Motor</span>
+              <span class="stage-meta">
+                <img src="/mavie-mark.svg" alt="" width="15" height="15">
+                <span>Mavie · Masaüstü, Mobil &amp; Akıllı TV</span>
+              </span>
             </div>
             <div class="stage-body">
               <div class="stage-hero-banner">
@@ -79,9 +95,9 @@
                   <span>4 yayın · PiP · ses &amp; altyazı</span>
                 </div>
                 <div class="stage-tile">
-                  <span class="stage-tile-tag">GİZLİLİK</span>
-                  <strong>Sıfır Hesap</strong>
-                  <span>LAN eşitleme &amp; JSON yedek</span>
+                  <span class="stage-tile-tag">AKILLI TV &amp; AĞ</span>
+                  <strong>Tizen · webOS · TV</strong>
+                  <span>AVPlay · D-Pad · QR eşleştirme</span>
                 </div>
               </div>
             </div>
@@ -108,14 +124,19 @@
                 <span class="version-tag" id="winVerBadge">Windows 10/11 · v2.2.0</span>
               </div>
               <h3>Windows</h3>
-              <p>Kurulum sihirbazı veya tek dosya taşınabilir sürüm. Dahili FFmpeg motoruyla anında çalışır.</p>
+              <p>Tarayıcı sekmesi açmadan kendi <strong>yerel Windows uygulama penceresinde</strong> çalışır. <strong>Mavie (Web Sürümü)</strong> (<code>--web</code> / <code>--serve</code>) ile tarayıcı ve ev ağı (LAN / Smart TV) erişimi de dahildir.</p>
+              <div class="platform-modes" aria-label="Windows çalışma modları">
+                <span class="mode-chip">Yerel Pencere</span>
+                <span class="mode-chip">Web Sürümü (--web)</span>
+              </div>
             </div>
             <div>
               <div class="platform-actions">
                 <button class="btn full" data-dl="windows-installer" type="button">Mavie-Setup.exe</button>
                 <button class="btn secondary full" data-dl="windows-portable" type="button">Taşınabilir (Mavie.exe)</button>
               </div>
-              <p class="artifact-note">64-bit · Tamamen Ücretsiz</p>
+              <p class="artifact-note">64-bit · Yerel Pencere + Web</p>
+              <a class="card-guide-link" href="#guides" data-guide-tab="windows">Windows kurulum kılavuzu ›</a>
             </div>
           </article>
 
@@ -128,13 +149,18 @@
                 <span class="version-tag" id="macosVerBadge">macOS 13+ · v2.2.0</span>
               </div>
               <h3>macOS</h3>
-              <p>Apple Silicon ve Intel uyumlu özgün Mavie.app paketi. Gömülü sunucusuyla sürükle-bırak kurulur.</p>
+              <p>Apple Silicon ve Intel uyumlu özgün Mavie.app paketi. Gömülü sunucusu ve FFmpeg motoruyla sürükle-bırak kurulur.</p>
+              <div class="platform-modes" aria-label="macOS özellikleri">
+                <span class="mode-chip">M1–M4 &amp; Intel</span>
+                <span class="mode-chip">Sürükle-Bırak DMG</span>
+              </div>
             </div>
             <div>
               <div class="platform-actions">
                 <button class="btn full" data-dl="macos" type="button">Mavie-macOS.dmg</button>
               </div>
               <p class="artifact-note">Apple Silicon &amp; Intel · Ücretsiz</p>
+              <a class="card-guide-link" href="#guides" data-guide-tab="macos">macOS kurulum &amp; Gatekeeper ›</a>
             </div>
           </article>
 
@@ -147,13 +173,18 @@
                 <span class="version-tag" id="androidVerBadge">Android 8+ · v2.2.0</span>
               </div>
               <h3>Android</h3>
-              <p>LibVLC oynatıcı, telefon ve tablet uyumlu arayüz, PiP, Spor Ekranı ve yerel ağ eşitlemesi.</p>
+              <p>LibVLC oynatıcı, telefon, tablet ve Android TV uyumlu arayüz, PiP, Spor Ekranı ve yerel ağ eşitlemesi.</p>
+              <div class="platform-modes" aria-label="Android özellikleri">
+                <span class="mode-chip">Telefon &amp; Tablet</span>
+                <span class="mode-chip">Android TV</span>
+              </div>
             </div>
             <div>
               <div class="platform-actions">
                 <button class="btn full" data-dl="android-apk" type="button">Mavie-Android.apk</button>
               </div>
-              <p class="artifact-note">Evrensel APK · Ücretsiz</p>
+              <p class="artifact-note">Evrensel APK · Play .aab Hazır</p>
+              <a class="card-guide-link" href="#guides" data-guide-tab="android">Android &amp; TV kurulumu ›</a>
             </div>
           </article>
 
@@ -167,22 +198,649 @@
               </div>
               <h3>iOS</h3>
               <p>iPhone ve iPad için SwiftUI + AVPlayer istemcisi. AirPlay, PiP, Spor Ekranı ve kişisel keşif.</p>
+              <div class="platform-modes" aria-label="iOS özellikleri">
+                <span class="mode-chip">iPhone &amp; iPad</span>
+                <span class="mode-chip">AltStore / Sideloadly</span>
+              </div>
             </div>
             <div>
               <div class="platform-actions">
                 <button class="btn full" data-dl="ios" type="button">Mavie-iOS.ipa</button>
               </div>
               <p class="artifact-note">Sideload IPA · AltStore</p>
+              <a class="card-guide-link" href="#guides" data-guide-tab="ios">iPhone / iPad kurulum rehberi ›</a>
             </div>
           </article>
         </div>
 
-        <div class="release-bar">
-          <span><strong>Sürüm Notları:</strong> <span id="releaseNotesText">Mavie 2.2.0 — 4 platformda tamamen ücretsiz, hesapsız tam deneyim; Spor Ekranı ve kişisel keşif algoritması dahil.</span></span>
-          <a href="#downloads" data-releases target="_blank" rel="noopener noreferrer" style="color:var(--cyan);font-weight:500">GitHub Releases ›</a>
+        <!-- Akıllı TV İndirme Merkezi -->
+        <div id="tv-downloads" class="tv-downloads-block">
+          <div class="tv-subhead">
+            <div>
+              <span class="tv-eyebrow">AKILLI TV İNDİRME MERKEZİ</span>
+              <h3 class="tv-subtitle">Büyük Ekran için Hazır: Samsung, LG, Android TV &amp; Tarayıcı</h3>
+            </div>
+            <p class="tv-subdesc">Kumanda odaklamalı 10-foot Liquid Glass arayüz, QR kodla kolay liste aktarımı ve PC kapalıyken bağımsız çalışma.</p>
+          </div>
+
+          <div class="grid-4 tv-grid">
+            <article class="card platform-card tv-card">
+              <div>
+                <div class="platform-top">
+                  <div class="platform-icon tv-icon" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="4" width="20" height="14" rx="2.5"/><path d="M8 21h8M12 18v3"/></svg>
+                  </div>
+                  <span class="version-tag">Tizen 5.5+ · TU8500 &amp; 2020+</span>
+                </div>
+                <h3>Samsung Smart TV</h3>
+                <p>Özgün <strong>Tizen Web Uygulaması (.wgt)</strong>. Donanımsal <strong>AVPlay</strong> (4K HEVC / HLS / TS), D-Pad kumanda, QR kurulum ve PC kapalıyken bağımsız oynatma.</p>
+                <div class="platform-modes" aria-label="Samsung Tizen özellikleri">
+                  <span class="mode-chip">Tizen 5.5+ / TU8500</span>
+                  <span class="mode-chip">AVPlay + QR</span>
+                </div>
+              </div>
+              <div>
+                <div class="platform-actions">
+                  <button class="btn full" data-dl="tizen-wgt" type="button">Mavie-Tizen.wgt</button>
+                </div>
+                <p class="artifact-note">Resmi .wgt Paketi · Ücretsiz</p>
+                <a class="card-guide-link" href="#guides" data-guide-tab="samsung-tv">Samsung TV Kurulum Kılavuzu ›</a>
+              </div>
+            </article>
+
+            <article class="card platform-card tv-card">
+              <div>
+                <div class="platform-top">
+                  <div class="platform-icon tv-icon" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="4" width="20" height="14" rx="2.5"/><path d="M7 21h10"/><circle cx="12" cy="11" r="2.2"/></svg>
+                  </div>
+                  <span class="version-tag">webOS 4.0+ · OLED / UHD</span>
+                </div>
+                <h3>LG Smart TV</h3>
+                <p>Özgün <strong>LG webOS paketi (.ipk)</strong>. OLED, NanoCell ve UHD modeller için 10-foot Liquid Glass arayüz, Sihirli Kumanda / D-Pad ve ev sunucusu eşitlemesi.</p>
+                <div class="platform-modes" aria-label="LG webOS özellikleri">
+                  <span class="mode-chip">webOS 4.0+</span>
+                  <span class="mode-chip">OLED / NanoCell</span>
+                </div>
+              </div>
+              <div>
+                <div class="platform-actions">
+                  <button class="btn full" data-dl="webos-ipk" type="button">Mavie-webOS.ipk</button>
+                </div>
+                <p class="artifact-note">Resmi .ipk Paketi · Ücretsiz</p>
+                <a class="card-guide-link" href="#guides" data-guide-tab="lg-tv">LG TV Kurulum Kılavuzu ›</a>
+              </div>
+            </article>
+
+            <article class="card platform-card tv-card">
+              <div>
+                <div class="platform-top">
+                  <div class="platform-icon tv-icon" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="4" width="20" height="14" rx="2.5"/><path d="M10 8.5l5 2.5-5 2.5v-5zM8 21h8"/></svg>
+                  </div>
+                  <span class="version-tag">Android TV · Google &amp; Fire TV</span>
+                </div>
+                <h3>Android TV / Fire TV</h3>
+                <p>320×180 <strong>TV Leanback</strong> başlatıcı banner'ı, tam <strong>D-Pad kumanda</strong> odaklaması ve donanımsal LibVLC oynatıcıyla evrensel TV APK paketi.</p>
+                <div class="platform-modes" aria-label="Android TV özellikleri">
+                  <span class="mode-chip">Leanback Banner</span>
+                  <span class="mode-chip">Tam D-Pad</span>
+                </div>
+              </div>
+              <div>
+                <div class="platform-actions">
+                  <button class="btn full" data-dl="android-tv" type="button">Mavie-Android.apk</button>
+                </div>
+                <p class="artifact-note">Android TV &amp; Fire TV · Ücretsiz</p>
+                <a class="card-guide-link" href="#guides" data-guide-tab="android">Android TV Kurulum Kılavuzu ›</a>
+              </div>
+            </article>
+
+            <article class="card platform-card tv-card">
+              <div>
+                <div class="platform-top">
+                  <div class="platform-icon tv-icon" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3.6 9h16.8M3.6 15h16.8M12 3a13 13 0 0 1 0 18M12 3a13 13 0 0 0 0 18"/></svg>
+                  </div>
+                  <span class="version-tag">Hisense · Vestel · Tarayıcı</span>
+                </div>
+                <h3>Diğer Smart TV'ler</h3>
+                <p>Hisense VIDAA, Vestel veya herhangi bir TV tarayıcısı için <strong>Chromium M69 uyumlu</strong> kurulumsuz 10-foot arayüz: <code>http://&lt;bilgisayar-IP&gt;:8844/tv</code></p>
+                <div class="platform-modes" aria-label="Evrensel TV tarayıcı özellikleri">
+                  <span class="mode-chip">Kurulumsuz /tv</span>
+                  <span class="mode-chip">Chromium M69</span>
+                </div>
+              </div>
+              <div>
+                <div class="platform-actions">
+                  <a class="btn secondary full" href="#guides" data-guide-tab="lg-tv">TV Tarayıcı Modu (/tv)</a>
+                </div>
+                <p class="artifact-note">Aynı Wi-Fi · Ek Kurulum Yok</p>
+                <a class="card-guide-link" href="#guides" data-guide-tab="lg-tv">TV Tarayıcı Kılavuzu ›</a>
+              </div>
+            </article>
+          </div>
         </div>
 
-        <div id="downloadNotice" class="download-notice" hidden></div>
+        <div class="release-bar">
+          <span><strong>Sürüm Notları:</strong> <span id="releaseNotesText">Mavie 2.2.0 — 4 Platform (Windows yerel pencere + Web Sürümü, macOS, Android, iOS) + Akıllı TV'ler (Samsung Tizen .wgt, LG webOS .ipk, Android TV Leanback &amp; /tv tarayıcı modu).</span></span>
+          <a href="#downloads" data-releases target="_blank" rel="noopener noreferrer" class="release-link">GitHub Releases ›</a>
+        </div>
+
+        <div id="downloadNotice" class="download-notice" role="status" aria-live="polite" hidden></div>
+      </div>
+    </section>
+
+    <section id="guides" class="section">
+      <div class="container">
+        <div class="section-head">
+          <span class="section-eyebrow">KURULUM &amp; YAYIN KILAVUZU</span>
+          <h2 class="section-title">Her Cihazda Dakikalar İçinde Hazır</h2>
+          <p class="section-sub">Cihazınızı veya televizyonunuzu seçin; ilk kurulumdan güvenlik onaylarına, Samsung/LG TV sideload adımlarından mağaza yayın kanallarına kadar her şey tek yerde.</p>
+        </div>
+
+        <div class="guide-shell">
+          <div class="guide-tabs-bar" role="tablist" aria-label="Platform ve Akıllı TV kurulum kılavuzları">
+            <button class="guide-tab is-active" id="tab-windows" type="button" role="tab" aria-selected="true" aria-controls="panel-windows" tabindex="0" data-guide="windows">Windows</button>
+            <button class="guide-tab" id="tab-macos" type="button" role="tab" aria-selected="false" aria-controls="panel-macos" tabindex="-1" data-guide="macos">macOS</button>
+            <button class="guide-tab" id="tab-ios" type="button" role="tab" aria-selected="false" aria-controls="panel-ios" tabindex="-1" data-guide="ios">iOS / iPadOS</button>
+            <button class="guide-tab" id="tab-android" type="button" role="tab" aria-selected="false" aria-controls="panel-android" tabindex="-1" data-guide="android">Android &amp; TV</button>
+            <button class="guide-tab" id="tab-samsung-tv" type="button" role="tab" aria-selected="false" aria-controls="panel-samsung-tv" tabindex="-1" data-guide="samsung-tv">Samsung TV</button>
+            <button class="guide-tab" id="tab-lg-tv" type="button" role="tab" aria-selected="false" aria-controls="panel-lg-tv" tabindex="-1" data-guide="lg-tv">LG &amp; Diğer TV</button>
+            <button class="guide-tab" id="tab-distribution" type="button" role="tab" aria-selected="false" aria-controls="panel-distribution" tabindex="-1" data-guide="distribution">Yayın Yerleri</button>
+          </div>
+
+          <div id="copyLiveStatus" class="sr-only" aria-live="polite"></div>
+
+          <!-- 1. WINDOWS -->
+          <div class="guide-panel is-active" id="panel-windows" role="tabpanel" aria-labelledby="tab-windows" data-guide-panel="windows">
+            <div class="guide-panel-head">
+              <div>
+                <span class="guide-kicker">WINDOWS 10 &amp; 11 · 64-BIT</span>
+                <h3>Windows Kurulumu: Yerel Uygulama Penceresi &amp; Web Sürümü</h3>
+                <p>Mavie tarayıcı sekmesi açmadan kendi koyu temalı yerel penceresinde çalışır; dilediğinizde Web Sürümü ile tarayıcıdan ve ev ağından (Smart TV dahil) da erişebilirsiniz.</p>
+                <div class="guide-pills">
+                  <span>Yerel Edge WebView2 Penceresi</span>
+                  <span>Mavie (Web Sürümü)</span>
+                  <span>Dahili FFmpeg</span>
+                  <span>Yönetici İzni Gerektirmez</span>
+                </div>
+              </div>
+              <div class="guide-head-actions">
+                <button class="btn small" data-dl="windows-installer" type="button">Mavie-Setup.exe İndir</button>
+                <button class="btn secondary small" data-dl="windows-portable" type="button">Mavie.exe (Taşınabilir)</button>
+              </div>
+            </div>
+
+            <ol class="guide-steps">
+              <li class="guide-step">
+                <span class="step-num">01</span>
+                <div>
+                  <h4>Kurulum Sihirbazı veya Taşınabilir Sürümü Seçin</h4>
+                  <p><strong>Mavie-Setup.exe (Önerilen):</strong> Sihirbazı çalıştırın; Başlat Menüsü'nde hem ana <strong>Mavie</strong> (yerel uygulama penceresi) hem de <strong>Mavie (Web Sürümü)</strong> kısayolları otomatik oluşturulur.</p>
+                  <p class="step-sub"><strong>Mavie.exe (Taşınabilir):</strong> Kurulum yapmadan tek dosya olarak dilediğiniz klasörden veya USB bellekten doğrudan çalıştırın.</p>
+                </div>
+              </li>
+
+              <li class="guide-step">
+                <span class="step-num">02</span>
+                <div>
+                  <h4>Windows Defender SmartScreen Uyarısını Geçin</h4>
+                  <p>Mavie bağımsız ve ücretsiz dağıtıldığı için ilk açılışta <em>"Windows bilgisayarınızı korudu"</em> uyarısı çıkabilir. Penceredeki <strong>Ek bilgi</strong> (More info) bağlantısına tıklayın, ardından <strong>Yine de çalıştır</strong> (Run anyway) düğmesine basın.</p>
+                  <p class="step-sub">Bu onay yalnızca ilk çalıştırmada istenir; sonraki açılışlarda doğrudan başlar.</p>
+                </div>
+              </li>
+
+              <li class="guide-step">
+                <span class="step-num">03</span>
+                <div>
+                  <h4>Yerel Uygulama Penceresini Kullanın (Varsayılan)</h4>
+                  <p><strong>Mavie</strong> kısayoluna veya <code>Mavie.exe</code> dosyasına çift tıkladığınızda tarayıcı açılmaz; uygulama kendi koyu başlık çubuklu, tam ekran destekli <strong>yerel Windows penceresinde</strong> açılır. Profilleriniz, favorileriniz ve izleme geçmişiniz cihazınızda güvenle saklanır.</p>
+                </div>
+              </li>
+
+              <li class="guide-step">
+                <span class="step-num">04</span>
+                <div>
+                  <h4>Web Sürümü &amp; Ev Ağı (LAN / TV) Modu</h4>
+                  <p>Tarayıcıda kullanmak veya aynı Wi-Fi'deki telefon, tablet ve Smart TV'lerden (<code>/tv</code>) bağlanmak için Başlat Menüsü'ndeki <strong>Mavie (Web Sürümü)</strong> kısayolunu açın ya da aşağıdaki komutları çalıştırın:</p>
+                  <div class="cmd-stack">
+                    <div class="cmd-box">
+                      <code>Mavie.exe --web</code>
+                      <button class="copy-btn" type="button" data-copy="Mavie.exe --web" aria-label="Mavie.exe --web komutunu kopyala">Kopyala</button>
+                    </div>
+                    <div class="cmd-box">
+                      <code>Mavie.exe --serve</code>
+                      <button class="copy-btn" type="button" data-copy="Mavie.exe --serve" aria-label="Mavie.exe --serve komutunu kopyala">Kopyala</button>
+                    </div>
+                  </div>
+                  <p class="step-sub"><code>--web</code> (veya <code>--browser</code> / <code>Mavie.bat --web</code>) varsayılan tarayıcıyı açar ve Yerel + LAN/TV adreslerini tek tıkla kopyalayabileceğiniz kontrol penceresini gösterir; <code>--serve</code> (<code>Mavie.bat --serve</code>) yalnızca arka plan medya sunucusunu (<code>0.0.0.0:8844</code>) çalıştırır.</p>
+                </div>
+              </li>
+            </ol>
+
+            <div class="guide-callout">
+              <strong>İpucu · Ev Ağı Güvenlik Duvarı:</strong> Windows Güvenlik Duvarı ilk başlatmada ağ erişimi sorarsa <strong>Özel ağlar (Ev / İş)</strong> kutusunu işaretleyip izin verin; böylece aynı Wi-Fi'deki telefon ve TV cihazlarınız <code>http://&lt;bilgisayar-IP&gt;:8844/tv</code> adresine sorunsuz bağlanır.
+            </div>
+          </div>
+
+          <!-- 2. MACOS -->
+          <div class="guide-panel" id="panel-macos" role="tabpanel" aria-labelledby="tab-macos" data-guide-panel="macos" hidden>
+            <div class="guide-panel-head">
+              <div>
+                <span class="guide-kicker">MACOS 13+ VENTURA &amp; SONRASI · MACBOOK &amp; IMAC</span>
+                <h3>macOS Kurulumu &amp; Gatekeeper Onayı</h3>
+                <p>Apple Silicon (M1–M4) ve Intel Mac'ler için gömülü yerel sunucu ve FFmpeg motoruyla tek paket halinde gelir.</p>
+                <div class="guide-pills">
+                  <span>Apple Silicon &amp; Intel</span>
+                  <span>Mavie.app (DMG)</span>
+                  <span>Gömülü Sunucu + /tv</span>
+                </div>
+              </div>
+              <div class="guide-head-actions">
+                <button class="btn small" data-dl="macos" type="button">Mavie-macOS.dmg İndir</button>
+              </div>
+            </div>
+
+            <ol class="guide-steps">
+              <li class="guide-step">
+                <span class="step-num">01</span>
+                <div>
+                  <h4>DMG Paketini Açıp Uygulamalar'a Sürükleyin</h4>
+                  <p><code>Mavie-macOS.dmg</code> dosyasına çift tıklayın. Açılan pencerede <strong>Mavie.app</strong> simgesini <strong>Uygulamalar (Applications)</strong> klasörüne sürükleyin ve ardından kurulum diskini çıkarın.</p>
+                </div>
+              </li>
+
+              <li class="guide-step">
+                <span class="step-num">02</span>
+                <div>
+                  <h4>İlk Açılışta Gatekeeper Uyarısını Çözün (Sistem Ayarları)</h4>
+                  <p>Mavie ücretli Apple Developer noter sertifikası olmadan ücretsiz dağıtıldığı için ilk açılışta <em>"Mavie doğrulanamadığı için açılamıyor"</em> uyarısı görünebilir.</p>
+                  <p class="step-sub">Uyarıyı kapatın → <strong>Sistem Ayarları → Gizlilik ve Güvenlik</strong> menüsünü açın → aşağı inip <em>"Mavie engellendi"</em> satırındaki <strong>Yine de Aç</strong> (Open Anyway) düğmesine tıklayın ve Mac parolanızla onaylayın.</p>
+                </div>
+              </li>
+
+              <li class="guide-step">
+                <span class="step-num">03</span>
+                <div>
+                  <h4>Alternatif: Tek Komutla Terminal Üzerinden İzin Verin</h4>
+                  <p>macOS Sequoia veya Gatekeeper'ın <em>"hasarlı"</em> uyarısı verdiği durumlarda <strong>Terminal</strong> uygulamasını açıp aşağıdaki karantina kaldırma komutunu çalıştırmanız yeterlidir:</p>
+                  <div class="cmd-box">
+                    <code>xattr -cr /Applications/Mavie.app</code>
+                    <button class="copy-btn" type="button" data-copy="xattr -cr /Applications/Mavie.app" aria-label="macOS karantina kaldırma komutunu kopyala">Kopyala</button>
+                  </div>
+                  <p class="step-sub">Komuttan sonra <strong>Uygulamalar → Mavie</strong>'yi normal şekilde açabilirsiniz.</p>
+                </div>
+              </li>
+
+              <li class="guide-step">
+                <span class="step-num">04</span>
+                <div>
+                  <h4>Apple Silicon, Intel &amp; Akıllı TV Ev Sunucusu</h4>
+                  <p>Mavie.app hem Apple Silicon (M1–M4) hem Intel Mac'lerde çalışır. Uygulama açıkken aynı Wi-Fi'deki televizyonlarınızdan <code>http://&lt;mac-IP&gt;:8844/tv</code> adresine bağlanabilirsiniz. Mac IP adresini öğrenmek için:</p>
+                  <div class="cmd-box">
+                    <code>ipconfig getifaddr en0</code>
+                    <button class="copy-btn" type="button" data-copy="ipconfig getifaddr en0" aria-label="macOS yerel IP komutunu kopyala">Kopyala</button>
+                  </div>
+                </div>
+              </li>
+            </ol>
+
+            <div class="guide-callout">
+              <strong>Bilgi · Yerel Veri Saklama:</strong> Tüm M3U/Xtream kaynaklarınız, profilleriniz ve oynatma geçmişiniz yalnızca Mac'inizde saklanır; iCloud veya harici bir sunucuya gönderilmez.
+            </div>
+          </div>
+
+          <!-- 3. IOS / IPADOS -->
+          <div class="guide-panel" id="panel-ios" role="tabpanel" aria-labelledby="tab-ios" data-guide-panel="ios" hidden>
+            <div class="guide-panel-head">
+              <div>
+                <span class="guide-kicker">IOS / IPADOS 16+ · IPHONE &amp; IPAD</span>
+                <h3>iPhone &amp; iPad Kurulumu (Sideload IPA)</h3>
+                <p>App Store yayını öncesinde <code>Mavie-iOS.ipa</code> paketini ücretsiz Apple ID'nizle dakikalar içinde kendi cihazınıza imzalayıp yükleyebilirsiniz.</p>
+                <div class="guide-pills">
+                  <span>SwiftUI + AVPlayer</span>
+                  <span>AltStore / SideStore / Sideloadly</span>
+                  <span>AirPlay &amp; PiP</span>
+                </div>
+              </div>
+              <div class="guide-head-actions">
+                <button class="btn small" data-dl="ios" type="button">Mavie-iOS.ipa İndir</button>
+              </div>
+            </div>
+
+            <ol class="guide-steps">
+              <li class="guide-step">
+                <span class="step-num">01</span>
+                <div>
+                  <h4>Mavie-iOS.ipa Paketini İndirin</h4>
+                  <p><code>Mavie-iOS.ipa</code> dosyasını Windows/Mac bilgisayarınıza (Sideloadly için) veya doğrudan iPhone/iPad'inize (AltStore / SideStore için) indirin.</p>
+                </div>
+              </li>
+
+              <li class="guide-step">
+                <span class="step-num">02</span>
+                <div>
+                  <h4>AltStore, SideStore veya Sideloadly ile İmzalayıp Yükleyin</h4>
+                  <p><strong>Sideloadly (Windows &amp; Mac — En Hızlı):</strong> iPhone/iPad'i kabloyla bilgisayara bağlayın, <code>Mavie-iOS.ipa</code> dosyasını sürükleyin, Apple ID'nizi girip <strong>Start</strong>'a basın.</p>
+                  <p class="step-sub"><strong>AltStore / SideStore (Otomatik Yenileme):</strong> AltServer ile iPhone'a AltStore (veya bilgisayarsız çalışan <strong>SideStore</strong>) kurun, ardından uygulama içindeki <strong>+</strong> düğmesinden <code>Mavie-iOS.ipa</code> dosyasını seçip yükleyin.</p>
+                </div>
+              </li>
+
+              <li class="guide-step">
+                <span class="step-num">03</span>
+                <div>
+                  <h4>Geliştirici Profiline Güvenin</h4>
+                  <p>Mavie ana ekranınıza geldikten sonra ilk açılış öncesinde <strong>Ayarlar → Genel → VPN ve Aygıt Yönetimi</strong> bölümüne gidin. <em>Geliştirici Uygulaması</em> başlığı altında kendi Apple ID'nize dokunup <strong>Güven</strong> seçeneğini onaylayın.</p>
+                </div>
+              </li>
+
+              <li class="guide-step">
+                <span class="step-num">04</span>
+                <div>
+                  <h4>Geliştirici Modu'nu Açın &amp; 7 Günlük Yenileme</h4>
+                  <p>iOS 16 ve sonrasında <strong>Ayarlar → Gizlilik ve Güvenlik → Geliştirici Modu</strong> anahtarını açıp cihazı yeniden başlatın ve ekrandaki onayı kabul edin.</p>
+                  <p class="step-sub"><strong>7 Günlük Yenileme:</strong> Ücretsiz Apple ID imzaları Apple kuralı gereği 7 günde bir yenilenir. SideStore ile iPhone'dan tek dokunuşla, AltStore ile aynı Wi-Fi'deki bilgisayardan yenileyebilirsiniz — izleme geçmişiniz ve ayarlarınız silinmez.</p>
+                </div>
+              </li>
+            </ol>
+
+            <div class="guide-callout accent-violet">
+              <strong>İpucu · Sideload İstemiyorsanız (PWA):</strong> Evdeki bilgisayarınızda Mavie çalışırken Safari'den <code>http://&lt;bilgisayar-IP&gt;:8844</code> adresini açıp <strong>Paylaş → Ana Ekrana Ekle</strong> diyerek 7 gün sınırı olmadan da kullanabilirsiniz.
+            </div>
+          </div>
+
+          <!-- 4. ANDROID & ANDROID TV / FIRE TV -->
+          <div class="guide-panel" id="panel-android" role="tabpanel" aria-labelledby="tab-android" data-guide-panel="android" hidden>
+            <div class="guide-panel-head">
+              <div>
+                <span class="guide-kicker">ANDROID 8.0+ · TELEFON, TABLET, ANDROID TV, GOOGLE TV &amp; FIRE TV</span>
+                <h3>Android &amp; Android TV / Fire TV Kurulumu (APK)</h3>
+                <p>Evrensel <code>Mavie-Android.apk</code> artık 320×180 <strong>TV Leanback başlatıcı banner'ı</strong>, tam <strong>D-Pad kumanda odaklaması</strong> ve LibVLC oynatıcıyla tüm Android telefon, tablet ve televizyonlarda tek paket halinde çalışır.</p>
+                <div class="guide-pills">
+                  <span>Evrensel APK (ARM64 + 32-bit)</span>
+                  <span>TV Leanback Banner</span>
+                  <span>Tam D-Pad + LibVLC</span>
+                  <span>Fire TV &amp; Google TV</span>
+                </div>
+              </div>
+              <div class="guide-head-actions">
+                <button class="btn small" data-dl="android-tv" type="button">Mavie-Android.apk İndir</button>
+              </div>
+            </div>
+
+            <ol class="guide-steps">
+              <li class="guide-step">
+                <span class="step-num">01</span>
+                <div>
+                  <h4>Telefon &amp; Tablette İndirin ve Yükleyin</h4>
+                  <p>Cihazınızdan <strong>Mavie-Android.apk</strong> düğmesine dokunun. İndirilen dosyayı açtığınızda Android uyarı verirse <strong>Ayarlar → Bu kaynaktan izin ver</strong> (Bilinmeyen uygulamaları yükle) anahtarını açın, geri dönüp <strong>Yükle</strong>'ye basın.</p>
+                </div>
+              </li>
+
+              <li class="guide-step">
+                <span class="step-num">02</span>
+                <div>
+                  <h4>Android TV, Google TV &amp; Amazon Fire TV'ye Kurulum</h4>
+                  <p><strong>Downloader ile (En Kolay):</strong> TV mağazasından <em>Downloader by AFTVnews</em> kurun, GitHub Releases <code>Mavie-Android.apk</code> bağlantısını girip doğrudan indirin ve yükleyin.</p>
+                  <p class="step-sub"><strong>Send Files to TV (Wi-Fi):</strong> Telefon ve TV'ye <em>Send Files to TV</em> kurarak APK'yı kablosuz gönderin; ya da APK'yı <strong>USB bellek</strong> ile TV'ye takıp dosya yöneticisinden kurun.</p>
+                </div>
+              </li>
+
+              <li class="guide-step">
+                <span class="step-num">03</span>
+                <div>
+                  <h4>TV Güvenlik İzni &amp; Leanback Ana Ekran</h4>
+                  <p>Android TV / Google TV'de <strong>Ayarlar → Uygulamalar → Güvenlik ve Kısıtlamalar → Bilinmeyen kaynaklar</strong> (Fire TV'de <em>My Fire TV → Geliştirici Seçenekleri → Bilinmeyen Uygulamaları Yükle</em>) menüsünden Downloader veya dosya yöneticisine izin verin.</p>
+                  <p class="step-sub">Kurulum sonrası Mavie, TV ana ekranında kendi <strong>320×180 Liquid Glass Leanback banner</strong>'ı ile görünür.</p>
+                </div>
+              </li>
+
+              <li class="guide-step">
+                <span class="step-num">04</span>
+                <div>
+                  <h4>D-Pad Kumanda &amp; 6 Haneli LAN Eşitleme</h4>
+                  <p>Tüm menüler, poster rafları, canlı kanallar, Spor Ekranı ve oynatıcı kontrolleri TV kumandasının yön tuşları (<strong>D-Pad + OK/Enter</strong>) ile akıcı şekilde kullanılır. Masaüstü Mavie'deki 6 haneli LAN koduyla kütüphanenizi tek seferde TV'ye aktarabilirsiniz.</p>
+                </div>
+              </li>
+            </ol>
+
+            <div class="guide-callout">
+              <strong>Not · Google Play Paketi:</strong> CI hattı her sürümde hem doğrudan kurulabilir <code>Mavie-Android.apk</code> hem de Google Play Console yüklemesine hazır <code>Mavie-Android.aab</code> paketini otomatik üretir.
+            </div>
+          </div>
+
+          <!-- 5. SAMSUNG TV (TIZEN / TU8500) -->
+          <div class="guide-panel" id="panel-samsung-tv" role="tabpanel" aria-labelledby="tab-samsung-tv" data-guide-panel="samsung-tv" hidden>
+            <div class="guide-panel-head">
+              <div>
+                <span class="guide-kicker">SAMSUNG SMART TV · TIZEN 5.5+ · TU8500 &amp; 2020+ CRYSTAL UHD / QLED</span>
+                <h3>Samsung TV Kurulumu (Tizen .wgt &amp; TU8500 Rehberi)</h3>
+                <p>Samsung televizyonlar Android APK yerine özgün <strong>Tizen <code>.wgt</code></strong> paketi çalıştırır. Evdeki Samsung TV'nize (TU8500 ve tüm 2020+ Tizen 5.5+ modeller) dakikalar içinde ücretsiz kurup PC kapalıyken bile izleyebilirsiniz.</p>
+                <div class="guide-pills">
+                  <span>Mavie-Tizen.wgt Hazır</span>
+                  <span>AVPlay (4K HEVC / HLS / TS)</span>
+                  <span>QR / 6 Haneli Liste Aktarımı</span>
+                  <span>Apps → 12345 Dev Mode</span>
+                </div>
+              </div>
+              <div class="guide-head-actions">
+                <button class="btn small" data-dl="tizen-wgt" type="button">Mavie-Tizen.wgt İndir</button>
+              </div>
+            </div>
+
+            <ol class="guide-steps">
+              <li class="guide-step">
+                <span class="step-num">01</span>
+                <div>
+                  <h4>TV'de Geliştirici Modu'nu (Developer Mode) Açın</h4>
+                  <p>Samsung TV'de <strong>Apps</strong> ekranını açın ve kumandadan <strong><code>12345</code></strong> tuşlayın. Açılan <em>Developer Mode</em> penceresinde anahtarı <strong>On (Açık)</strong> yapın ve <strong>Host PC IP</strong> alanına aynı Wi-Fi'deki bilgisayarınızın yerel IP adresini girin.</p>
+                  <p class="step-sub"><strong>Önemli:</strong> Onayladıktan sonra TV'yi <strong>tam yeniden başlatın</strong> (kumandadaki Güç tuşuna ~4 saniye basılı tutun veya fişi 10 saniye çıkarıp takın).</p>
+                </div>
+              </li>
+
+              <li class="guide-step">
+                <span class="step-num">02</span>
+                <div>
+                  <h4><code>Mavie-Tizen.wgt</code> Paketini TV'ye Yükleyin</h4>
+                  <p>Yukarıdan <code>Mavie-Tizen.wgt</code> dosyasını indirin ve aşağıdaki yöntemlerden birini seçin:</p>
+                  <div class="cmd-stack">
+                    <div class="cmd-box">
+                      <code>./tv/tizen/install-tizen.sh &lt;TV-IP&gt;</code>
+                      <button class="copy-btn" type="button" data-copy="./tv/tizen/install-tizen.sh <TV-IP>" aria-label="Samsung Tizen kurulum betigi komutunu kopyala">Betik</button>
+                    </div>
+                    <div class="cmd-box">
+                      <code>tizen install -n Mavie-Tizen.wgt -t &lt;TV-AD&gt;</code>
+                      <button class="copy-btn" type="button" data-copy="tizen install -n Mavie-Tizen.wgt -t <TV-AD>" aria-label="Tizen Studio CLI yukleme komutunu kopyala">Tizen CLI</button>
+                    </div>
+                  </div>
+                  <p class="step-sub"><strong>Alternatifler:</strong> Bilgisayara SDK kurmadan <strong>Docker</strong> (<code>tv/tizen/Dockerfile</code>) ile tek komutla kurabilir veya <strong>TizenBrew</strong> (Tizen 3.0+ / TU8500 Tizen 5.5 uyumlu) kullanabilirsiniz. Ücretsiz Samsung hesabı geliştirici sertifikası 1 yıl geçerlidir.</p>
+                </div>
+              </li>
+
+              <li class="guide-step">
+                <span class="step-num">03</span>
+                <div>
+                  <h4>Kumandayla Yazmadan QR / 6 Haneli Kodla Liste Aktarın</h4>
+                  <p>TV'de Mavie açıldığında <strong>Ayarlar / Bağlan</strong> sekmesindeki <strong>QR kodu</strong> telefonunuzla okutun ya da masaüstü Mavie'deki <strong>6 haneli LAN kodunu</strong> girin — M3U/Xtream kaynaklarınız ve favorileriniz saniyeler içinde TV'ye aktarılır.</p>
+                  <p class="step-sub"><strong>Çift Mod:</strong> <em>Bağımsız Mod</em> ile bilgisayarınız kapalıyken bile doğrudan TV'den yayın izleyin; <em>Ev Sunucusu Modu</em> ile bilgisayardaki yerel MKV/DTS dosyalarınızı FFmpeg üzerinden aktarın.</p>
+                </div>
+              </li>
+
+              <li class="guide-step">
+                <span class="step-num">04</span>
+                <div>
+                  <h4>Kurulumsuz Deneme (<code>/tv</code>) &amp; TV Model Kontrolü</h4>
+                  <p>Sideload yapmadan önce denemek için bilgisayarınızda Mavie açıkken Samsung TV tarayıcısından Chromium M69 uyumlu 10-foot arayüzü açabilirsiniz:</p>
+                  <div class="cmd-box">
+                    <code>http://&lt;bilgisayar-IP&gt;:8844/tv</code>
+                    <button class="copy-btn" type="button" data-copy="http://<bilgisayar-IP>:8844/tv" aria-label="Samsung TV tarayici adresini kopyala">Kopyala</button>
+                  </div>
+                  <p class="step-sub">TV model ve yazılım sürümünü görmek için: <strong>Ayarlar → Destek → Bu TV Hakkında</strong> (TU8500 = 2020 Crystal UHD · Tizen 5.5).</p>
+                </div>
+              </li>
+            </ol>
+
+            <div class="guide-callout accent-violet">
+              <strong>Donanımsal AVPlay &amp; Kumanda Uyumu:</strong> <code>Mavie-Tizen.wgt</code> yerleşik <strong>Samsung AVPlay</strong> motoruyla 4K HEVC/H.264, HLS, MPEG-TS ve AC3/EAC3 akışlarını donanımsal çözer; Ana Sayfa'da Return tuşunda güvenli çıkış onayı gösterir ve yerleşik Demo kataloğuyla anında test edilebilir.
+            </div>
+          </div>
+
+          <!-- 6. LG TV (WEBOS) & DİĞER TV'LER -->
+          <div class="guide-panel" id="panel-lg-tv" role="tabpanel" aria-labelledby="tab-lg-tv" data-guide-panel="lg-tv" hidden>
+            <div class="guide-panel-head">
+              <div>
+                <span class="guide-kicker">LG WEBOS 4.0+ · HISENSE VIDAA · VESTEL · PWA &amp; TARAYICI</span>
+                <h3>LG Smart TV (webOS .ipk) &amp; Diğer TV'ler</h3>
+                <p>LG OLED, NanoCell ve UHD televizyonlara özgün <code>Mavie-webOS.ipk</code> paketini ücretsiz kurun; Hisense VIDAA, Vestel ve diğer tüm Smart TV tarayıcılarında ise kurulumsuz <code>/tv</code> modunu anında kullanın.</p>
+                <div class="guide-pills">
+                  <span>Mavie-webOS.ipk Hazır</span>
+                  <span>webOS Dev Manager</span>
+                  <span>1000 Saat Dev Mode</span>
+                  <span>Evrensel /tv &amp; PWA</span>
+                </div>
+              </div>
+              <div class="guide-head-actions">
+                <button class="btn small" data-dl="webos-ipk" type="button">Mavie-webOS.ipk İndir</button>
+              </div>
+            </div>
+
+            <ol class="guide-steps">
+              <li class="guide-step">
+                <span class="step-num">01</span>
+                <div>
+                  <h4>LG Content Store'dan Developer Mode Uygulamasını Kurun</h4>
+                  <p>LG TV'nizde <strong>LG Content Store</strong>'u açıp ücretsiz <strong>Developer Mode</strong> uygulamasını indirin. Ücretsiz LG Developer hesabınızla giriş yapın, <strong>Dev Mode Status → ON</strong> ve <strong>Key Server → ON</strong> konumuna alın.</p>
+                  <p class="step-sub">Ekranda görünen TV IP adresini ve 6 haneli <strong>Passphrase</strong> kodunu not edin.</p>
+                </div>
+              </li>
+
+              <li class="guide-step">
+                <span class="step-num">02</span>
+                <div>
+                  <h4><code>Mavie-webOS.ipk</code> Paketini Yükleyin</h4>
+                  <p><strong>Grafik Arayüz (Önerilen):</strong> Bilgisayara ücretsiz <strong>webOS Dev Manager</strong> kurun, TV IP + Passphrase ile bağlanın ve indirdiğiniz <code>Mavie-webOS.ipk</code> dosyasını tek tıkla yükleyin.</p>
+                  <p class="step-sub"><strong>Komut Satırı (<code>ares-install</code> veya betik):</strong></p>
+                  <div class="cmd-stack">
+                    <div class="cmd-box">
+                      <code>ares-install -d tv Mavie-webOS.ipk</code>
+                      <button class="copy-btn" type="button" data-copy="ares-install -d tv Mavie-webOS.ipk" aria-label="LG webOS ares-install komutunu kopyala">ares-install</button>
+                    </div>
+                    <div class="cmd-box">
+                      <code>./tv/webos/install-webos.sh &lt;TV-IP&gt;</code>
+                      <button class="copy-btn" type="button" data-copy="./tv/webos/install-webos.sh <TV-IP>" aria-label="LG webOS kurulum betigi komutunu kopyala">Betik</button>
+                    </div>
+                  </div>
+                </div>
+              </li>
+
+              <li class="guide-step">
+                <span class="step-num">03</span>
+                <div>
+                  <h4>1000 Saat Geliştirici Modu Süresini Yenileme</h4>
+                  <p>LG webOS Geliştirici Modu oturumu <strong>1000 saat (~41 gün)</strong> geçerlidir. Süre dolmadan LG TV'deki Developer Mode uygulamasından <strong>Extend</strong> düğmesine basarak (veya webOS Dev Manager'da otomatik yenileme açarak) ayarlarınız silinmeden süreyi sıfırlayabilirsiniz.</p>
+                </div>
+              </li>
+
+              <li class="guide-step">
+                <span class="step-num">04</span>
+                <div>
+                  <h4>Hisense VIDAA, Vestel, Diğer TV'ler &amp; PWA (<code>/tv</code>)</h4>
+                  <p>Uygulama paketi yüklenemeyen <strong>Hisense (VIDAA)</strong>, <strong>Vestel</strong>, Philips veya herhangi bir Smart TV tarayıcısında bilgisayarınızda Mavie açıkken 10-foot TV arayüzünü doğrudan açın:</p>
+                  <div class="cmd-stack">
+                    <div class="cmd-box">
+                      <code>http://&lt;bilgisayar-IP&gt;:8844/tv</code>
+                      <button class="copy-btn" type="button" data-copy="http://<bilgisayar-IP>:8844/tv" aria-label="Evrensel Smart TV adresini kopyala">TV Modu</button>
+                    </div>
+                    <div class="cmd-box">
+                      <code>ipconfig</code>
+                      <button class="copy-btn" type="button" data-copy="ipconfig" aria-label="Windows IP ogrenme komutunu kopyala">Windows IP</button>
+                    </div>
+                  </div>
+                  <p class="step-sub">Standart Web / <strong>PWA</strong> kullanımı için <code>http://&lt;bilgisayar-IP&gt;:8844</code> adresini açıp Safari'de <em>Paylaş → Ana Ekrana Ekle</em> veya Chrome'da <em>Yükle</em> seçin (macOS IP: <code>ipconfig getifaddr en0</code>).</p>
+                </div>
+              </li>
+            </ol>
+
+            <div class="guide-callout">
+              <strong>Ortak 10-Foot TV Çekirdeği:</strong> <code>Mavie-Tizen.wgt</code>, <code>Mavie-webOS.ipk</code> ve <code>http://&lt;bilgisayar-IP&gt;:8844/tv</code> aynı hafif ES2018 / Chromium M69 uyumlu arayüzü paylaşır; kumanda yön tuşları, QR / 6 haneli eşleştirme ve Demo kataloğu yerleşik gelir.
+            </div>
+          </div>
+
+          <!-- 7. DISTRIBUTION & PUBLISHING CHANNELS -->
+          <div class="guide-panel" id="panel-distribution" role="tabpanel" aria-labelledby="tab-distribution" data-guide-panel="distribution" hidden>
+            <div class="guide-panel-head">
+              <div>
+                <span class="guide-kicker">RESMİ İNDİRME &amp; MAĞAZA DAĞITIM KANALLARI</span>
+                <h3>Diğer Yayın Yerleri &amp; Dağıtım Kanalları</h3>
+                <p>Masaüstü, mobil ve Akıllı TV paketlerinin tümü GitHub Releases'ta doğrudan yayındadır; aşağıda resmi uygulama mağazalarına dağıtım yolları özetlenmiştir.</p>
+              </div>
+              <div class="guide-head-actions">
+                <a class="btn small" href="#downloads" data-releases target="_blank" rel="noopener noreferrer">GitHub Releases'ı Aç ›</a>
+              </div>
+            </div>
+
+            <div class="channel-grid">
+              <article class="channel-card is-live wide-channel">
+                <div class="channel-top">
+                  <h4>GitHub Releases (9 Resmi Paket)</h4>
+                  <span class="status-pill live">Aktif · Şimdi Yayında</span>
+                </div>
+                <p class="channel-pkg">Paketler: <code>Mavie-Setup.exe</code>, <code>Mavie.exe</code>, <code>Mavie-macOS.dmg</code>, <code>Mavie-macOS.zip</code>, <code>Mavie-Android.apk</code>, <code>Mavie-Android.aab</code>, <code>Mavie-iOS.ipa</code>, <code>Mavie-Tizen.wgt</code>, <code>Mavie-webOS.ipk</code></p>
+                <p><strong>Son Kullanıcılar:</strong> Tüm masaüstü, mobil ve Akıllı TV kurulum paketleri (Samsung <code>Mavie-Tizen.wgt</code> ve LG <code>Mavie-webOS.ipk</code> dahil!) GitHub Actions CI tarafından otomatik derlenip burada yayınlanır. Bu sayfadaki tüm indirme düğmeleri doğrudan son sürüme bağlanır.</p>
+              </article>
+
+              <article class="channel-card">
+                <div class="channel-top">
+                  <h4>Samsung Smart TV Seller Office</h4>
+                  <span class="status-pill ready">.wgt Paketi Hazır</span>
+                </div>
+                <p class="channel-pkg">Paket: <code>Mavie-Tizen.wgt</code> (Tizen 5.5+ / TU8500 ve sonrası)</p>
+                <p><strong>Yayın Süreci:</strong> <code>Mavie-Tizen.wgt</code> paketi GitHub Releases'ta hazırdır. Evde Geliştirici Modu (<code>12345</code>) doğrulaması sonrası <strong>Samsung TV Seller Office</strong> (Partner Seller) üzerinden saf oynatıcı/demo katalog uyumu, Return çıkış onayı ve AVPlay QA kontrolüyle Samsung Apps mağazasına sunulur.</p>
+              </article>
+
+              <article class="channel-card">
+                <div class="channel-top">
+                  <h4>LG Seller Lounge (webOS Content Store)</h4>
+                  <span class="status-pill ready">.ipk Paketi Hazır</span>
+                </div>
+                <p class="channel-pkg">Paket: <code>Mavie-webOS.ipk</code> (webOS 4.0+ / OLED, NanoCell, UHD)</p>
+                <p><strong>Yayın Süreci:</strong> <code>Mavie-webOS.ipk</code> paketi GitHub Releases'ta hazırdır. Evde Developer Mode / <code>webOS Dev Manager</code> testinin ardından <strong>LG Seller Lounge</strong> portalından LG Content Store onayına gönderilmeye hazırdır.</p>
+              </article>
+
+              <article class="channel-card">
+                <div class="channel-top">
+                  <h4>Google Play Store (Mobil &amp; Android TV)</h4>
+                  <span class="status-pill ready">.aab Paketi Hazır</span>
+                </div>
+                <p class="channel-pkg">Paket: <code>Mavie-Android.aab</code> (Leanback TV Banner + D-Pad dahil)</p>
+                <p><strong>Yayın Süreci:</strong> Release AAB dosyası CI'da otomatik üretilir. Play Console hesabı ve yükleme anahtarı (Upload Keystore) imzası eklenerek telefon, tablet ve Android TV / Google TV için üretime gönderilmeye hazırdır.</p>
+              </article>
+
+              <article class="channel-card">
+                <div class="channel-top">
+                  <h4>Apple TestFlight &amp; App Store</h4>
+                  <span class="status-pill planned">Sertifika ile Yayın</span>
+                </div>
+                <p class="channel-pkg">Paket: Xcode <code>MavieIOS</code> (<code>.ipa</code>) &amp; Noter Onaylı <code>Mavie-macOS.dmg</code></p>
+                <p><strong>Yayın Süreci:</strong> Apple Developer Program üyeliği ile <strong>TestFlight</strong> üzerinden 90 gün yenilemesiz beta dağıtımı yapılabilir; ardından iOS App Store yayını ve macOS Notarization (Gatekeeper uyarısız kurulum) etkinleşir.</p>
+              </article>
+
+              <article class="channel-card wide-channel">
+                <div class="channel-top">
+                  <h4>Microsoft Store &amp; Winget</h4>
+                  <span class="status-pill planned">Windows Dağıtım</span>
+                </div>
+                <p class="channel-pkg">Paket: <code>Mavie-Setup.exe</code> (Win32 / Winget Manifest)</p>
+                <p><strong>Yayın Süreci:</strong> Resmi <code>Mavie-Setup.exe</code> paketi <strong>Winget</strong> (<code>winget-pkgs</code>) manifesti veya Microsoft Partner Center Win32 Store yayını ile tek komutla kurulabilir ve SmartScreen güvenilirliği kazanır.</p>
+              </article>
+            </div>
+
+            <div class="guide-callout">
+              <strong>Mağaza Politikası Uyumu:</strong> Mavie hiçbir canlı TV kanalı, M3U listesi veya telifli içerik barındırmaz; yalnızca kullanıcının kendi yerel medya dosyalarını ve yasal yayınlarını oynatan bağımsız bir oynatıcıdır.
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -246,7 +904,7 @@
             <div>
               <span class="bento-kicker">GİZLİLİK</span>
               <h3>Sıfır Hesap &amp; Yerel Eşitleme</h3>
-              <p>Kayıt, bulut sunucu veya telemetri yok. Cihazların arasında 6 haneli LAN koduyla ya da JSON yedekle doğrudan eşitle.</p>
+              <p>Kayıt, bulut sunucu veya telemetri yok. Cihazların arasında 6 haneli LAN koduyla, TV QR koduyla ya da JSON yedekle doğrudan eşitle.</p>
             </div>
           </article>
         </div>
@@ -263,7 +921,11 @@
 
         <div class="spec-sheet">
           <div class="spec-row">
-            <span class="spec-label">Windows, macOS, Android ve iOS Uygulamaları</span>
+            <span class="spec-label">Windows (Yerel + Web), macOS, Android ve iOS Uygulamaları</span>
+            <span class="spec-value">✓ %100 Ücretsiz</span>
+          </div>
+          <div class="spec-row">
+            <span class="spec-label">Samsung Tizen (.wgt), LG webOS (.ipk), Android TV &amp; /tv Tarayıcı</span>
             <span class="spec-value">✓ %100 Ücretsiz</span>
           </div>
           <div class="spec-row">
@@ -279,11 +941,11 @@
             <span class="spec-value">✓ Sınırsız</span>
           </div>
           <div class="spec-row">
-            <span class="spec-label">2×2 Çoklu Ekran, FFmpeg &amp; Yerel Altyazılar</span>
+            <span class="spec-label">2×2 Çoklu Ekran, FFmpeg, AVPlay, LibVLC &amp; Yerel Altyazılar</span>
             <span class="spec-value">✓ Tam Erişim</span>
           </div>
           <div class="spec-row">
-            <span class="spec-label">Yerel Ağ (LAN) Eşitleme &amp; JSON Yedek</span>
+            <span class="spec-label">Yerel Ağ (LAN) &amp; QR Eşitleme, JSON Yedek</span>
             <span class="spec-value">✓ Tamamen Yerel</span>
           </div>
         </div>
@@ -301,8 +963,10 @@
         Mavie yalnızca kişisel bir medya oynatıcıdır; herhangi bir televizyon kanalı, telifli içerik veya yayın akışı barındırmaz ve satmaz. Tüm verileriniz yalnızca kendi cihazınızda saklanır.
       </p>
       <div class="footer-row">
-        <span>© 2026 Mavie. Tüm platformlarda tamamen ücretsiz.</span>
+        <span>© 2026 Mavie. Tüm platformlarda ve Akıllı TV'lerde tamamen ücretsiz.</span>
         <div class="footer-links">
+          <a href="#tv-downloads">Akıllı TV</a>
+          <a href="#guides">Kurulum Kılavuzu</a>
           <a href="/privacy.html">Gizlilik Politikası</a>
           <a href="/terms.html">Kullanım Koşulları</a>
           <a href="#downloads" data-releases target="_blank" rel="noopener noreferrer">GitHub Releases</a>

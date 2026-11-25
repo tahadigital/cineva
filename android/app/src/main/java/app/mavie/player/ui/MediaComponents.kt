@@ -17,10 +17,13 @@ import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -34,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 
@@ -64,23 +68,42 @@ internal fun PosterCard(media: UiMedia, onOpen: () -> Unit, onFavorite: () -> Un
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
     val scale = rememberPressScale(interactionSource)
-    Column(modifier.graphicsLayer { scaleX = scale; scaleY = scale }) {
+    val cardShape = RoundedCornerShape(16.dp)
+    Column(modifier.zIndex(if (focused) 1f else 0f).graphicsLayer { scaleX = scale; scaleY = scale }) {
         Card(
             onClick = onOpen,
             interactionSource = interactionSource,
-            modifier = Modifier.fillMaxWidth().semantics {
-                contentDescription = media.title
-                role = Role.Button
-            },
-            shape = RoundedCornerShape(16.dp),
-            border = BorderStroke(if (focused) 2.dp else 1.dp, if (focused) MavieBrandDiagonalGradient else MavieSpecularBorderBrush),
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(
+                    if (focused) {
+                        Modifier.shadow(
+                            elevation = 16.dp,
+                            shape = cardShape,
+                            clip = false,
+                            ambientColor = MaviePurple.copy(alpha = 0.55f),
+                            spotColor = MavieTurquoise.copy(alpha = 0.65f),
+                        )
+                    } else {
+                        Modifier
+                    }
+                )
+                .semantics {
+                    contentDescription = media.title
+                    role = Role.Button
+                },
+            shape = cardShape,
+            border = BorderStroke(if (focused) 2.5.dp else 1.dp, if (focused) MavieTvFocusBrush else MavieSpecularBorderBrush),
             colors = CardDefaults.cardColors(containerColor = Color(0xB8141B2E)),
         ) {
             Box(Modifier.fillMaxWidth().aspectRatio(if (media.kind == "live") 1.25f else 2f / 3f)) {
                 PosterArt(media, Modifier.fillMaxSize())
                 if (!compact) IconButton(
                     onClick = onFavorite,
-                    modifier = Modifier.align(Alignment.TopEnd).size(48.dp),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .size(48.dp)
+                        .mavieTvFocusable(shape = CircleShape, addFocusable = false),
                 ) {
                     Box(
                         Modifier.size(34.dp).clip(CircleShape).background(Color(0x880A0D16))
@@ -121,16 +144,113 @@ internal fun PosterCard(media: UiMedia, onOpen: () -> Unit, onFavorite: () -> Un
 }
 
 @Composable
+internal fun LiveChannelRow(
+    media: UiMedia,
+    onOpen: () -> Unit,
+    onFavorite: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(18.dp)
+    Card(
+        onClick = onOpen,
+        shape = shape,
+        border = BorderStroke(if (focused) 2.5.dp else 1.dp, if (focused) MavieTvFocusBrush else MavieSpecularBorderBrush),
+        colors = CardDefaults.cardColors(containerColor = if (focused) Color(0xD91A223B) else Color(0xB8141B2E)),
+        modifier = modifier
+            .fillMaxWidth()
+            .mavieTvFocusable(
+                shape = shape,
+                showFocusBorder = false,
+                addFocusable = false,
+                onFocusChange = { focused = it },
+            )
+            .semantics {
+                contentDescription = media.title
+                role = Role.Button
+            },
+    ) {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 76.dp).padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Box(
+                Modifier
+                    .size(width = 96.dp, height = 56.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF0E1424)),
+            ) {
+                PosterArt(media, Modifier.fillMaxSize())
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = media.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(
+                        Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Brush.horizontalGradient(listOf(MaviePurple, MavieBlue)))
+                            .padding(horizontal = 7.dp, vertical = 2.dp),
+                    ) {
+                        Text("CANLI", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White, letterSpacing = 0.7.sp)
+                    }
+                    if (media.category.isNotBlank()) {
+                        Text(media.category, color = MavieMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+            IconButton(
+                onClick = onFavorite,
+                modifier = Modifier
+                    .size(48.dp)
+                    .mavieTvFocusable(shape = CircleShape, addFocusable = false),
+            ) {
+                Icon(
+                    if (media.favorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                    if (media.favorite) "${media.title} favorilerden kaldır" else "${media.title} favorilere ekle",
+                    tint = if (media.favorite) MavieCyanDot else MavieMuted,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
 internal fun ContinueCard(media: UiMedia, onOpen: () -> Unit, onPlay: () -> Unit) {
+    val isTv = LocalIsTv.current
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
     val scale = rememberPressScale(interactionSource)
+    val cardShape = RoundedCornerShape(16.dp)
     Card(
         onClick = onOpen,
         interactionSource = interactionSource,
-        modifier = Modifier.width(168.dp).graphicsLayer { scaleX = scale; scaleY = scale },
-        shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(if (focused) 2.dp else 1.dp, if (focused) MavieBrandDiagonalGradient else MavieSpecularBorderBrush),
+        modifier = Modifier
+            .zIndex(if (focused) 1f else 0f)
+            .width(continueCardWidthDp(isTv).dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .then(
+                if (focused) {
+                    Modifier.shadow(
+                        elevation = 16.dp,
+                        shape = cardShape,
+                        clip = false,
+                        ambientColor = MaviePurple.copy(alpha = 0.55f),
+                        spotColor = MavieTurquoise.copy(alpha = 0.65f),
+                    )
+                } else {
+                    Modifier
+                }
+            ),
+        shape = cardShape,
+        border = BorderStroke(if (focused) 2.5.dp else 1.dp, if (focused) MavieTvFocusBrush else MavieSpecularBorderBrush),
         colors = CardDefaults.cardColors(containerColor = Color(0xBD151C30)),
     ) {
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
@@ -138,7 +258,10 @@ internal fun ContinueCard(media: UiMedia, onOpen: () -> Unit, onPlay: () -> Unit
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .20f)))
             FilledIconButton(
                 onClick = onPlay,
-                modifier = Modifier.align(Alignment.Center).size(48.dp)
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(48.dp)
+                    .mavieTvFocusable(shape = CircleShape, addFocusable = false)
                     .border(1.dp, MavieSpecularBorderBrush, CircleShape),
                 colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color(0x99141B2E), contentColor = Color.White),
             ) {
@@ -165,7 +288,14 @@ internal fun SectionTitle(title: String, subtitle: String? = null, onAll: (() ->
             Text(title, style = MaterialTheme.typography.titleLarge, fontSize = 20.sp)
             if (!subtitle.isNullOrBlank()) Text(subtitle, color = MavieMuted, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp))
         }
-        if (onAll != null) TextButton(onClick = onAll, modifier = Modifier.heightIn(min = 48.dp)) { Text("Tümü", fontSize = 12.sp, color = MavieCyanDot) }
+        if (onAll != null) {
+            TextButton(
+                onClick = onAll,
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .mavieTvFocusable(shape = CircleShape, addFocusable = false),
+            ) { Text("Tümü", fontSize = 12.sp, color = MavieCyanDot) }
+        }
     }
 }
 
@@ -205,7 +335,9 @@ internal fun MessagePanel(
                 if (hasSecondary) {
                     OutlinedButton(
                         onClick = onSecondaryAction!!,
-                        modifier = Modifier.heightIn(min = 48.dp),
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .mavieTvFocusable(shape = RoundedCornerShape(16.dp), addFocusable = false),
                         shape = RoundedCornerShape(16.dp),
                         border = BorderStroke(1.dp, MavieSpecularBorderBrush),
                         colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0x73182038), contentColor = Color.White),

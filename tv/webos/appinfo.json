@@ -1,0 +1,16 @@
+{
+  "id": "app.mavie.tv",
+  "version": "2.2.0",
+  "vendor": "Mavie",
+  "type": "web",
+  "main": "index.html",
+  "title": "Mavie",
+  "icon": "icon-80.png",
+  "largeIcon": "icon-130.png",
+  "splashBackground": "splash-1920x1080.png",
+  "bgColor": "#060913",
+  "iconColor": "#060913",
+  "resolution": "1920x1080",
+  "handlesRelaunch": true,
+  "disableBackHistoryAPI": true
+}

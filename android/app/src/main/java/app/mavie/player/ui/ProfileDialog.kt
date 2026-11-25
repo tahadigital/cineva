@@ -1,11 +1,8 @@
 package app.mavie.player.ui
 
-import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -85,40 +82,56 @@ fun ProfilePickerDialog(
                 Text("Her profilin favorileri, izleme geçmişi ve listeleri ayrı tutulur.", color = MavieMuted, fontSize = 12.sp)
                 profiles.forEach { profile ->
                     val badgeColor = runCatching { Color(android.graphics.Color.parseColor(profile.avatarColor)) }.getOrDefault(MaviePurple)
-                    val rowInteraction = remember { MutableInteractionSource() }
-                    val rowFocused by rowInteraction.collectIsFocusedAsState()
-                    Row(
-                        Modifier.fillMaxWidth()
-                            .heightIn(min = 56.dp)
-                            .mavieGlassSurface(RoundedCornerShape(16.dp), focused = profile.active || rowFocused)
-                            .clickable(
-                                interactionSource = rowInteraction,
-                                indication = LocalIndication.current,
-                                role = Role.Button,
-                                onClickLabel = "${profile.name} profiline geç",
-                            ) {
-                                if (profile.hasPin && !profile.active) { pinTarget = profile; pinInput = "" }
-                                else onSwitch(profile.id, "")
-                            }
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    var rowFocused by remember { mutableStateOf(false) }
+                    val tileShape = RoundedCornerShape(16.dp)
+                    Card(
+                        onClick = {
+                            if (profile.hasPin && !profile.active) { pinTarget = profile; pinInput = "" }
+                            else onSwitch(profile.id, "")
+                        },
+                        shape = tileShape,
+                        border = BorderStroke(
+                            width = if (profile.active || rowFocused) 2.5.dp else 1.dp,
+                            brush = if (profile.active || rowFocused) MavieTvFocusBrush else MavieSpecularBorderBrush,
+                        ),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (rowFocused) Color(0xD91A223B) else Color(0xB8141B2E),
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .mavieTvFocusable(
+                                shape = tileShape,
+                                showFocusBorder = false,
+                                addFocusable = false,
+                                onFocusChange = { rowFocused = it },
+                            ),
                     ) {
-                        Box(Modifier.size(36.dp).clip(CircleShape).background(badgeColor), contentAlignment = Alignment.Center) {
-                            Text(profile.name.take(1).uppercase(), color = Color.White, fontWeight = FontWeight.Bold)
-                        }
-                        Column(Modifier.weight(1f)) {
-                            Text(profile.name, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                            val tags = listOfNotNull(if (profile.isKids) "Çocuk Modu" else null, if (profile.active) "Aktif" else null).joinToString(" · ")
-                            if (tags.isNotBlank()) Text(tags, color = MavieMuted, fontSize = 11.sp)
-                        }
-                        if (profile.hasPin) Icon(Icons.Outlined.Lock, "PIN Korumalı", tint = MavieMuted, modifier = Modifier.size(16.dp))
-                        if (profile.id != "default") {
-                            IconButton(
-                                onClick = { onDelete(profile.id) },
-                                modifier = Modifier.size(48.dp),
-                            ) {
-                                Icon(Icons.Outlined.Delete, "${profile.name} profilini sil", tint = MavieMuted, modifier = Modifier.size(20.dp))
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 56.dp)
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Box(Modifier.size(36.dp).clip(CircleShape).background(badgeColor), contentAlignment = Alignment.Center) {
+                                Text(profile.name.take(1).uppercase(), color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text(profile.name, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                val tags = listOfNotNull(if (profile.isKids) "Çocuk Modu" else null, if (profile.active) "Aktif" else null).joinToString(" · ")
+                                if (tags.isNotBlank()) Text(tags, color = MavieMuted, fontSize = 11.sp)
+                            }
+                            if (profile.hasPin) Icon(Icons.Outlined.Lock, "PIN Korumalı", tint = MavieMuted, modifier = Modifier.size(16.dp))
+                            if (profile.id != "default") {
+                                IconButton(
+                                    onClick = { onDelete(profile.id) },
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .mavieTvFocusable(shape = CircleShape, addFocusable = false),
+                                ) {
+                                    Icon(Icons.Outlined.Delete, "${profile.name} profilini sil", tint = MavieMuted, modifier = Modifier.size(20.dp))
+                                }
                             }
                         }
                     }
@@ -162,7 +175,8 @@ fun ProfilePickerDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 48.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                        .mavieTvFocusable(shape = RoundedCornerShape(10.dp), addFocusable = false)
+                        .clip(RoundedCornerShape(10.dp))
                         .toggleable(
                             value = newIsKids,
                             role = Role.Checkbox,
@@ -182,6 +196,7 @@ fun ProfilePickerDialog(
                         Box(
                             modifier = Modifier
                                 .size(48.dp)
+                                .mavieTvFocusable(shape = CircleShape, addFocusable = false)
                                 .clip(CircleShape)
                                 .selectable(
                                     selected = selected,
@@ -226,7 +241,10 @@ fun ProfilePickerDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.heightIn(min = 48.dp).mavieTvFocusable(shape = RoundedCornerShape(12.dp), addFocusable = false),
+            ) {
                 Text("Kapat", color = Color.White)
             }
         },

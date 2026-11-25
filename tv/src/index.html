@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1920, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#060913">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23090D18'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-family='sans-serif' font-weight='800' font-size='34' fill='%2306B6D4'%3EM%3C/text%3E%3C/svg%3E">
+  <title>Mavie TV · Akıllı TV Medya Merkezi</title>
+  <link rel="stylesheet" href="tv.css">
+  <!--TV_PLATFORM_HEAD-->
+</head>
+<body class="tv-body">
+  <div id="tvApp" class="tv-shell">
+    <aside id="tvRail" class="tv-rail" aria-label="Ana menü">
+      <div class="tv-brand">
+        <div class="tv-brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 256 256" width="44" height="44">
+            <defs>
+              <linearGradient id="tvObsidianCore" x1="18%" y1="0%" x2="82%" y2="100%">
+                <stop offset="0%" stop-color="#161C32"/>
+                <stop offset="42%" stop-color="#090D18"/>
+                <stop offset="100%" stop-color="#03050A"/>
+              </linearGradient>
+              <linearGradient id="tvMRim" x1="4%" y1="44%" x2="96%" y2="56%">
+                <stop offset="0%" stop-color="#7C3AED"/>
+                <stop offset="25%" stop-color="#3B82F6"/>
+                <stop offset="50%" stop-color="#06B6D4"/>
+                <stop offset="75%" stop-color="#3B82F6"/>
+                <stop offset="100%" stop-color="#7C3AED"/>
+              </linearGradient>
+              <linearGradient id="tvORim" x1="8%" y1="50%" x2="92%" y2="50%">
+                <stop offset="0%" stop-color="#7C3AED"/>
+                <stop offset="50%" stop-color="#06B6D4"/>
+                <stop offset="100%" stop-color="#3B82F6"/>
+              </linearGradient>
+            </defs>
+            <path d="M23.5,40.0 C23.5,32.5 27.2,29.2 34.5,28.5 C56.5,26.2 77.5,26.5 95.5,29.0 C101.0,29.8 103.8,32.8 105.4,38.0 L129.0,128.5 L152.6,38.0 C154.2,32.8 157.0,29.8 162.5,29.0 C180.5,26.5 201.5,26.2 223.5,28.5 C230.8,29.2 234.5,32.5 234.5,40.0 L234.5,207.5 C234.5,218.5 227.5,224.5 216.0,224.5 L195.5,224.5 C188.5,224.5 184.5,220.2 184.5,213.0 L184.5,110.0 L180.0,110.0 L150.5,214.0 C148.5,221.0 143.5,224.5 136.0,224.5 L123.5,224.5 C113.0,224.5 107.5,219.0 107.5,208.5 L107.5,181.5 C107.5,160.61 96.99,141.42 80.18,131.61 C63.36,121.81 42.99,122.98 27.20,134.66 C24.80,136.44 23.50,134.60 23.50,130.00 Z" fill="url(#tvObsidianCore)" stroke="url(#tvMRim)" stroke-width="11" stroke-linejoin="round" stroke-linecap="round"/>
+            <path d="M56.00,142.50 C75.33,142.50 91.00,159.96 91.00,181.50 C91.00,203.04 75.33,220.50 56.00,220.50 C36.67,220.50 21.00,203.04 21.00,181.50 C21.00,159.96 36.67,142.50 56.00,142.50 Z M56.00,165.90 C48.38,165.90 42.20,172.88 42.20,181.50 C42.20,190.12 48.38,197.10 56.00,197.10 C63.62,197.10 69.80,190.12 69.80,181.50 C69.80,172.88 63.62,165.90 56.00,165.90 Z" fill="url(#tvObsidianCore)" fill-rule="evenodd"/>
+            <path d="M56.00,142.50 C75.33,142.50 91.00,159.96 91.00,181.50 C91.00,203.04 75.33,220.50 56.00,220.50 C36.67,220.50 21.00,203.04 21.00,181.50 C21.00,159.96 36.67,142.50 56.00,142.50 Z" fill="none" stroke="url(#tvORim)" stroke-width="11"/>
+            <path d="M56.00,165.90 C63.62,165.90 69.80,172.88 69.80,181.50 C69.80,190.12 63.62,197.10 56.00,197.10 C48.38,197.10 42.20,190.12 42.20,181.50 C42.20,172.88 48.38,165.90 56.00,165.90 Z" fill="none" stroke="url(#tvORim)" stroke-width="9"/>
+          </svg>
+        </div>
+        <div class="tv-brand-copy">
+          <span class="tv-brand-name">Mavie<span class="tv-brand-dot">.</span></span>
+          <span class="tv-brand-badge" id="tvPlatformBadge">SMART TV</span>
+        </div>
+      </div>
+
+      <nav class="tv-nav" id="tvNav">
+        <button type="button" class="tv-nav-item active" data-tv-focusable="true" data-tv-group="rail" data-route="home" id="nav-home">
+          <span class="tv-nav-icon" aria-hidden="true">&#8962;</span>
+          <span class="tv-nav-label">Ana Sayfa</span>
+        </button>
+        <button type="button" class="tv-nav-item" data-tv-focusable="true" data-tv-group="rail" data-route="live" id="nav-live">
+          <span class="tv-nav-icon" aria-hidden="true">&#9673;</span>
+          <span class="tv-nav-label">Canlı TV</span>
+        </button>
+        <button type="button" class="tv-nav-item" data-tv-focusable="true" data-tv-group="rail" data-route="vod" id="nav-vod">
+          <span class="tv-nav-icon" aria-hidden="true">&#9654;</span>
+          <span class="tv-nav-label">Filmler</span>
+        </button>
+        <button type="button" class="tv-nav-item" data-tv-focusable="true" data-tv-group="rail" data-route="series" id="nav-series">
+          <span class="tv-nav-icon" aria-hidden="true">&#9776;</span>
+          <span class="tv-nav-label">Diziler</span>
+        </button>
+        <button type="button" class="tv-nav-item" data-tv-focusable="true" data-tv-group="rail" data-route="sports" id="nav-sports">
+          <span class="tv-nav-icon" aria-hidden="true">&#9733;</span>
+          <span class="tv-nav-label">Spor Ekranı</span>
+        </button>
+        <button type="button" class="tv-nav-item" data-tv-focusable="true" data-tv-group="rail" data-route="favorites" id="nav-favorites">
+          <span class="tv-nav-icon" aria-hidden="true">&#9829;</span>
+          <span class="tv-nav-label">Favoriler</span>
+        </button>
+        <button type="button" class="tv-nav-item" data-tv-focusable="true" data-tv-group="rail" data-route="search" id="nav-search">
+          <span class="tv-nav-icon" aria-hidden="true">&#9906;</span>
+          <span class="tv-nav-label">Arama</span>
+        </button>
+        <button type="button" class="tv-nav-item" data-tv-focusable="true" data-tv-group="rail" data-route="settings" id="nav-settings">
+          <span class="tv-nav-icon" aria-hidden="true">&#9881;</span>
+          <span class="tv-nav-label">Ayarlar / Bağlan</span>
+        </button>
+      </nav>
+
+      <div class="tv-rail-status" id="tvRailStatus">
+        <div class="tv-status-row">
+          <span class="tv-status-dot" id="tvStatusDot"></span>
+          <span class="tv-status-text" id="tvStatusText">Hazırlanıyor…</span>
+        </div>
+        <div class="tv-status-sub" id="tvStatusSub">Bağımsız + Ev Sunucusu</div>
+      </div>
+    </aside>
+
+    <main id="tvMain" class="tv-main" tabindex="-1">
+      <div class="tv-topbar">
+        <div class="tv-topbar-left">
+          <h1 id="tvPageTitle" class="tv-page-title">Ana Sayfa</h1>
+          <span id="tvPageMeta" class="tv-page-meta">Mavie Akıllı TV</span>
+        </div>
+        <div class="tv-topbar-right">
+          <span class="tv-hint-pill">OK: Seç</span>
+          <span class="tv-hint-pill">Geri: Önceki</span>
+          <span class="tv-clock" id="tvClock">--:--</span>
+        </div>
+      </div>
+
+      <div id="tvContent" class="tv-content" aria-live="polite">
+        <div class="tv-loading-box">
+          <div class="tv-spinner"></div>
+          <p>Mavie TV başlatılıyor…</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Detail Modal -->
+  <div id="tvDetailModal" class="tv-modal-backdrop" hidden>
+    <div class="tv-modal tv-detail-modal" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+      <div id="tvDetailBody" class="tv-detail-body"></div>
+    </div>
+  </div>
+
+  <!-- Pairing / Server Auth Modal -->
+  <div id="tvPairModal" class="tv-modal-backdrop" hidden>
+    <div class="tv-modal tv-small-modal" role="dialog" aria-modal="true" aria-labelledby="pairModalTitle">
+      <h2 id="pairModalTitle" class="tv-modal-title">Ev Sunucusu Eşleştirme</h2>
+      <p class="tv-modal-desc" id="pairModalDesc">Bilgisayarınızdaki Mavie uygulamasında görünen 6 haneli eşleştirme kodunu girin.</p>
+      <div class="tv-field-row">
+        <input id="tvPairCodeInput" type="text" maxlength="6" class="tv-input" placeholder="6 haneli kod (örn. 482910)" data-tv-focusable="true">
+      </div>
+      <p class="tv-form-error" id="tvPairError" hidden></p>
+      <div class="tv-modal-actions">
+        <button type="button" class="tv-btn tv-btn-primary" id="tvPairSubmitBtn" data-tv-focusable="true">Eşleştir</button>
+        <button type="button" class="tv-btn tv-btn-secondary" id="tvPairCancelBtn" data-tv-focusable="true">Vazgeç</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Samsung Seller Office Compliant Exit Confirmation Dialog -->
+  <div id="tvExitModal" class="tv-modal-backdrop" hidden>
+    <div class="tv-modal tv-small-modal" role="dialog" aria-modal="true" aria-labelledby="exitModalTitle">
+      <h2 id="exitModalTitle" class="tv-modal-title">Mavie'den çıkmak istiyor musunuz?</h2>
+      <p class="tv-modal-desc">İzleme konumunuz ve favorileriniz cihazınızda güvenle saklandı.</p>
+      <div class="tv-modal-actions">
+        <button type="button" class="tv-btn tv-btn-secondary" id="tvExitNoBtn" data-tv-focusable="true">Hayır</button>
+        <button type="button" class="tv-btn tv-btn-primary" id="tvExitYesBtn" data-tv-focusable="true">Evet, Çık</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Full-Screen Multi-Platform Video Player -->
+  <div id="tvPlayerLayer" class="tv-player-layer" hidden>
+    <div class="tv-player-stage" id="tvPlayerStage">
+      <object id="tvAvplayObject" type="application/avplayer" class="tv-avplay-object" hidden></object>
+      <video id="tvVideo" class="tv-video" playsinline></video>
+      <div id="tvPlayerSubtitle" class="tv-player-subtitle" hidden></div>
+    </div>
+
+    <div id="tvPlayerLoading" class="tv-player-loading" hidden>
+      <div class="tv-spinner"></div>
+      <div id="tvPlayerLoadingText">Yayın açılıyor…</div>
+    </div>
+
+    <div id="tvPlayerErrorBox" class="tv-player-error" hidden>
+      <h3 id="tvPlayerErrorTitle">Yayın başlatılamadı</h3>
+      <p id="tvPlayerErrorMsg">Ağ bağlantısını veya yayın adresini kontrol edip tekrar deneyin.</p>
+      <div class="tv-modal-actions">
+        <button type="button" class="tv-btn tv-btn-primary" id="tvPlayerRetryBtn" data-tv-focusable="true">Tekrar Dene</button>
+        <button type="button" class="tv-btn tv-btn-secondary" id="tvPlayerErrorCloseBtn" data-tv-focusable="true">Geri Dön</button>
+      </div>
+    </div>
+
+    <div id="tvPlayerOsd" class="tv-player-osd">
+      <div class="tv-osd-top">
+        <div class="tv-osd-title-wrap">
+          <span class="tv-osd-badge" id="tvOsdModeBadge">AVPLAY / HLS</span>
+          <h2 id="tvOsdTitle" class="tv-osd-title">Yayın</h2>
+          <div id="tvOsdSub" class="tv-osd-sub"></div>
+        </div>
+        <div class="tv-osd-engine" id="tvOsdEngine"></div>
+      </div>
+
+      <div class="tv-osd-bottom">
+        <div class="tv-progress-wrap" id="tvProgressWrap">
+          <div class="tv-progress-bar">
+            <div class="tv-progress-fill" id="tvProgressFill"></div>
+          </div>
+          <div class="tv-time-row">
+            <span id="tvTimeCurrent">0:00</span>
+            <span id="tvTimeTotal">0:00</span>
+          </div>
+        </div>
+
+        <div class="tv-osd-controls">
+          <button type="button" class="tv-osd-btn" id="tvBtnBack" data-tv-focusable="true">Geri</button>
+          <button type="button" class="tv-osd-btn" id="tvBtnRew" data-tv-focusable="true">-10 sn</button>
+          <button type="button" class="tv-osd-btn tv-osd-btn-main" id="tvBtnPlayPause" data-tv-focusable="true">Duraklat</button>
+          <button type="button" class="tv-osd-btn" id="tvBtnFwd" data-tv-focusable="true">+10 sn</button>
+          <button type="button" class="tv-osd-btn" id="tvBtnAudio" data-tv-focusable="true">Ses: Oto</button>
+          <button type="button" class="tv-osd-btn" id="tvBtnSub" data-tv-focusable="true">Altyazı: Kapalı</button>
+          <button type="button" class="tv-osd-btn" id="tvBtnPrevCh" data-tv-focusable="true" hidden>Önceki Kanal</button>
+          <button type="button" class="tv-osd-btn" id="tvBtnNextCh" data-tv-focusable="true" hidden>Sonraki Kanal</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Banner -->
+  <div id="tvToast" class="tv-toast" hidden></div>
+
+  <!--TV_PLATFORM_BRIDGE-->
+  <script src="vendor/hls.min.js" defer></script>
+  <script src="qr.js" defer></script>
+  <script src="m3u-tv.js" defer></script>
+  <script src="spatial.js" defer></script>
+  <script src="player.js" defer></script>
+  <script src="app.js" defer></script>
+</body>
+</html>

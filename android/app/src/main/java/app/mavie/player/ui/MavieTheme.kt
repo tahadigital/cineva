@@ -52,6 +52,7 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -60,15 +61,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
@@ -82,6 +86,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import kotlinx.coroutines.delay
 
 val MaviePurple = Color(0xFF7C3AED)
@@ -131,24 +136,27 @@ private val MavieColors = darkColorScheme(
 
 @Composable
 fun MavieTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = MavieColors,
-        typography = Typography(
-            displaySmall = Typography().displaySmall.copy(fontWeight = FontWeight.ExtraBold, letterSpacing = (-1.1).sp),
-            headlineLarge = Typography().headlineLarge.copy(fontWeight = FontWeight.ExtraBold, letterSpacing = (-.7).sp),
-            titleLarge = Typography().titleLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = (-.3).sp),
-            titleMedium = Typography().titleMedium.copy(fontWeight = FontWeight.Bold),
-            bodyMedium = Typography().bodyMedium.copy(lineHeight = 20.sp),
-            labelLarge = Typography().labelLarge.copy(fontWeight = FontWeight.Bold),
-        ),
-        shapes = Shapes(
-            extraSmall = RoundedCornerShape(12.dp),
-            small = RoundedCornerShape(16.dp),
-            medium = RoundedCornerShape(20.dp),
-            large = RoundedCornerShape(24.dp),
-        ),
-    ) {
-        Surface(Modifier.fillMaxSize(), color = MavieBackground, contentColor = Color.White, content = content)
+    val isTv = rememberIsTelevision()
+    CompositionLocalProvider(LocalIsTv provides isTv) {
+        MaterialTheme(
+            colorScheme = MavieColors,
+            typography = Typography(
+                displaySmall = Typography().displaySmall.copy(fontWeight = FontWeight.ExtraBold, letterSpacing = (-1.1).sp),
+                headlineLarge = Typography().headlineLarge.copy(fontWeight = FontWeight.ExtraBold, letterSpacing = (-.7).sp),
+                titleLarge = Typography().titleLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = (-.3).sp),
+                titleMedium = Typography().titleMedium.copy(fontWeight = FontWeight.Bold),
+                bodyMedium = Typography().bodyMedium.copy(lineHeight = 20.sp),
+                labelLarge = Typography().labelLarge.copy(fontWeight = FontWeight.Bold),
+            ),
+            shapes = Shapes(
+                extraSmall = RoundedCornerShape(12.dp),
+                small = RoundedCornerShape(16.dp),
+                medium = RoundedCornerShape(20.dp),
+                large = RoundedCornerShape(24.dp),
+            ),
+        ) {
+            Surface(Modifier.fillMaxSize(), color = MavieBackground, contentColor = Color.White, content = content)
+        }
     }
 }
 
@@ -162,8 +170,8 @@ internal fun Modifier.mavieGlassSurface(
     .background(Brush.verticalGradient(listOf(topColor, bottomColor)), shape)
     .background(MavieSpecularSheenBrush, shape)
     .border(
-        width = if (focused) 2.dp else 1.dp,
-        brush = if (focused) MavieBrandDiagonalGradient else MavieSpecularBorderBrush,
+        width = if (focused) 2.5.dp else 1.dp,
+        brush = if (focused) MavieTvFocusBrush else MavieSpecularBorderBrush,
         shape = shape,
     )
 
@@ -271,16 +279,30 @@ internal fun MavieGradientButton(
             disabledContentColor = Color.White.copy(alpha = 0.45f),
         ),
         modifier = modifier
+            .zIndex(if (focused) 1f else 0f)
             .heightIn(min = 48.dp)
             .graphicsLayer { scaleX = scale; scaleY = scale }
+            .then(
+                if (focused) {
+                    Modifier.shadow(
+                        elevation = 14.dp,
+                        shape = shape,
+                        clip = false,
+                        ambientColor = MaviePurple.copy(alpha = 0.6f),
+                        spotColor = MavieTurquoise.copy(alpha = 0.7f),
+                    )
+                } else {
+                    Modifier
+                }
+            )
             .clip(shape)
             .background(
                 brush = if (enabled) MavieBrandGradient else SolidColor(Color(0x4D1E263D)),
                 shape = shape,
             )
             .border(
-                width = if (focused) 2.dp else 1.dp,
-                color = if (focused) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.24f),
+                width = if (focused) 2.5.dp else 1.dp,
+                color = if (focused) Color.White.copy(alpha = 0.92f) else Color.White.copy(alpha = 0.24f),
                 shape = shape,
             ),
         content = content,
@@ -313,14 +335,28 @@ internal fun MavieGlassPillButton(
             disabledContentColor = Color.White.copy(alpha = 0.45f),
         ),
         modifier = modifier
+            .zIndex(if (focused) 1f else 0f)
             .heightIn(min = 48.dp)
             .graphicsLayer { scaleX = scale; scaleY = scale }
+            .then(
+                if (focused) {
+                    Modifier.shadow(
+                        elevation = 14.dp,
+                        shape = shape,
+                        clip = false,
+                        ambientColor = MaviePurple.copy(alpha = 0.55f),
+                        spotColor = MavieTurquoise.copy(alpha = 0.65f),
+                    )
+                } else {
+                    Modifier
+                }
+            )
             .clip(shape)
             .background(MavieGlassPillFill, shape)
             .background(MavieSpecularSheenBrush, shape)
             .border(
-                width = if (focused) 2.dp else 1.dp,
-                brush = if (focused) MavieBrandDiagonalGradient else MavieSpecularBorderBrush,
+                width = if (focused) 2.5.dp else 1.dp,
+                brush = if (focused) MavieTvFocusBrush else MavieSpecularBorderBrush,
                 shape = shape,
             ),
         content = content,
@@ -337,6 +373,9 @@ internal fun MavieTooltipIconButton(
     tint: Color = Color.White,
     enabled: Boolean = true,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val focused by interactionSource.collectIsFocusedAsState()
+    val scale = rememberPressScale(interactionSource)
     TooltipBox(
         positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
         tooltip = { PlainTooltip { Text(label) } },
@@ -345,8 +384,27 @@ internal fun MavieTooltipIconButton(
         IconButton(
             onClick = onClick,
             enabled = enabled,
+            interactionSource = interactionSource,
             modifier = modifier
+                .zIndex(if (focused) 1f else 0f)
                 .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                .graphicsLayer { scaleX = scale; scaleY = scale }
+                .then(
+                    if (focused) {
+                        Modifier
+                            .shadow(
+                                elevation = 12.dp,
+                                shape = CircleShape,
+                                clip = false,
+                                ambientColor = MaviePurple.copy(alpha = 0.55f),
+                                spotColor = MavieTurquoise.copy(alpha = 0.65f),
+                            )
+                            .background(MavieGlassPillFill, CircleShape)
+                            .border(2.5.dp, MavieTvFocusBrush, CircleShape)
+                    } else {
+                        Modifier
+                    }
+                )
                 .semantics { role = Role.Button },
         ) {
             Icon(
@@ -379,20 +437,10 @@ fun MavieWordmark(modifier: Modifier = Modifier, large: Boolean = false, compact
             Modifier.fillMaxHeight().aspectRatio(1f)
                 .semantics { contentDescription = "Mavie logosu" }
         ) {
-            val s = size.minDimension / 120f
+            val s = size.minDimension / 256f
+            val strokeBoost = if (compact) 1.15f else 1.0f
             scale(s, s, pivot = Offset.Zero) {
-                drawArc(
-                    brush = Brush.linearGradient(listOf(MaviePurple, MavieBlue, MavieTurquoise)),
-                    startAngle = 42f,
-                    sweepAngle = 276f,
-                    useCenter = false,
-                    topLeft = Offset(22f, 22f),
-                    size = Size(76f, 76f),
-                    style = Stroke(width = 17f, cap = StrokeCap.Round),
-                )
-                drawPath(MaviePlayPath, color = Color.White)
-                drawPath(MaviePlayPath, color = Color.White, style = Stroke(width = 3.5f, join = StrokeJoin.Round))
-                drawCircle(color = MavieCyanDot, radius = 5f, center = Offset(92f, 60f))
+                drawMavieMonogram(alpha = 1f, strokeScale = strokeBoost)
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -426,11 +474,110 @@ fun MavieWordmark(modifier: Modifier = Modifier, large: Boolean = false, compact
     }
 }
 
-private val MaviePlayPath = Path().apply {
-    moveTo(52f, 44f)
-    lineTo(82f, 60f)
-    lineTo(52f, 76f)
+private fun Path.addCubicEllipse(cx: Float, cy: Float, rx: Float, ry: Float, ccw: Boolean = false) {
+    val k = 0.55228475f
+    val kx = rx * k
+    val ky = ry * k
+    moveTo(cx, cy - ry)
+    if (!ccw) {
+        cubicTo(cx + kx, cy - ry, cx + rx, cy - ky, cx + rx, cy)
+        cubicTo(cx + rx, cy + ky, cx + kx, cy + ry, cx, cy + ry)
+        cubicTo(cx - kx, cy + ry, cx - rx, cy + ky, cx - rx, cy)
+        cubicTo(cx - rx, cy - ky, cx - kx, cy - ry, cx, cy - ry)
+    } else {
+        cubicTo(cx - kx, cy - ry, cx - rx, cy - ky, cx - rx, cy)
+        cubicTo(cx - rx, cy + ky, cx - kx, cy + ry, cx, cy + ry)
+        cubicTo(cx + kx, cy + ry, cx + rx, cy + ky, cx + rx, cy)
+        cubicTo(cx + rx, cy - ky, cx + kx, cy - ry, cx, cy - ry)
+    }
     close()
+}
+
+private val MavieMMonogramPath = Path().apply {
+    moveTo(23.5f, 40.0f)
+    cubicTo(23.5f, 32.5f, 27.2f, 29.2f, 34.5f, 28.5f)
+    cubicTo(56.5f, 26.2f, 77.5f, 26.5f, 95.5f, 29.0f)
+    cubicTo(101.0f, 29.8f, 103.8f, 32.8f, 105.4f, 38.0f)
+    lineTo(129.0f, 128.5f)
+    lineTo(152.6f, 38.0f)
+    cubicTo(154.2f, 32.8f, 157.0f, 29.8f, 162.5f, 29.0f)
+    cubicTo(180.5f, 26.5f, 201.5f, 26.2f, 223.5f, 28.5f)
+    cubicTo(230.8f, 29.2f, 234.5f, 32.5f, 234.5f, 40.0f)
+    lineTo(234.5f, 207.5f)
+    cubicTo(234.5f, 218.5f, 227.5f, 224.5f, 216.0f, 224.5f)
+    lineTo(195.5f, 224.5f)
+    cubicTo(188.5f, 224.5f, 184.5f, 220.2f, 184.5f, 213.0f)
+    lineTo(184.5f, 110.0f)
+    lineTo(180.0f, 110.0f)
+    lineTo(150.5f, 214.0f)
+    cubicTo(148.5f, 221.0f, 143.5f, 224.5f, 136.0f, 224.5f)
+    lineTo(123.5f, 224.5f)
+    cubicTo(113.0f, 224.5f, 107.5f, 219.0f, 107.5f, 208.5f)
+    lineTo(107.5f, 181.5f)
+    cubicTo(107.5f, 160.61f, 96.99f, 141.42f, 80.18f, 131.61f)
+    cubicTo(63.36f, 121.81f, 42.99f, 122.98f, 27.20f, 134.66f)
+    cubicTo(24.80f, 136.44f, 23.50f, 134.60f, 23.50f, 130.00f)
+    close()
+}
+
+private val MavieOOuterPath = Path().apply {
+    addCubicEllipse(56.0f, 181.5f, 35.0f, 39.0f, ccw = false)
+}
+
+private val MavieOInnerPath = Path().apply {
+    addCubicEllipse(56.0f, 181.5f, 13.8f, 15.6f, ccw = false)
+}
+
+private val MavieODonutPath = Path().apply {
+    fillType = PathFillType.EvenOdd
+    addCubicEllipse(56.0f, 181.5f, 35.0f, 39.0f, ccw = false)
+    addCubicEllipse(56.0f, 181.5f, 13.8f, 15.6f, ccw = true)
+}
+
+private val MavieObsidianBrush = Brush.linearGradient(
+    colors = listOf(Color(0xFF161C32), Color(0xFF090D18), Color(0xFF03050A)),
+    start = Offset(46f, 26f),
+    end = Offset(210f, 226f),
+)
+
+private val MavieMRimBrush = Brush.linearGradient(
+    0.0f to MaviePurple,
+    0.22f to MavieBlue,
+    0.50f to MavieTurquoise,
+    0.78f to MavieBlue,
+    1.0f to MaviePurple,
+    start = Offset(10f, 112f),
+    end = Offset(246f, 144f),
+)
+
+private val MavieORimBrush = Brush.linearGradient(
+    colors = listOf(MaviePurple, MavieTurquoise, MavieBlue),
+    start = Offset(26f, 181.5f),
+    end = Offset(86f, 181.5f),
+)
+
+private val MavieOInnerRimBrush = Brush.linearGradient(
+    colors = listOf(MavieTurquoise, MavieBlue, MaviePurple),
+    start = Offset(56f, 165.9f),
+    end = Offset(56f, 197.1f),
+)
+
+private fun DrawScope.drawMavieMonogram(alpha: Float = 1f, strokeScale: Float = 1f, lensAlpha: Float = alpha) {
+    val outerStroke = Stroke(
+        width = 11.2f * strokeScale,
+        cap = StrokeCap.Round,
+        join = StrokeJoin.Round,
+    )
+    val innerStroke = Stroke(
+        width = 9.4f * strokeScale,
+        cap = StrokeCap.Round,
+        join = StrokeJoin.Round,
+    )
+    drawPath(MavieMMonogramPath, brush = MavieObsidianBrush, alpha = alpha)
+    drawPath(MavieMMonogramPath, brush = MavieMRimBrush, style = outerStroke, alpha = alpha)
+    drawPath(MavieODonutPath, brush = MavieObsidianBrush, alpha = lensAlpha)
+    drawPath(MavieOOuterPath, brush = MavieORimBrush, style = outerStroke, alpha = lensAlpha)
+    drawPath(MavieOInnerPath, brush = MavieOInnerRimBrush, style = innerStroke, alpha = lensAlpha)
 }
 
 @Composable
@@ -472,35 +619,29 @@ fun MavieLaunchScreen(onFinished: () -> Unit, reducedMotion: Boolean = rememberR
             val scaleFactor = 0.8f + progress.value * 0.22f
             val alpha = (1f - ((progress.value - 0.82f) / 0.18f).coerceIn(0f, 1f))
             Canvas(Modifier.fillMaxSize()) {
-                val base = size.minDimension * 0.24f * scaleFactor
+                val base = size.minDimension * 0.26f * scaleFactor
                 val center = Offset(size.width / 2f, size.height / 2f)
                 drawCircle(
                     brush = Brush.radialGradient(
-                        listOf(MaviePurple.copy(alpha = 0.24f * alpha), Color.Transparent),
+                        listOf(
+                            MaviePurple.copy(alpha = 0.26f * alpha),
+                            MavieTurquoise.copy(alpha = 0.12f * alpha),
+                            Color.Transparent,
+                        ),
                         center = center,
-                        radius = base * 1.4f,
+                        radius = base * 1.45f,
                     ),
-                    radius = base * 1.4f,
+                    radius = base * 1.45f,
                     center = center,
                 )
                 translate(center.x - base / 2f, center.y - base / 2f) {
-                    val unit = base / 120f
+                    val unit = base / 256f
                     scale(unit, unit, pivot = Offset.Zero) {
-                        drawArc(
-                            brush = Brush.linearGradient(listOf(MaviePurple, MavieBlue, MavieTurquoise)),
-                            startAngle = 42f,
-                            sweepAngle = 276f * progress.value.coerceAtLeast(0.15f),
-                            useCenter = false,
-                            topLeft = Offset(22f, 22f),
-                            size = Size(76f, 76f),
-                            style = Stroke(width = 16f, cap = StrokeCap.Round),
-                            alpha = alpha,
-                        )
-                        drawPath(MaviePlayPath, color = Color.White.copy(alpha = alpha * progress.value))
-                        drawCircle(
-                            color = MavieCyanDot.copy(alpha = alpha * progress.value),
-                            radius = 5f,
-                            center = Offset(92f, 60f),
+                        val entrance = progress.value.coerceIn(0.18f, 1f)
+                        drawMavieMonogram(
+                            alpha = alpha * entrance,
+                            strokeScale = 1.0f,
+                            lensAlpha = alpha * ((progress.value - 0.12f) / 0.88f).coerceIn(0.15f, 1f),
                         )
                     }
                 }

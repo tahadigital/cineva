@@ -4,12 +4,8 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -76,14 +72,27 @@ fun MavieLibraryScreen(
     sportsContent: @Composable () -> Unit,
 ) {
     val reducedMotion = rememberReducedMotion()
+    val isTv = LocalIsTv.current
     val navTabs = remember { listOf(LibraryTab.HOME, LibraryTab.SPORTS, LibraryTab.SEARCH, LibraryTab.FAVORITES) }
+    val tvNavTabs = remember {
+        listOf(
+            LibraryTab.HOME,
+            LibraryTab.SERIES,
+            LibraryTab.FILMS,
+            LibraryTab.LIVE,
+            LibraryTab.SPORTS,
+            LibraryTab.SEARCH,
+            LibraryTab.FAVORITES,
+        )
+    }
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val isTablet = maxWidth >= 600.dp
-        val isCompactTopBar = maxWidth < 400.dp
+        val chromeMode = resolveNavigationChromeMode(isTv = isTv, widthDp = maxWidth.value.toInt())
+        val isTablet = chromeMode == NavigationChromeMode.NAVIGATION_RAIL
+        val isCompactTopBar = !isTv && maxWidth < 400.dp
         Scaffold(
             containerColor = MavieBackground,
             bottomBar = {
-                if (!isTablet) {
+                if (chromeMode == NavigationChromeMode.BOTTOM_BAR) {
                     Column(Modifier.fillMaxWidth().background(Color(0xD90E1324))) {
                         HorizontalDivider(thickness = 1.dp, color = Color.White.copy(alpha = 0.12f))
                         NavigationBar(containerColor = Color.Transparent, tonalElevation = 0.dp, modifier = Modifier.heightIn(max = 86.dp)) {
@@ -122,6 +131,12 @@ fun MavieLibraryScreen(
                                     tab == LibraryTab.HOME && state.tab in listOf(LibraryTab.FILMS, LibraryTab.SERIES, LibraryTab.LIVE)
                                 NavigationRailItem(
                                     selected = selected, onClick = { onTab(tab) },
+                                    modifier = Modifier.mavieTvFocusable(
+                                        shape = RoundedCornerShape(16.dp),
+                                        showFocusBorder = false,
+                                        showFocusShadow = false,
+                                        addFocusable = false,
+                                    ),
                                     icon = {
                                         if (tab == LibraryTab.FAVORITES) ProfileAvatar(activeProfileColor, selected, Modifier.size(24.dp))
                                         else Icon(if (tab == LibraryTab.HOME && selected) Icons.Filled.Home else tabIcon(tab), null, Modifier.size(24.dp))
@@ -144,14 +159,47 @@ fun MavieLibraryScreen(
                     Column(Modifier.fillMaxWidth().background(Color(0xBA0D1222))) {
                         Row(
                             Modifier.fillMaxWidth().padding(
-                                start = if (isCompactTopBar) 12.dp else 16.dp,
-                                end = if (isCompactTopBar) 4.dp else 6.dp,
-                                top = if (isCompactTopBar) 4.dp else 3.dp,
-                                bottom = 4.dp,
+                                start = when {
+                                    isTv -> 24.dp
+                                    isCompactTopBar -> 12.dp
+                                    else -> 16.dp
+                                },
+                                end = when {
+                                    isTv -> 16.dp
+                                    isCompactTopBar -> 4.dp
+                                    else -> 6.dp
+                                },
+                                top = when {
+                                    isTv -> 10.dp
+                                    isCompactTopBar -> 4.dp
+                                    else -> 3.dp
+                                },
+                                bottom = if (isTv) 10.dp else 4.dp,
                             ),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            if (state.tab in listOf(LibraryTab.HOME, LibraryTab.FILMS, LibraryTab.SERIES, LibraryTab.LIVE)) {
+                            if (chromeMode == NavigationChromeMode.TV_TOP_BAR) {
+                                MavieWordmark()
+                                LazyRow(
+                                    modifier = Modifier.weight(1f).padding(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    items(tvNavTabs, key = { it.name }) { tab ->
+                                        val selected = state.tab == tab ||
+                                            (tab == LibraryTab.FAVORITES && state.tab == LibraryTab.PLAYLISTS)
+                                        MavieTvTopNavTab(
+                                            label = tab.title,
+                                            icon = if (tab == LibraryTab.HOME && selected) Icons.Filled.Home else tabIcon(tab),
+                                            selected = selected,
+                                            onClick = { onTab(tab) },
+                                            leadingContent = if (tab == LibraryTab.FAVORITES) {
+                                                { ProfileAvatar(activeProfileColor, selected, Modifier.size(20.dp)) }
+                                            } else null,
+                                        )
+                                    }
+                                }
+                            } else if (state.tab in listOf(LibraryTab.HOME, LibraryTab.FILMS, LibraryTab.SERIES, LibraryTab.LIVE)) {
                                 MavieWordmark(Modifier.weight(1f), compact = isCompactTopBar)
                             } else {
                                 Text(
@@ -174,7 +222,7 @@ fun MavieLibraryScreen(
                                 icon = Icons.Rounded.FolderOpen,
                                 onClick = onOpenLocalFile,
                             )
-                            if (state.tab != LibraryTab.SEARCH) {
+                            if (!isTv && state.tab != LibraryTab.SEARCH) {
                                 MavieTooltipIconButton(
                                     label = "Kütüphanede ara",
                                     icon = Icons.Rounded.Search,
@@ -190,8 +238,12 @@ fun MavieLibraryScreen(
                                 Box(
                                     modifier = Modifier
                                         .size(48.dp)
-                                        .clip(CircleShape)
-                                        .clickable(role = Role.Button, onClickLabel = "Profil seç", onClick = onOpenProfiles)
+                                        .mavieTvFocusable(
+                                            shape = CircleShape,
+                                            role = Role.Button,
+                                            onClickLabel = "Profil seç",
+                                            onClick = onOpenProfiles,
+                                        )
                                         .semantics(mergeDescendants = true) {
                                             contentDescription = "Profil değiştir: $activeProfileName"
                                         },
@@ -225,33 +277,13 @@ fun MavieLibraryScreen(
                             HorizontalDivider(thickness = 1.dp, color = Color.White.copy(alpha = 0.08f))
                         }
                     }
-                    val glassChipColors = FilterChipDefaults.filterChipColors(
-                        containerColor = Color(0x80182038),
-                        labelColor = MavieMuted,
-                        selectedContainerColor = MaviePurple.copy(alpha = 0.88f),
-                        selectedLabelColor = Color.White,
-                    )
-                    val glassChipBorder = FilterChipDefaults.filterChipBorder(
-                        enabled = true,
-                        selected = false,
-                        borderColor = Color.White.copy(alpha = 0.14f),
-                        selectedBorderColor = MavieCyanDot.copy(alpha = 0.7f),
-                    )
-                    if (state.tab in listOf(LibraryTab.HOME, LibraryTab.FILMS, LibraryTab.SERIES, LibraryTab.LIVE)) {
+                    if (!isTv && state.tab in listOf(LibraryTab.HOME, LibraryTab.FILMS, LibraryTab.SERIES, LibraryTab.LIVE)) {
                         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(listOf(LibraryTab.SERIES, LibraryTab.FILMS, LibraryTab.LIVE), key = { it.name }) { tab ->
-                                FilterChip(
+                                MavieFilterChip(
                                     selected = state.tab == tab,
                                     onClick = { onTab(if (state.tab == tab) LibraryTab.HOME else tab) },
                                     label = { Text(tab.title, fontSize = 13.sp) },
-                                    shape = CircleShape,
-                                    colors = glassChipColors,
-                                    border = FilterChipDefaults.filterChipBorder(
-                                        enabled = true,
-                                        selected = state.tab == tab,
-                                        borderColor = Color.White.copy(alpha = 0.14f),
-                                        selectedBorderColor = MavieCyanDot.copy(alpha = 0.7f),
-                                    ),
                                 )
                             }
                         }
@@ -259,12 +291,15 @@ fun MavieLibraryScreen(
                     if (state.tab == LibraryTab.SEARCH) {
                         OutlinedTextField(
                             value = state.query, onValueChange = onQuery,
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = if (isTv) 24.dp else 16.dp, vertical = 6.dp),
                             placeholder = { Text("Film, dizi veya kanal ara", fontSize = 14.sp, color = MavieMuted) },
                             leadingIcon = { Icon(Icons.Outlined.Search, null, Modifier.size(22.dp), tint = MavieMuted) },
                             trailingIcon = if (state.query.isNotEmpty()) {
                                 {
-                                    IconButton(onClick = { onQuery("") }, modifier = Modifier.size(48.dp)) {
+                                    IconButton(
+                                        onClick = { onQuery("") },
+                                        modifier = Modifier.size(48.dp).mavieTvFocusable(shape = CircleShape, addFocusable = false),
+                                    ) {
                                         Icon(Icons.Outlined.Close, "Aramayı temizle")
                                     }
                                 }
@@ -280,59 +315,32 @@ fun MavieLibraryScreen(
                         Spacer(Modifier.height(6.dp))
                     }
                     if (state.tab in listOf(LibraryTab.FAVORITES, LibraryTab.PLAYLISTS) && state.query.isBlank()) {
-                        Row(Modifier.padding(horizontal = 20.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FilterChip(
+                        Row(Modifier.padding(horizontal = if (isTv) 24.dp else 20.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            MavieFilterChip(
                                 selected = state.tab == LibraryTab.FAVORITES,
                                 onClick = { onTab(LibraryTab.FAVORITES) },
                                 label = { Text("Favorilerim") },
-                                shape = CircleShape,
-                                colors = glassChipColors,
-                                border = FilterChipDefaults.filterChipBorder(
-                                    enabled = true,
-                                    selected = state.tab == LibraryTab.FAVORITES,
-                                    borderColor = Color.White.copy(alpha = 0.14f),
-                                    selectedBorderColor = MavieCyanDot.copy(alpha = 0.7f),
-                                ),
                             )
-                            FilterChip(
+                            MavieFilterChip(
                                 selected = state.tab == LibraryTab.PLAYLISTS,
                                 onClick = { onTab(LibraryTab.PLAYLISTS) },
                                 label = { Text("Listelerim") },
-                                shape = CircleShape,
-                                colors = glassChipColors,
-                                border = FilterChipDefaults.filterChipBorder(
-                                    enabled = true,
-                                    selected = state.tab == LibraryTab.PLAYLISTS,
-                                    borderColor = Color.White.copy(alpha = 0.14f),
-                                    selectedBorderColor = MavieCyanDot.copy(alpha = 0.7f),
-                                ),
                             )
                         }
                     }
                     if (state.tab != LibraryTab.HOME && state.tab != LibraryTab.PLAYLISTS && state.categories.isNotEmpty()) {
-                        LazyRow(contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        LazyRow(contentPadding = PaddingValues(horizontal = if (isTv) 24.dp else 20.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             item("all") {
-                                FilterChip(
+                                MavieFilterChip(
                                     selected = state.selectedCategoryId.isBlank(),
                                     onClick = { onCategory("") },
                                     label = { Text("Tümü") },
-                                    shape = CircleShape,
-                                    colors = glassChipColors,
-                                    border = glassChipBorder,
                                 )
                             }
                             items(state.categories, key = { it.id }) { category ->
-                                FilterChip(
+                                MavieFilterChip(
                                     selected = category.id == state.selectedCategoryId,
                                     onClick = { onCategory(category.id) },
-                                    shape = CircleShape,
-                                    colors = glassChipColors,
-                                    border = FilterChipDefaults.filterChipBorder(
-                                        enabled = true,
-                                        selected = category.id == state.selectedCategoryId,
-                                        borderColor = Color.White.copy(alpha = 0.14f),
-                                        selectedBorderColor = MavieCyanDot.copy(alpha = 0.7f),
-                                    ),
                                     label = {
                                         Text(category.title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 230.dp))
                                     },
@@ -503,28 +511,36 @@ private fun HomeContent(
 
 @Composable
 private fun HeroCard(media: UiMedia, onMedia: (UiMedia) -> Unit, onPlay: (UiMedia) -> Unit, onAddToCollection: (UiMedia) -> Unit) {
-    BoxWithConstraints(Modifier.padding(horizontal = 16.dp).fillMaxWidth()) {
-        val wide = maxWidth > 580.dp
-        val heroHeight = if (wide) 405.dp else (maxWidth * 1.23f).coerceIn(360.dp, 490.dp)
-        val coverInteraction = remember { MutableInteractionSource() }
-        val coverFocused by coverInteraction.collectIsFocusedAsState()
+    val isTv = LocalIsTv.current
+    BoxWithConstraints(Modifier.padding(horizontal = if (isTv) 24.dp else 16.dp).fillMaxWidth()) {
+        val wide = maxWidth > 580.dp || isTv
+        val heroHeight = when {
+            isTv -> 360.dp
+            wide -> 405.dp
+            else -> (maxWidth * 1.23f).coerceIn(360.dp, 490.dp)
+        }
+        var coverFocused by remember { mutableStateOf(false) }
         Card(
             shape = RoundedCornerShape(24.dp),
             modifier = Modifier.fillMaxWidth().height(heroHeight),
             border = BorderStroke(
-                width = if (coverFocused) 2.dp else 1.dp,
-                brush = if (coverFocused) MavieBrandDiagonalGradient else MavieSpecularBorderBrush,
+                width = if (coverFocused) 2.5.dp else 1.dp,
+                brush = if (coverFocused) MavieTvFocusBrush else MavieSpecularBorderBrush,
             ),
             colors = CardDefaults.cardColors(containerColor = MaviePanel),
         ) {
             Box(Modifier.fillMaxSize()) {
                 PosterArt(
                     media,
-                    Modifier.fillMaxSize().clickable(
-                        interactionSource = coverInteraction,
-                        indication = LocalIndication.current,
+                    Modifier.fillMaxSize().mavieTvFocusable(
+                        shape = RoundedCornerShape(24.dp),
+                        focusedScale = 1.01f,
+                        showFocusBorder = false,
+                        showFocusShadow = false,
                         onClickLabel = "Ayrıntılar",
-                    ) { onMedia(media) },
+                        onFocusChange = { coverFocused = it },
+                        onClick = { onMedia(media) },
+                    ),
                     backdrop = wide,
                 )
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
@@ -579,35 +595,55 @@ private fun MediaRow(
     onAll: (() -> Unit)?,
     subtitle: String? = null,
 ) {
+    val isTv = LocalIsTv.current
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionTitle(title, subtitle = subtitle, onAll = onAll)
-        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            items(media, key = { it.id }) { item -> PosterCard(item, { onMedia(item) }, { onFavorite(item) }, Modifier.width(112.dp), compact = true) }
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = if (isTv) 24.dp else 16.dp, vertical = if (isTv) 4.dp else 0.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (isTv) 14.dp else 7.dp),
+        ) {
+            items(media, key = { it.id }) { item ->
+                PosterCard(item, { onMedia(item) }, { onFavorite(item) }, Modifier.width(mediaRowCardWidthDp(isTv).dp), compact = true)
+            }
         }
     }
 }
 
 @Composable
 private fun SearchLanding(state: LibraryUiState, onMedia: (UiMedia) -> Unit) {
+    val isTv = LocalIsTv.current
     val suggestions = (listOfNotNull(state.featured) + state.continueWatching + state.seriesItems).distinctBy { it.id }.take(12)
-    LazyColumn(contentPadding = PaddingValues(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyColumn(contentPadding = PaddingValues(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (suggestions.isEmpty()) item("prompt") {
             Text("İzlemek istediğin içeriğin adını yaz.", Modifier.padding(16.dp), color = MavieMuted)
         }
         else item("heading") { SectionTitle("Göz at") }
         items(suggestions, key = { it.id }) { media ->
-            val interactionSource = remember { MutableInteractionSource() }
-            val focused by interactionSource.collectIsFocusedAsState()
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-                    .mavieGlassSurface(RoundedCornerShape(16.dp), focused = focused)
-                    .clickable(interactionSource = interactionSource, indication = LocalIndication.current) { onMedia(media) }
-                    .padding(end = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            var focused by remember { mutableStateOf(false) }
+            val shape = RoundedCornerShape(16.dp)
+            Card(
+                onClick = { onMedia(media) },
+                shape = shape,
+                border = BorderStroke(if (focused) 2.5.dp else 1.dp, if (focused) MavieTvFocusBrush else MavieSpecularBorderBrush),
+                colors = CardDefaults.cardColors(containerColor = if (focused) Color(0xD91A223B) else Color(0xB8141B2E)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = if (isTv) 24.dp else 16.dp)
+                    .mavieTvFocusable(
+                        shape = shape,
+                        showFocusBorder = false,
+                        addFocusable = false,
+                        onFocusChange = { focused = it },
+                    ),
             ) {
-                PosterArt(media, Modifier.size(width = 128.dp, height = 72.dp).clip(RoundedCornerShape(16.dp)), backdrop = true)
-                Text(media.title, Modifier.weight(1f).padding(horizontal = 12.dp), fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Icon(Icons.Outlined.PlayCircleOutline, "Ayrıntılar", tint = MavieCyanDot)
+                Row(
+                    Modifier.fillMaxWidth().padding(end = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PosterArt(media, Modifier.size(width = 128.dp, height = 72.dp).clip(shape), backdrop = true)
+                    Text(media.title, Modifier.weight(1f).padding(horizontal = 12.dp), fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Icon(Icons.Outlined.PlayCircleOutline, "Ayrıntılar", tint = MavieCyanDot)
+                }
             }
         }
     }
@@ -624,6 +660,7 @@ private fun CatalogContent(
     onSettings: () -> Unit = {},
 ) {
     val gridState = rememberLazyGridState()
+    val isTv = LocalIsTv.current
     val isTablet = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 600
     val latestLoadMore by rememberUpdatedState(onLoadMore)
     var requestedMore by remember(state.items.size, state.query, state.selectedCategoryId, state.tab) { mutableStateOf(false) }
@@ -643,15 +680,26 @@ private fun CatalogContent(
     }
     LazyVerticalGrid(
         state = gridState,
-        columns = GridCells.Adaptive(if (isTablet) 144.dp else 108.dp),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 9.dp, bottom = 28.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(21.dp),
+        columns = GridCells.Adaptive(catalogGridMinCellWidthDp(isTv, isTablet).dp),
+        contentPadding = PaddingValues(
+            start = if (isTv) 24.dp else 20.dp,
+            end = if (isTv) 24.dp else 20.dp,
+            top = 9.dp,
+            bottom = 28.dp,
+        ),
+        horizontalArrangement = Arrangement.spacedBy(if (isTv) 16.dp else 12.dp),
+        verticalArrangement = Arrangement.spacedBy(if (isTv) 16.dp else 21.dp),
     ) {
         item("heading", span = { GridItemSpan(maxLineSpan) }) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (state.tab == LibraryTab.PLAYLISTS && state.title.isNotBlank() && state.query.isBlank()) {
-                    TextButton(onClick = onCloseCollection, modifier = Modifier.heightIn(min = 48.dp), contentPadding = PaddingValues(horizontal = 8.dp)) {
+                    TextButton(
+                        onClick = onCloseCollection,
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .mavieTvFocusable(shape = CircleShape, addFocusable = false),
+                        contentPadding = PaddingValues(horizontal = 8.dp),
+                    ) {
                         Icon(Icons.AutoMirrored.Outlined.ArrowBack, null, Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
                         Text("Tüm listelerim", fontSize = 12.sp)
@@ -686,6 +734,16 @@ private fun CatalogContent(
             }
             items(9, key = { "loading-$it" }) { LoadingPoster() }
         }
+        else if (isTv && state.tab == LibraryTab.LIVE) {
+            gridItems(
+                state.items,
+                key = { it.id },
+                span = { _ -> GridItemSpan(maxLineSpan) },
+                contentType = { "live-channel" },
+            ) { item ->
+                LiveChannelRow(item, { onMedia(item) }, { onFavorite(item) })
+            }
+        }
         else gridItems(state.items, key = { it.id }, contentType = { "poster" }) { item -> PosterCard(item, { onMedia(item) }, { onFavorite(item) }) }
         if (!state.loading && state.items.isEmpty() && state.error == null) item("empty", span = { GridItemSpan(maxLineSpan) }) {
             MessagePanel(
@@ -697,7 +755,13 @@ private fun CatalogContent(
         }
         if (state.hasMore) item("more", span = { GridItemSpan(maxLineSpan) }) {
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                OutlinedButton(onClick = onLoadMore, enabled = !state.loading, modifier = Modifier.heightIn(min = 48.dp)) {
+                OutlinedButton(
+                    onClick = onLoadMore,
+                    enabled = !state.loading,
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .mavieTvFocusable(enabled = !state.loading, shape = CircleShape, addFocusable = false),
+                ) {
                     if (state.loading) { CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp); Spacer(Modifier.width(8.dp)) }
                     Text("Daha fazla göster")
                 }
@@ -717,7 +781,10 @@ private fun CollectionContent(
         item("title") {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("Kendi seçkilerin", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
-                FilledTonalIconButton(onClick = onCreate, modifier = Modifier.size(48.dp)) {
+                FilledTonalIconButton(
+                    onClick = onCreate,
+                    modifier = Modifier.size(48.dp).mavieTvFocusable(shape = CircleShape, addFocusable = false),
+                ) {
                     Icon(Icons.Outlined.Add, "Yeni liste oluştur")
                 }
             }
@@ -726,14 +793,19 @@ private fun CollectionContent(
             MessagePanel("Bir listeyle başla", "Hafta sonuna sakladıklarını veya bir bölüm daha dediklerini aynı yerde topla.", action = "İlk listemi oluştur", onAction = onCreate)
         }
         items(state.collections, key = { it.id }) { collection ->
-            val interactionSource = remember { MutableInteractionSource() }
-            val focused by interactionSource.collectIsFocusedAsState()
+            var focused by remember { mutableStateOf(false) }
+            val shape = RoundedCornerShape(18.dp)
             Card(
                 onClick = { onCollection(collection) },
-                interactionSource = interactionSource,
-                shape = RoundedCornerShape(18.dp),
-                border = BorderStroke(if (focused) 2.dp else 1.dp, if (focused) MavieBrandDiagonalGradient else MavieSpecularBorderBrush),
-                colors = CardDefaults.cardColors(containerColor = Color(0xB8141B2E)),
+                shape = shape,
+                border = BorderStroke(if (focused) 2.5.dp else 1.dp, if (focused) MavieTvFocusBrush else MavieSpecularBorderBrush),
+                colors = CardDefaults.cardColors(containerColor = if (focused) Color(0xD91A223B) else Color(0xB8141B2E)),
+                modifier = Modifier.mavieTvFocusable(
+                    shape = shape,
+                    showFocusBorder = false,
+                    addFocusable = false,
+                    onFocusChange = { focused = it },
+                ),
             ) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.Folder, null, tint = MavieTurquoise, modifier = Modifier.size(30.dp))

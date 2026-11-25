@@ -83,11 +83,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Build Standalone Portable Mavie.exe
+      - name: Build Standalone Portable Mavie.exe (Native WebView2 + Web Mode)
         run: |
-          pip install pyinstaller imageio-ffmpeg tzdata
-          pyinstaller windows\mavie.spec
-      - name: Smoke Test Built Mavie.exe (--serve and normal launcher)
+          python -m pip install --upgrade pip
+          pip install pyinstaller pywebview pythonnet clr-loader imageio-ffmpeg tzdata
+          python -c "import importlib.metadata as m, webview, pythonnet, clr_loader; print('Native stack:', m.version('pywebview'), m.version('pythonnet'), m.version('clr-loader'))"
+          pyinstaller --clean windows\mavie.spec
+          if (-not (Test-Path "dist\Mavie.exe")) { throw "dist\Mavie.exe was not produced" }
+      - name: Smoke Test Built Mavie.exe (--serve, native desktop launcher, and --web)
         shell: pwsh
         run: |
           # 1. Verify headless --serve mode
@@ -108,13 +111,17 @@ jobs:
             if (-not $ok) { throw "Mavie.exe --serve health check did not pass in time" }
             $homeResp = Invoke-WebRequest -Uri "http://127.0.0.1:18844/" -UseBasicParsing -TimeoutSec 5
             if ($homeResp.StatusCode -ne 200) { throw "Unexpected status $($homeResp.StatusCode)" }
+            $tvResp = Invoke-WebRequest -Uri "http://127.0.0.1:18844/tv/" -UseBasicParsing -TimeoutSec 5
+            if ($tvResp.StatusCode -ne 200) { throw "Unexpected /tv/ status $($tvResp.StatusCode)" }
+            $tvInfo = Invoke-RestMethod -Uri "http://127.0.0.1:18844/api/tv-info" -TimeoutSec 2
+            if ($tvInfo.app -ne "mavie" -or $tvInfo.ok -ne $true) { throw "Unexpected /api/tv-info response" }
           } finally {
             if (-not $serveProc.HasExited) {
               & taskkill /PID $serveProc.Id /T /F 2>$null | Out-Null
             }
           }
 
-          # 2. Verify normal desktop launcher mode (>3s uptime, /api/health, clean desktop.log)
+          # 2. Verify default native desktop launcher mode (>4s uptime, /api/health, zero Traceback in desktop.log)
           $launcherData = Join-Path $env:RUNNER_TEMP "mavie-smoke-launcher"
           New-Item -ItemType Directory -Force -Path $launcherData | Out-Null
           $env:MAVIE_DATA_DIR = $launcherData
@@ -122,31 +129,75 @@ jobs:
           $launchProc = Start-Process -FilePath "dist\Mavie.exe" -PassThru
           try {
             $ok = $false
-            for ($i = 0; $i -lt 30; $i++) {
+            for ($i = 0; $i -lt 40; $i++) {
               Start-Sleep -Milliseconds 500
-              if ($launchProc.HasExited) { throw "Mavie.exe launcher exited prematurely with code $($launchProc.ExitCode)" }
+              if ($launchProc.HasExited) { throw "Mavie.exe native launcher exited prematurely with code $($launchProc.ExitCode)" }
               try {
                 $resp = Invoke-RestMethod -Uri "http://127.0.0.1:18845/api/health" -TimeoutSec 2
                 if ($resp.app -eq "mavie" -and $resp.ok -eq $true) { $ok = $true; break }
               } catch {}
             }
-            if (-not $ok) { throw "Mavie.exe launcher health check did not pass in time" }
-            Start-Sleep -Seconds 4
-            if ($launchProc.HasExited) { throw "Mavie.exe launcher exited before 3s stability check (code $($launchProc.ExitCode))" }
+            if (-not $ok) { throw "Mavie.exe native launcher health check did not pass in time" }
+            Start-Sleep -Seconds 5
+            if ($launchProc.HasExited) { throw "Mavie.exe native launcher exited before 4s stability check (code $($launchProc.ExitCode))" }
             $resp2 = Invoke-RestMethod -Uri "http://127.0.0.1:18845/api/health" -TimeoutSec 2
             if ($resp2.app -ne "mavie" -or $resp2.ok -ne $true) {
-              throw "Mavie.exe launcher health check failed after 4s"
+              throw "Mavie.exe native launcher health check failed after 5s"
             }
             $logFile = Join-Path $launcherData "desktop.log"
             if (-not (Test-Path $logFile)) { throw "Expected desktop.log at $logFile" }
             $logText = Get-Content -Path $logFile -Raw
+            Write-Host "=== Native launcher desktop.log ===`n$logText"
             if ($logText -match "Traceback") {
               throw "Traceback detected in desktop.log:`n$logText"
+            }
+            if ($logText -notmatch "Mavie desktop ready at") {
+              throw "Expected ready marker missing from desktop.log:`n$logText"
             }
           } finally {
             Remove-Item Env:\MAVIE_PORT -ErrorAction SilentlyContinue
             if (-not $launchProc.HasExited) {
               & taskkill /PID $launchProc.Id /T /F 2>$null | Out-Null
+            }
+          }
+
+          # 3. Verify --web mode (local server + web mode log + zero Traceback without blocking CI)
+          $webData = Join-Path $env:RUNNER_TEMP "mavie-smoke-web"
+          New-Item -ItemType Directory -Force -Path $webData | Out-Null
+          $env:MAVIE_DATA_DIR = $webData
+          $env:MAVIE_PORT = "18846"
+          $env:MAVIE_NO_BROWSER = "1"
+          $webProc = Start-Process -FilePath "dist\Mavie.exe" -ArgumentList "--web" -PassThru
+          try {
+            $ok = $false
+            for ($i = 0; $i -lt 30; $i++) {
+              Start-Sleep -Milliseconds 500
+              if ($webProc.HasExited) { throw "Mavie.exe --web exited prematurely with code $($webProc.ExitCode)" }
+              try {
+                $resp = Invoke-RestMethod -Uri "http://127.0.0.1:18846/api/health" -TimeoutSec 2
+                if ($resp.app -eq "mavie" -and $resp.ok -eq $true) { $ok = $true; break }
+              } catch {}
+            }
+            if (-not $ok) { throw "Mavie.exe --web health check did not pass in time" }
+            Start-Sleep -Seconds 3
+            if ($webProc.HasExited) { throw "Mavie.exe --web exited prematurely during stability check (code $($webProc.ExitCode))" }
+            $webHome = Invoke-WebRequest -Uri "http://127.0.0.1:18846/" -UseBasicParsing -TimeoutSec 5
+            if ($webHome.StatusCode -ne 200) { throw "Unexpected --web status $($webHome.StatusCode)" }
+            $webLogFile = Join-Path $webData "desktop.log"
+            if (-not (Test-Path $webLogFile)) { throw "Expected desktop.log at $webLogFile" }
+            $webLogText = Get-Content -Path $webLogFile -Raw
+            Write-Host "=== Web mode desktop.log ===`n$webLogText"
+            if ($webLogText -match "Traceback") {
+              throw "Traceback detected in --web desktop.log:`n$webLogText"
+            }
+            if ($webLogText -notmatch "Mavie web mode ready at") {
+              throw "Expected web mode marker missing from desktop.log:`n$webLogText"
+            }
+          } finally {
+            Remove-Item Env:\MAVIE_PORT -ErrorAction SilentlyContinue
+            Remove-Item Env:\MAVIE_NO_BROWSER -ErrorAction SilentlyContinue
+            if (-not $webProc.HasExited) {
+              & taskkill /PID $webProc.Id /T /F 2>$null | Out-Null
             }
           }
       - name: Build Windows Setup Wizard (Mavie-Setup.exe)
@@ -250,17 +301,43 @@ jobs:
           name: Mavie-iOS
           path: dist/Mavie-iOS.ipa
 
+  tv-packages:
+    runs-on: ubuntu-latest
+    needs: backend-and-web-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build Samsung Tizen (.wgt) and LG webOS (.ipk) Packages
+        run: |
+          python3 tv/build_tv_packages.py
+          test -s dist/Mavie-Tizen.wgt
+          test -s dist/Mavie-webOS.ipk
+          ls -lh dist/Mavie-Tizen.wgt dist/Mavie-webOS.ipk
+      - name: Run Multi-TV ES2018 & Package Integrity Tests
+        run: node --test tests/test_tv_apps.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Mavie-TV
+          path: |
+            dist/Mavie-Tizen.wgt
+            dist/Mavie-webOS.ipk
+
   publish-release:
     if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.publish_release == true)
     runs-on: ubuntu-latest
-    needs: [android-build-and-test, windows-desktop-package, apple-macos-and-ios]
+    needs: [android-build-and-test, windows-desktop-package, apple-macos-and-ios, tv-packages]
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: release-assets
-      - name: Normalize & Verify All 4-Platform Release Assets
+      - name: Normalize & Verify All Desktop, Mobile & Smart TV Release Assets
         run: |
           APK_FILE=$(find release-assets -name 'app-universal-release*.apk' | head -n 1)
           if [ -z "$APK_FILE" ]; then
@@ -280,10 +357,12 @@ jobs:
             release-assets/Mavie-Android.aab \
             release-assets/Mavie-macOS/Mavie-macOS.dmg \
             release-assets/Mavie-macOS/Mavie-macOS.zip \
-            release-assets/Mavie-iOS/Mavie-iOS.ipa; do
+            release-assets/Mavie-iOS/Mavie-iOS.ipa \
+            release-assets/Mavie-TV/Mavie-Tizen.wgt \
+            release-assets/Mavie-TV/Mavie-webOS.ipk; do
             test -s "$asset" || { echo "Missing or empty release asset: $asset" >&2; exit 1; }
           done
-          ls -lh release-assets/Mavie-Windows/ release-assets/Mavie-macOS/ release-assets/Mavie-iOS/ release-assets/Mavie-Android.*
+          ls -lh release-assets/Mavie-Windows/ release-assets/Mavie-macOS/ release-assets/Mavie-iOS/ release-assets/Mavie-TV/ release-assets/Mavie-Android.*
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.release_tag || 'v2.2.0' }}
@@ -297,3 +376,5 @@ jobs:
             release-assets/Mavie-macOS/Mavie-macOS.dmg
             release-assets/Mavie-macOS/Mavie-macOS.zip
             release-assets/Mavie-iOS/Mavie-iOS.ipa
+            release-assets/Mavie-TV/Mavie-Tizen.wgt
+            release-assets/Mavie-TV/Mavie-webOS.ipk

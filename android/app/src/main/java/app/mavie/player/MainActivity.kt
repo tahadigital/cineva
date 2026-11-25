@@ -68,6 +68,7 @@ class MainActivity : ComponentActivity() {
 fun MavieApplication(model: MainViewModel, restoredInstanceState: Boolean = false) {
     val account by model.account.collectAsStateWithLifecycle()
     val reducedMotion = rememberReducedMotion()
+    val isTv = LocalIsTv.current
     val sportsState = rememberSaveableStateHolder()
     var launch by rememberSaveable { mutableStateOf(!restoredInstanceState && !model.splashCompleted) }
     var syncDialog by rememberSaveable { mutableStateOf(false) }
@@ -181,7 +182,10 @@ fun MavieApplication(model: MainViewModel, restoredInstanceState: Boolean = fals
                     }
                 }
             }
-            SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = 90.dp, start = 18.dp, end = 18.dp))
+            SnackbarHost(
+                snackbar,
+                Modifier.align(Alignment.BottomCenter).padding(bottom = if (isTv) 32.dp else 90.dp, start = 18.dp, end = 18.dp),
+            )
         }
     }
     if (model.showCollectionPicker) MavieCollectionPicker(model.collections, model::chooseCollection, model::createCollection) { model.showCollectionPicker = false }
@@ -247,14 +251,26 @@ private fun DesktopSyncDialog(
             TextButton(
                 onClick = { onSync(address, code) },
                 enabled = !loading && address.isNotBlank() && code.length == 6,
-                modifier = Modifier.heightIn(min = 48.dp),
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .mavieTvFocusable(
+                        enabled = !loading && address.isNotBlank() && code.length == 6,
+                        shape = RoundedCornerShape(14.dp),
+                        addFocusable = false,
+                    ),
             ) { Text(if (loading) "Eşitleniyor…" else "Birleştir") }
         },
         dismissButton = {
             TextButton(
                 onClick = onDismiss,
                 enabled = !loading,
-                modifier = Modifier.heightIn(min = 48.dp),
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .mavieTvFocusable(
+                        enabled = !loading,
+                        shape = RoundedCornerShape(14.dp),
+                        addFocusable = false,
+                    ),
             ) { Text("Vazgeç") }
         },
     )

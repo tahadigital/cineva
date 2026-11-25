@@ -41,8 +41,16 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "..\dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"; Comment: "Mavie Native Desktop Application"
+Name: "{group}\{code:GetWebShortcutName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--web"; IconFilename: "{app}\{#MyAppExeName}"; Comment: "Mavie Web Mode (Browser & Local Network)"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+function GetWebShortcutName(Param: String): String;
+begin
+  // Returns "Mavie (Web Surumu)" with Turkish u-umlaut (#$00FC) while keeping this .iss file pure ASCII.
+  Result := 'Mavie (Web S' + #$00FC + 'r' + #$00FC + 'm' + #$00FC + ')';
+end;

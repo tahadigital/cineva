@@ -32,6 +32,7 @@ with contextlib.suppress(OSError):
 DB = DATA / 'state.sqlite3'
 CONFIG_FILE = DATA / 'config.json'
 PUBLIC = ROOT / 'public'
+TV_DIR = ROOT / 'tv' / 'src'
 MAX_JSON = 12 * 1024 * 1024
 UA = 'VLC/3.0.21 LibVLC/3.0.21'
 KINDS = ('live', 'vod', 'series')
@@ -1443,6 +1444,21 @@ class Handler(BaseHTTPRequestHandler):
             if not self.guard(): return
             u = urllib.parse.urlsplit(self.path); p = urllib.parse.unquote(u.path); q = urllib.parse.parse_qs(u.query)
             if p == '/api/health': return self.send_json({'app': 'mavie', 'ok': True})
+            if p == '/api/tv-info':
+                ips = lan_ips()
+                port = int(getattr(self.server, 'server_port', 0) or HTTP_PORT or 8844)
+                primary_ip = ips[0] if ips else '127.0.0.1'
+                return self.send_json({
+                    'ok': True,
+                    'app': 'mavie',
+                    'lan_ip': primary_ip,
+                    'port': port,
+                    'web_url': f'http://{primary_ip}:{port}/',
+                    'tv_url': f'http://{primary_ip}:{port}/tv/',
+                    'lan_urls': [f'http://{ip}:{port}/' for ip in ips],
+                    'tv_urls': [f'http://{ip}:{port}/tv/' for ip in ips],
+                    'lan_sync_available': True,
+                })
             if p == '/api/legal':
                 return self.send_json({
                     'app': 'Mavie',
@@ -1518,6 +1534,12 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(export_state_dict(), extra={'Content-Disposition': 'attachment; filename="mavie-yedek.json"'})
                 if p.startswith('/media/'): return self.media(p)
                 return self.send_json({'error': 'Sayfa bulunamadı.', 'error_code': 'not_found'}, 404)
+            if p == '/tv':
+                loc = '/tv/' + (('?' + u.query) if u.query else '')
+                self.headers_out(302, 'text/plain; charset=utf-8', 0, {'Location': loc})
+                return
+            if p.startswith('/tv/'):
+                return self.static_tv(p)
             return self.static(p)
         except Exception as e: self.handle_error(e)
     def do_POST(self): self.mutate('POST')
@@ -1755,6 +1777,53 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json({'ok': True}, extra={'Set-Cookie': self.device_cookie()})
             self.send_json({'error': 'İşlem bulunamadı.', 'error_code': 'not_found'}, 404)
         except Exception as e: self.handle_error(e)
+    def static_tv(self, p):
+        rel = p[len('/tv/'):]
+        if rel == '':
+            rel = 'index.html'
+        if rel.startswith('/') or '\\' in rel or '..' in rel.split('/'):
+            return self.send_json({'error': 'Dosya bulunamadı.', 'error_code': 'not_found'}, 404)
+        if rel.startswith('vendor/'):
+            vendor_root = (PUBLIC / 'vendor').resolve()
+            vendor_rel = rel[len('vendor/'):]
+            if not vendor_rel or vendor_rel.startswith('/') or '..' in vendor_rel.split('/'):
+                return self.send_json({'error': 'Dosya bulunamadı.', 'error_code': 'not_found'}, 404)
+            target = (vendor_root / vendor_rel).resolve()
+            if not target.is_relative_to(vendor_root) or not target.is_file():
+                return self.send_json({'error': 'Dosya bulunamadı.', 'error_code': 'not_found'}, 404)
+        else:
+            tv_root = TV_DIR.resolve()
+            target = (tv_root / rel).resolve()
+            if not target.is_relative_to(tv_root) or not target.is_file():
+                return self.send_json({'error': 'Dosya bulunamadı.', 'error_code': 'not_found'}, 404)
+        ext = {}
+        if self.is_local and rel == 'index.html' and not self.authorized():
+            ext['Set-Cookie'] = self.device_cookie()
+        # Keep strict script-src 'self' while permitting TV browsers to play open/standalone HLS/HTTP streams.
+        ext['Content-Security-Policy'] = (
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' https: http: data: blob:; media-src 'self' https: http: blob:; "
+            "connect-src 'self' https: http:; worker-src 'self' blob:; "
+            "object-src 'none'; frame-ancestors 'none'; base-uri 'self'"
+        )
+        raw = target.read_bytes()
+        ext_types = {
+            '.html': 'text/html; charset=utf-8',
+            '.js': 'application/javascript; charset=utf-8',
+            '.css': 'text/css; charset=utf-8',
+            '.json': 'application/json; charset=utf-8',
+            '.svg': 'image/svg+xml',
+            '.png': 'image/png',
+            '.ico': 'image/x-icon',
+            '.webmanifest': 'application/manifest+json; charset=utf-8',
+        }
+        ctype = ext_types.get(target.suffix.lower())
+        if not ctype:
+            typ = mimetypes.guess_type(str(target))[0] or 'application/octet-stream'
+            ctype = typ + ('; charset=utf-8' if typ.startswith('text/') else '')
+        self.headers_out(200, ctype, len(raw), ext)
+        if self.command != 'HEAD':
+            self.wfile.write(raw)
     def static(self, p):
         if p == '/': p = '/index.html'
         target = (PUBLIC / p.lstrip('/')).resolve()

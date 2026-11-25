@@ -6,12 +6,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -27,6 +23,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
@@ -52,13 +50,18 @@ fun MavieDetailScreen(
     val media = state.media
     val season = state.seasons.firstOrNull { it.id == state.selectedSeasonId } ?: state.seasons.firstOrNull()
     val reducedMotion = rememberReducedMotion()
+    val isTv = LocalIsTv.current
+    val playFocusRequester = remember { FocusRequester() }
     var seasonsOpen by remember(media.id) { mutableStateOf(false) }
     val featuredEpisode = season?.episodes?.let { episodes ->
         episodes.firstOrNull { it.canResume } ?: episodes.firstOrNull { it.progressFraction < .95f } ?: episodes.firstOrNull()
     }
+    LaunchedEffect(media.id, isTv) {
+        if (isTv) runCatching { playFocusRequester.requestFocus() }
+    }
     Scaffold(containerColor = MavieBackground) { padding ->
         BoxWithConstraints(Modifier.fillMaxSize().padding(padding)) {
-            val twoPaneTablet = maxWidth >= 700.dp && media.kind == "series"
+            val twoPaneTablet = (maxWidth >= 700.dp || isTv) && media.kind == "series"
             val coverBlock: @Composable () -> Unit = {
                 Box(Modifier.fillMaxWidth().height(if (twoPaneTablet) 240.dp else 335.dp)) {
                     PosterArt(media, Modifier.fillMaxSize(), backdrop = true)
@@ -80,7 +83,7 @@ fun MavieDetailScreen(
                     if (playbackTarget != null) {
                         MavieGradientButton(
                             onClick = { if (media.kind == "series") onEpisode(playbackTarget) else onPlay(media) },
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).focusRequester(playFocusRequester),
                             shape = RoundedCornerShape(16.dp),
                         ) {
                             Icon(Icons.Filled.PlayArrow, null, Modifier.size(25.dp), tint = Color.White); Spacer(Modifier.width(8.dp))
@@ -107,7 +110,10 @@ fun MavieDetailScreen(
                         OutlinedButton(
                             onClick = { onFavorite(media) },
                             shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp)
+                                .mavieTvFocusable(shape = RoundedCornerShape(14.dp), addFocusable = false),
                             border = BorderStroke(1.dp, MavieSpecularBorderBrush),
                             colors = ButtonDefaults.outlinedButtonColors(
                                 containerColor = Color(0x88182038),
@@ -130,7 +136,9 @@ fun MavieDetailScreen(
                         OutlinedButton(
                             onClick = { onAddToCollection(media) },
                             shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier.heightIn(min = 48.dp),
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .mavieTvFocusable(shape = RoundedCornerShape(14.dp), addFocusable = false),
                             border = BorderStroke(1.dp, MavieSpecularBorderBrush),
                             colors = ButtonDefaults.outlinedButtonColors(
                                 containerColor = Color(0x88182038),
@@ -144,9 +152,12 @@ fun MavieDetailScreen(
                         if (media.progressPositionMs > 0) {
                             OutlinedButton(
                                 onClick = { onClearProgress(media) },
-                                modifier = Modifier.heightIn(min = 48.dp).semantics {
-                                    contentDescription = "İzleme kaydını sıfırla"
-                                },
+                                modifier = Modifier
+                                    .heightIn(min = 48.dp)
+                                    .mavieTvFocusable(shape = RoundedCornerShape(14.dp), addFocusable = false)
+                                    .semantics {
+                                        contentDescription = "İzleme kaydını sıfırla"
+                                    },
                                 shape = RoundedCornerShape(14.dp),
                                 border = BorderStroke(1.dp, MavieSpecularBorderBrush),
                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
@@ -197,7 +208,13 @@ fun MavieDetailScreen(
                                     TextButton(
                                         onClick = { seasonsOpen = true },
                                         enabled = state.seasons.size > 1,
-                                        modifier = Modifier.heightIn(min = 48.dp),
+                                        modifier = Modifier
+                                            .heightIn(min = 48.dp)
+                                            .mavieTvFocusable(
+                                                enabled = state.seasons.size > 1,
+                                                shape = RoundedCornerShape(12.dp),
+                                                addFocusable = false,
+                                            ),
                                         colors = ButtonDefaults.textButtonColors(contentColor = Color.White, disabledContentColor = Color.White),
                                     ) {
                                         Text(season.title, fontWeight = FontWeight.Bold)
@@ -247,7 +264,13 @@ fun MavieDetailScreen(
                                     TextButton(
                                         onClick = { seasonsOpen = true },
                                         enabled = state.seasons.size > 1,
-                                        modifier = Modifier.heightIn(min = 48.dp),
+                                        modifier = Modifier
+                                            .heightIn(min = 48.dp)
+                                            .mavieTvFocusable(
+                                                enabled = state.seasons.size > 1,
+                                                shape = RoundedCornerShape(12.dp),
+                                                addFocusable = false,
+                                            ),
                                         colors = ButtonDefaults.textButtonColors(contentColor = Color.White, disabledContentColor = Color.White),
                                     ) {
                                         Text(season.title, fontWeight = FontWeight.Bold)
@@ -282,7 +305,10 @@ fun MavieDetailScreen(
                 ) {
                     FilledIconButton(
                         onClick = onBack,
-                        modifier = Modifier.size(48.dp).border(1.dp, MavieSpecularBorderBrush, CircleShape),
+                        modifier = Modifier
+                            .size(48.dp)
+                            .mavieTvFocusable(shape = CircleShape, addFocusable = false)
+                            .border(1.dp, MavieSpecularBorderBrush, CircleShape),
                         shape = CircleShape,
                         colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color(0x9912182B), contentColor = Color.White),
                     ) {
@@ -304,46 +330,51 @@ private fun CreditLine(label: String, value: String) {
 
 @Composable
 private fun EpisodeRow(episode: UiMedia, onPlay: () -> Unit, onAdd: () -> Unit) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val focused by interactionSource.collectIsFocusedAsState()
-    Column(
-        Modifier.fillMaxWidth()
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(16.dp)
+    Card(
+        onClick = onPlay,
+        shape = shape,
+        border = BorderStroke(if (focused) 2.5.dp else 1.dp, if (focused) MavieTvFocusBrush else MavieSpecularBorderBrush),
+        colors = CardDefaults.cardColors(containerColor = if (focused) Color(0xD91A223B) else Color(0xB8141B2E)),
+        modifier = Modifier
+            .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .mavieGlassSurface(RoundedCornerShape(16.dp), focused = focused)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = LocalIndication.current,
-                onClickLabel = "Bölümü oynat",
-                onClick = onPlay,
-            )
-            .padding(10.dp),
+            .mavieTvFocusable(
+                shape = shape,
+                showFocusBorder = false,
+                addFocusable = false,
+                onFocusChange = { focused = it },
+            ),
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(Modifier.size(width = 114.dp, height = 64.dp).clip(RoundedCornerShape(12.dp))) {
-                PosterArt(episode, Modifier.fillMaxSize(), backdrop = true)
-                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .22f)))
-                Icon(Icons.Outlined.PlayCircleOutline, null, tint = Color.White, modifier = Modifier.align(Alignment.Center).size(29.dp))
-                if (episode.canResume) LinearProgressIndicator(progress = { episode.progressFraction },
-                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp), color = MavieTurquoise, trackColor = Color.White.copy(alpha = 0.16f))
+        Column(Modifier.fillMaxWidth().padding(10.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(Modifier.size(width = 114.dp, height = 64.dp).clip(RoundedCornerShape(12.dp))) {
+                    PosterArt(episode, Modifier.fillMaxSize(), backdrop = true)
+                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .22f)))
+                    Icon(Icons.Outlined.PlayCircleOutline, null, tint = Color.White, modifier = Modifier.align(Alignment.Center).size(29.dp))
+                    if (episode.canResume) LinearProgressIndicator(progress = { episode.progressFraction },
+                        modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp), color = MavieTurquoise, trackColor = Color.White.copy(alpha = 0.16f))
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(if (episode.episodeNumber > 0) "${episode.episodeNumber}. ${episode.title}" else episode.title,
+                        fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(when {
+                        episode.canResume -> "${playbackTime((episode.progressDurationMs - episode.progressPositionMs).coerceAtLeast(0))} kaldı"
+                        episode.progressFraction >= .95f -> "İzlendi"
+                        episode.progressDurationMs >= 60_000 -> "${episode.progressDurationMs / 60_000} dk"
+                        else -> ""
+                    }, color = MavieMuted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+                }
+                MavieTooltipIconButton(
+                    label = "${episode.title} bölümünü listeye ekle",
+                    icon = Icons.Outlined.Add,
+                    onClick = onAdd,
+                    tint = MavieMuted,
+                )
             }
-            Column(Modifier.weight(1f)) {
-                Text(if (episode.episodeNumber > 0) "${episode.episodeNumber}. ${episode.title}" else episode.title,
-                    fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(when {
-                    episode.canResume -> "${playbackTime((episode.progressDurationMs - episode.progressPositionMs).coerceAtLeast(0))} kaldı"
-                    episode.progressFraction >= .95f -> "İzlendi"
-                    episode.progressDurationMs >= 60_000 -> "${episode.progressDurationMs / 60_000} dk"
-                    else -> ""
-                }, color = MavieMuted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
-            }
-            MavieTooltipIconButton(
-                label = "${episode.title} bölümünü listeye ekle",
-                icon = Icons.Outlined.Add,
-                onClick = onAdd,
-                tint = MavieMuted,
-            )
+            if (episode.overview.isNotBlank()) Text(episode.overview, Modifier.padding(top = 7.dp),
+                color = MavieMuted, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
-        if (episode.overview.isNotBlank()) Text(episode.overview, Modifier.padding(top = 7.dp),
-            color = MavieMuted, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }

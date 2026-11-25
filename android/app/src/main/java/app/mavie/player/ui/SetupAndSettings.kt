@@ -192,7 +192,11 @@ fun MavieSetupScreen(
             TextButton(
                 onClick = { if (!loading) onOpenLocalFile() },
                 enabled = !loading,
-                modifier = Modifier.fillMaxWidth().widthIn(max = 520.dp).heightIn(min = 48.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 520.dp)
+                    .heightIn(min = 48.dp)
+                    .mavieTvFocusable(enabled = !loading, shape = RoundedCornerShape(16.dp), addFocusable = false),
             ) {
                 Icon(Icons.Outlined.FolderOpen, null, Modifier.size(18.dp), tint = MavieMuted)
                 Spacer(Modifier.width(8.dp))
@@ -203,37 +207,15 @@ fun MavieSetupScreen(
                 Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     Text("Medya kaynağı bağla", style = MaterialTheme.typography.titleMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        val chipColors = FilterChipDefaults.filterChipColors(
-                            containerColor = Color(0x80182038),
-                            labelColor = MavieMuted,
-                            selectedContainerColor = MaviePurple.copy(alpha = 0.88f),
-                            selectedLabelColor = Color.White,
-                        )
-                        FilterChip(
+                        MavieFilterChip(
                             selected = mode == "m3u",
                             onClick = { mode = "m3u"; localError = null },
                             label = { Text("M3U / Liste") },
-                            shape = CircleShape,
-                            colors = chipColors,
-                            border = FilterChipDefaults.filterChipBorder(
-                                enabled = true,
-                                selected = mode == "m3u",
-                                borderColor = Color.White.copy(alpha = 0.14f),
-                                selectedBorderColor = MavieCyanDot.copy(alpha = 0.7f),
-                            ),
                         )
-                        FilterChip(
+                        MavieFilterChip(
                             selected = mode == "xtream",
                             onClick = { mode = "xtream"; localError = null },
                             label = { Text("Xtream Sunucu") },
-                            shape = CircleShape,
-                            colors = chipColors,
-                            border = FilterChipDefaults.filterChipBorder(
-                                enabled = true,
-                                selected = mode == "xtream",
-                                borderColor = Color.White.copy(alpha = 0.14f),
-                                selectedBorderColor = MavieCyanDot.copy(alpha = 0.7f),
-                            ),
                         )
                     }
                     if (mode == "m3u") {
@@ -287,7 +269,10 @@ fun MavieSetupScreen(
                             visualTransformation = if (reveal) VisualTransformation.None else PasswordVisualTransformation(),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
                             trailingIcon = {
-                                IconButton(onClick = { reveal = !reveal }, modifier = Modifier.size(48.dp)) {
+                                IconButton(
+                                    onClick = { reveal = !reveal },
+                                    modifier = Modifier.size(48.dp).mavieTvFocusable(shape = CircleShape, addFocusable = false),
+                                ) {
                                     Icon(if (reveal) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, if (reveal) "Parolayı gizle" else "Parolayı göster")
                                 }
                             },
@@ -342,7 +327,9 @@ fun MavieSetupScreen(
                                         OutlinedButton(
                                             onClick = { if (!loading) onDemo() },
                                             enabled = !loading,
-                                            modifier = Modifier.heightIn(min = 48.dp),
+                                            modifier = Modifier
+                                                .heightIn(min = 48.dp)
+                                                .mavieTvFocusable(enabled = !loading, shape = RoundedCornerShape(12.dp), addFocusable = false),
                                             shape = RoundedCornerShape(12.dp),
                                             border = BorderStroke(1.dp, MavieSpecularBorderBrush),
                                             colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0x73182038), contentColor = Color.White),
@@ -398,6 +385,7 @@ fun MavieSettingsScreen(
     onSaveEpgUrl: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
+    val isTv = LocalIsTv.current
     var confirmLogout by remember { mutableStateOf(false) }
     var showLicenses by remember { mutableStateOf(false) }
     var showEpgDialog by remember { mutableStateOf(false) }
@@ -439,7 +427,10 @@ fun MavieSettingsScreen(
                     )
                     OutlinedButton(
                         onClick = { showEpgDialog = true },
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .mavieTvFocusable(shape = RoundedCornerShape(16.dp), addFocusable = false),
                         shape = RoundedCornerShape(16.dp),
                         border = BorderStroke(1.dp, MavieSpecularBorderBrush),
                         colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0x73182038), contentColor = Color.White),
@@ -461,7 +452,10 @@ fun MavieSettingsScreen(
                 SettingsCard("Kütüphanen seninle", "Favorilerini, listelerini ve izleme kayıtlarını taşı.") {
                     OutlinedButton(
                         onClick = onExport,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .mavieTvFocusable(shape = RoundedCornerShape(16.dp), addFocusable = false),
                         shape = RoundedCornerShape(16.dp),
                         border = BorderStroke(1.dp, MavieSpecularBorderBrush),
                         colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0x73182038), contentColor = Color.White),
@@ -470,7 +464,10 @@ fun MavieSettingsScreen(
                     }
                     OutlinedButton(
                         onClick = onImport,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .mavieTvFocusable(shape = RoundedCornerShape(16.dp), addFocusable = false),
                         shape = RoundedCornerShape(16.dp),
                         border = BorderStroke(1.dp, MavieSpecularBorderBrush),
                         colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0x73182038), contentColor = Color.White),
@@ -479,7 +476,10 @@ fun MavieSettingsScreen(
                     }
                     TextButton(
                         onClick = onSync,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .mavieTvFocusable(shape = RoundedCornerShape(16.dp), addFocusable = false),
                     ) {
                         Icon(Icons.Outlined.Devices, null, Modifier.size(19.dp)); Spacer(Modifier.width(8.dp)); Text("Masaüstü ile eşitle")
                     }
@@ -491,7 +491,10 @@ fun MavieSettingsScreen(
                     )
                     OutlinedButton(
                         onClick = { showLicenses = true },
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .mavieTvFocusable(shape = RoundedCornerShape(16.dp), addFocusable = false),
                         shape = RoundedCornerShape(16.dp),
                         border = BorderStroke(1.dp, MavieSpecularBorderBrush),
                         colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0x73182038), contentColor = Color.White),
@@ -503,14 +506,22 @@ fun MavieSettingsScreen(
                 }
                 TextButton(
                     onClick = { confirmLogout = true },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .mavieTvFocusable(shape = RoundedCornerShape(16.dp), addFocusable = false),
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
                 ) {
                     Icon(Icons.AutoMirrored.Outlined.Logout, null, Modifier.size(19.dp)); Spacer(Modifier.width(8.dp)); Text("Kaynaktan çıkış yap")
                 }
                 Column(Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     MavieWordmark()
-                    Text("Sürüm $versionName · Android · Ücretsiz", Modifier.padding(top = 7.dp), color = MavieMuted, fontSize = 11.sp)
+                    Text(
+                        if (isTv) "Sürüm $versionName · Android TV · Ücretsiz" else "Sürüm $versionName · Android · Ücretsiz",
+                        Modifier.padding(top = 7.dp),
+                        color = MavieMuted,
+                        fontSize = 11.sp,
+                    )
                 }
             }
         }
@@ -521,7 +532,12 @@ fun MavieSettingsScreen(
         shape = RoundedCornerShape(24.dp),
         title = { Text("Yasal Bilgiler & Lisanslar") },
         text = { Text(noticeText, modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()), fontSize = 12.sp, lineHeight = 18.sp) },
-        confirmButton = { TextButton(onClick = { showLicenses = false }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Kapat") } },
+        confirmButton = {
+            TextButton(
+                onClick = { showLicenses = false },
+                modifier = Modifier.heightIn(min = 48.dp).mavieTvFocusable(shape = RoundedCornerShape(12.dp), addFocusable = false),
+            ) { Text("Kapat") }
+        },
     )
     if (showEpgDialog) {
         var epgInput by remember(epgUrl) { mutableStateOf(epgUrl) }
@@ -556,7 +572,7 @@ fun MavieSettingsScreen(
                                 showEpgDialog = false
                                 onSaveEpgUrl("")
                             },
-                            modifier = Modifier.heightIn(min = 48.dp),
+                            modifier = Modifier.heightIn(min = 48.dp).mavieTvFocusable(shape = RoundedCornerShape(12.dp), addFocusable = false),
                         ) {
                             Text("Temizle", color = MaterialTheme.colorScheme.error)
                         }
@@ -581,11 +597,14 @@ fun MavieSettingsScreen(
                             }
                         }
                     },
-                    modifier = Modifier.heightIn(min = 48.dp),
+                    modifier = Modifier.heightIn(min = 48.dp).mavieTvFocusable(shape = RoundedCornerShape(12.dp), addFocusable = false),
                 ) { Text("Kaydet") }
             },
             dismissButton = {
-                TextButton(onClick = { showEpgDialog = false }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Vazgeç") }
+                TextButton(
+                    onClick = { showEpgDialog = false },
+                    modifier = Modifier.heightIn(min = 48.dp).mavieTvFocusable(shape = RoundedCornerShape(12.dp), addFocusable = false),
+                ) { Text("Vazgeç") }
             },
         )
     }
@@ -595,8 +614,18 @@ fun MavieSettingsScreen(
         shape = RoundedCornerShape(24.dp),
         title = { Text("Kaynaktan çıkılsın mı?") },
         text = { Text("Bu cihazda yeniden izlemek için kaynak bilgilerini tekrar girmen veya demo modunu seçmen gerekir.") },
-        confirmButton = { TextButton(onClick = { confirmLogout = false; onLogout() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Çıkış yap") } },
-        dismissButton = { TextButton(onClick = { confirmLogout = false }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Vazgeç") } },
+        confirmButton = {
+            TextButton(
+                onClick = { confirmLogout = false; onLogout() },
+                modifier = Modifier.heightIn(min = 48.dp).mavieTvFocusable(shape = RoundedCornerShape(12.dp), addFocusable = false),
+            ) { Text("Çıkış yap") }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = { confirmLogout = false },
+                modifier = Modifier.heightIn(min = 48.dp).mavieTvFocusable(shape = RoundedCornerShape(12.dp), addFocusable = false),
+            ) { Text("Vazgeç") }
+        },
     )
 }
 
@@ -630,7 +659,10 @@ fun MavieCollectionPicker(
                     TextButton(
                         onClick = { onSelect(collection) },
                         shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .mavieTvFocusable(shape = RoundedCornerShape(12.dp), addFocusable = false),
                     ) {
                         Icon(Icons.Outlined.Folder, null, Modifier.size(20.dp), tint = MavieTurquoise)
                         Text(collection.title, Modifier.weight(1f).padding(start = 10.dp), color = Color.White)
@@ -646,7 +678,20 @@ fun MavieCollectionPicker(
                 )
             }
         },
-        confirmButton = { TextButton(onClick = { onCreate(name.trim()) }, enabled = name.isNotBlank(), modifier = Modifier.heightIn(min = 48.dp)) { Text("Liste oluştur") } },
-        dismissButton = { TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) { Text("Kapat") } },
+        confirmButton = {
+            TextButton(
+                onClick = { onCreate(name.trim()) },
+                enabled = name.isNotBlank(),
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .mavieTvFocusable(enabled = name.isNotBlank(), shape = RoundedCornerShape(12.dp), addFocusable = false),
+            ) { Text("Liste oluştur") }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.heightIn(min = 48.dp).mavieTvFocusable(shape = RoundedCornerShape(12.dp), addFocusable = false),
+            ) { Text("Kapat") }
+        },
     )
 }
