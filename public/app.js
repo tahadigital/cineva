@@ -5,7 +5,7 @@ const $=selector=>document.querySelector(selector);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=new Intl.NumberFormat('tr-TR');
 const kindNames={live:'Canlı TV',vod:'Film',series:'Dizi',episode:'Bölüm'};
-const state={status:null,route:'home',params:new URLSearchParams(),renderId:0,items:new Map(),detail:null,playlists:[],player:null,hls:null,progressTimer:null,pingTimer:null,syncTimer:null,searchTimer:null,playGeneration:0,playClient:Date.now().toString(36)+Math.random().toString(36).slice(2),seekTimer:null,waitingTimer:null,playbackRate:1,videoCover:false,sleepTimer:null,sleepUntil:0,osdTimer:null,multiHls:[],multiSids:[],multiPingTimer:null,multiGen:0};
+const state={status:null,route:'home',params:new URLSearchParams(),renderId:0,items:new Map(),detail:null,playlists:[],player:null,hls:null,progressTimer:null,pingTimer:null,syncTimer:null,searchTimer:null,playGeneration:0,playClient:Date.now().toString(36)+Math.random().toString(36).slice(2),seekTimer:null,waitingTimer:null,videoClickTimer:null,playbackRate:1,videoCover:false,sleepTimer:null,sleepUntil:0,osdTimer:null,multiHls:[],multiSids:[],multiPingTimer:null,multiGen:0};
 function hydrateIcons(root=document){root.querySelectorAll('[data-icon]').forEach(el=>{el.innerHTML=icon(el.dataset.icon);});}
 async function api(path,options={}){
   const timeoutMs=options.timeoutMs??30000;
@@ -600,6 +600,7 @@ async function stopPlayer(close=true,persist=true){
   const player=state.player;
   if(close)state.playGeneration++;
   clearTimeout(state.seekTimer);state.seekTimer=null;
+  clearTimeout(state.videoClickTimer);state.videoClickTimer=null;
   clearTimeout(player?.controlsTimer);
   clearEpisodeEnding(player);
   hideBuffering();
@@ -686,8 +687,14 @@ function bindPlayer(){
   dialog.addEventListener('focusin',()=>showPlayerControls());
   dialog.addEventListener('click',event=>{
     if(event.target===video){
-      if(playerPanels.some(([panel])=>!$(panel).hidden))setPlayerPanel();
-      else if(event.pointerType!=='touch'&&!dialog.classList.contains('controls-hidden'))togglePlay();
+      if(playerPanels.some(([panel])=>!$(panel).hidden)){clearTimeout(state.videoClickTimer);state.videoClickTimer=null;setPlayerPanel();}
+      else if(event.pointerType!=='touch'){
+        clearTimeout(state.videoClickTimer);state.videoClickTimer=null;
+        if(event.detail>=2){showPlayerControls();return;}
+        if(requestFullscreen){
+          state.videoClickTimer=setTimeout(()=>{state.videoClickTimer=null;togglePlay();},220);
+        }else togglePlay();
+      }
       showPlayerControls();
     }
   });
@@ -730,7 +737,7 @@ function bindPlayer(){
     setSleepTimer(Number(btn.dataset.sleep));
     setPlayerPanel();
   });
-  video.addEventListener('dblclick',()=>{if(requestFullscreen)fullscreen();});
+  video.addEventListener('dblclick',()=>{clearTimeout(state.videoClickTimer);state.videoClickTimer=null;if(requestFullscreen)fullscreen();});
   $('#togglePlay').addEventListener('click',togglePlay);
   $('#mutePlayer').addEventListener('click',()=>{if(video.volume===0)video.volume=1;else video.muted=!video.muted;});
   $('#playerVolume').addEventListener('input',event=>{video.volume=Number(event.target.value);video.muted=false;});

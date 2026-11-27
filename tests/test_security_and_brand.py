@@ -356,6 +356,17 @@ class MavieBrandPaletteAndIconsTests(unittest.TestCase):
         self.assertIn("CFBundleIconFile", mac_script)
         self.assertIn("#7C3AED", mac_script)
 
+        # Regression guard: WKWebView must stay inside WebViewHostView with autoresizingMask
+        # (never pinned directly via Auto Layout) so exiting HTML fullscreen never collapses it to 0x0.
+        mac_app = (ROOT / "apple" / "macOS" / "MavieMacApp.swift").read_text("utf-8")
+        self.assertIn("final class WebViewHostView: NSView", mac_app)
+        self.assertIn("webView.translatesAutoresizingMaskIntoConstraints = true", mac_app)
+        self.assertIn("webView.autoresizingMask = [.width, .height]", mac_app)
+        self.assertIn("webView.allowsBackForwardNavigationGestures = false", mac_app)
+        self.assertIn("observeWebViewFullscreenState()", mac_app)
+        self.assertIn("restoreWebViewIfNeeded()", mac_app)
+        self.assertNotIn("webView.translatesAutoresizingMaskIntoConstraints = false", mac_app)
+
     def test_04_desktop_port_allocator_skips_occupied_wildcard_port(self) -> None:
         sys.path.insert(0, str(ROOT / "desktop"))
         import mavie_desktop

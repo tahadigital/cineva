@@ -4,15 +4,84 @@ import SwiftUI
 import UniformTypeIdentifiers
 import WebKit
 
+/// Dedicated host container for WKWebView so macOS WebKit's element fullscreen
+/// transition (`WKFullScreenWindowController`) can safely reparent the webView
+/// without destroying Auto Layout constraints and collapsing it to 0x0 on exit.
+@MainActor
+final class WebViewHostView: NSView {
+    weak var managedWebView: WKWebView?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor(red: 9.0 / 255.0, green: 11.0 / 255.0, blue: 18.0 / 255.0, alpha: 1.0).cgColor
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layout() {
+        super.layout()
+        reconcileWebViewLayout()
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        reconcileWebViewLayout()
+    }
+
+    override func didAddSubview(_ subview: NSView) {
+        super.didAddSubview(subview)
+        if subview === managedWebView {
+            reconcileWebViewLayout()
+            DispatchQueue.main.async { [weak self] in
+                self?.reconcileWebViewLayout()
+            }
+        }
+    }
+
+    func attach(_ webView: WKWebView) {
+        managedWebView = webView
+        for child in subviews where child !== webView {
+            child.removeFromSuperview()
+        }
+        webView.translatesAutoresizingMaskIntoConstraints = true
+        webView.autoresizingMask = [.width, .height]
+        if webView.superview !== self {
+            webView.removeFromSuperview()
+            addSubview(webView)
+        }
+        reconcileWebViewLayout()
+    }
+
+    func reconcileWebViewLayout() {
+        guard let wv = managedWebView, wv.superview === self else { return }
+        if !wv.translatesAutoresizingMaskIntoConstraints {
+            wv.translatesAutoresizingMaskIntoConstraints = true
+        }
+        wv.autoresizingMask = [.width, .height]
+        wv.isHidden = false
+        wv.alphaValue = 1.0
+        if bounds.width > 0 && bounds.height > 0 && wv.frame != bounds {
+            wv.frame = bounds
+        }
+        wv.needsLayout = true
+        wv.needsDisplay = true
+    }
+}
+
 @MainActor
 final class MavieMacDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
     private var window: NSWindow!
+    private var webHostView: WebViewHostView!
     private var webView: WKWebView!
     private var overlayHostingView: NSHostingView<LaunchOverlayView>!
     private var preferencesWindow: NSWindow?
     private let serverManager = ServerProcessManager()
     private let overlayState = LaunchOverlayState()
     private var statusCancellable: AnyCancellable?
+    private var fullscreenCancellable: AnyCancellable?
     private var loadedBaseURL: URL?
     private var webContentCrashCount = 0
 
@@ -29,12 +98,18 @@ final class MavieMacDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         configuration.mediaTypesRequiringUserActionForPlayback = []
         configuration.preferences.isElementFullscreenEnabled = true
 
-        webView = WKWebView(frame: .zero, configuration: configuration)
-        webView.underPageBackgroundColor = NSColor(red: 14.0 / 255.0, green: 16.0 / 255.0, blue: 21.0 / 255.0, alpha: 1.0)
+        webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 1220, height: 812), configuration: configuration)
+        webView.underPageBackgroundColor = NSColor(red: 9.0 / 255.0, green: 11.0 / 255.0, blue: 18.0 / 255.0, alpha: 1.0)
         webView.navigationDelegate = self
         webView.uiDelegate = self
-        webView.allowsBackForwardNavigationGestures = true
-        webView.translatesAutoresizingMaskIntoConstraints = false
+        // Mavie is a single-page hash-routed app; horizontal trackpad swipes should not trigger WebKit history navigation.
+        webView.allowsBackForwardNavigationGestures = false
+        webView.translatesAutoresizingMaskIntoConstraints = true
+        webView.autoresizingMask = [.width, .height]
+
+        webHostView = WebViewHostView(frame: NSRect(x: 0, y: 0, width: 1220, height: 812))
+        webHostView.translatesAutoresizingMaskIntoConstraints = false
+        webHostView.attach(webView)
 
         let overlay = LaunchOverlayView(
             manager: serverManager,
@@ -44,6 +119,7 @@ final class MavieMacDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
                 self.loadedBaseURL = nil
                 self.overlayState.webError = nil
                 self.webContentCrashCount = 0
+                self.restoreWebViewIfNeeded()
                 self.showOverlay()
                 if self.serverManager.status.isReady {
                     let targetURL = self.serverManager.baseURL
@@ -68,7 +144,7 @@ final class MavieMacDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
 
         let container = NSView(frame: NSRect(x: 0, y: 0, width: 1220, height: 840))
         container.addSubview(visualEffect)
-        container.addSubview(webView)
+        container.addSubview(webHostView)
         container.addSubview(overlayHostingView)
 
         window = NSWindow(
@@ -93,10 +169,10 @@ final class MavieMacDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
             visualEffect.topAnchor.constraint(equalTo: container.topAnchor),
             visualEffect.bottomAnchor.constraint(equalTo: container.bottomAnchor),
 
-            webView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            webView.topAnchor.constraint(equalTo: webTopAnchor),
-            webView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            webHostView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            webHostView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            webHostView.topAnchor.constraint(equalTo: webTopAnchor),
+            webHostView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
 
             overlayHostingView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             overlayHostingView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
@@ -104,12 +180,40 @@ final class MavieMacDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
             overlayHostingView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
         ])
 
+        window.layoutIfNeeded()
+        webHostView.reconcileWebViewLayout()
+
+        observeWebViewFullscreenState()
+
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
 
         observeServerStatus()
         serverManager.start()
+    }
+
+    private func observeWebViewFullscreenState() {
+        fullscreenCancellable = webView.publisher(for: \.fullscreenState)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] fsState in
+                guard let self else { return }
+                if fsState == .notInFullscreen {
+                    self.restoreWebViewIfNeeded()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                        self?.restoreWebViewIfNeeded()
+                    }
+                }
+            }
+    }
+
+    private func restoreWebViewIfNeeded() {
+        guard let webView, let webHostView else { return }
+        guard webView.fullscreenState == .notInFullscreen else { return }
+        window?.layoutIfNeeded()
+        webHostView.attach(webView)
+        webView.layoutSubtreeIfNeeded()
+        window?.displayIfNeeded()
     }
 
     private func observeServerStatus() {
@@ -313,6 +417,7 @@ final class MavieMacDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     }
 
     @objc private func reloadPage() {
+        restoreWebViewIfNeeded()
         if serverManager.status.isReady {
             overlayState.webError = nil
             let targetURL = serverManager.baseURL
@@ -328,9 +433,27 @@ final class MavieMacDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     }
 
     @objc private func openWebsite() {
-        if let url = URL(string: "https://maviemovie.netlify.app") {
+        if let url = URL(string: "https://www.mavie.workers.dev") {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    // MARK: - NSWindowDelegate
+
+    func windowDidResize(_ notification: Notification) {
+        restoreWebViewIfNeeded()
+    }
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        restoreWebViewIfNeeded()
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) {
+        restoreWebViewIfNeeded()
+    }
+
+    func windowDidDeminiaturize(_ notification: Notification) {
+        restoreWebViewIfNeeded()
     }
 
     // MARK: - NSApplicationDelegate
@@ -338,12 +461,18 @@ final class MavieMacDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if webView?.fullscreenState == .inFullscreen, let fsWindow = webView.window, fsWindow !== window {
+            fsWindow.makeKeyAndOrderFront(nil)
+            return true
+        }
         window.makeKeyAndOrderFront(nil)
+        restoreWebViewIfNeeded()
         return true
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         statusCancellable?.cancel()
+        fullscreenCancellable?.cancel()
         webView?.stopLoading()
         serverManager.stopSynchronouslyForTermination()
     }
